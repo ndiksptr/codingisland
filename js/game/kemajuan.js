@@ -1,6 +1,8 @@
 // js/game/kemajuan.js — aturan buka-kunci zona dan level (fungsi murni, tanpa akses data)
-// Zona pertama selalu terbuka. Zona berikutnya terbuka setelah semua level boss
-// zona sebelumnya selesai. Level terbuka jika level sebelumnya (dalam zona yang sama) selesai.
+// Zona pertama selalu terbuka. Zona berikutnya terbuka setelah boss zona sebelumnya selesai
+// (cukup salah satu boss, agar boss tambahan buatan guru tidak mengunci pulau yang sudah terbuka).
+// Level terbuka jika level sebelumnya (dalam zona yang sama) selesai. Jika boss zona sudah
+// selesai, semua level di zona itu terbuka — termasuk level baru yang disisipkan guru.
 
 import { ZONA } from '../data/zona.js';
 
@@ -19,22 +21,23 @@ export function hitungPeta(levels, progres) {
   return ZONA.map((zona, i) => {
     const terbuka = i === 0 || bossSebelumSelesai;
     const urut = levels.filter((l) => l.zona === zona.id).sort((a, b) => (a.urutan ?? 0) - (b.urutan ?? 0));
+    const bossLulus = urut.some((l) => l.jenis === 'boss' && petaProgres.get(l.id)?.selesai);
 
     let sebelumnyaSelesai = true;
     const daftar = urut.map((l, j) => {
       const p = petaProgres.get(l.id);
       const selesai = !!p?.selesai;
       let status = 'terkunci';
-      if (terbuka) status = selesai ? 'selesai' : sebelumnyaSelesai ? 'terbuka' : 'terkunci';
+      if (terbuka) status = selesai ? 'selesai' : (sebelumnyaSelesai || bossLulus) ? 'terbuka' : 'terkunci';
       sebelumnyaSelesai = selesai;
       return { ...l, nomor: j + 1, status, bintang: p?.bintang || 0, nilai: p?.nilai || 0 };
     });
 
     const jumlahSelesai = daftar.filter((l) => l.status === 'selesai').length;
     const boss = daftar.filter((l) => l.jenis === 'boss');
-    // Tanpa level boss, zona dianggap lulus jika semua levelnya selesai
+    // Lulus jika salah satu boss selesai; tanpa boss, lulus jika semua level selesai
     const lulus = terbuka && daftar.length > 0 &&
-      (boss.length ? boss.every((l) => l.status === 'selesai') : jumlahSelesai === daftar.length);
+      (boss.length ? boss.some((l) => l.status === 'selesai') : jumlahSelesai === daftar.length);
 
     const hasil = {
       zona,

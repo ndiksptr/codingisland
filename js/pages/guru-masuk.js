@@ -14,7 +14,7 @@ export async function renderGuruMasuk(halaman, { query }) {
   const kotakDemo = await kotakAkunDemo('guru');
 
   halaman.innerHTML = `
-    <section class="min-h-screen py-8 sm:py-12 px-4 bg-gradient-to-b from-teal-tua to-teal">
+    <section class="min-h-screen py-8 sm:py-12 px-4 bg-teal-tua">
       <div class="mx-auto max-w-md">
         <a href="#/" class="inline-block mb-4 font-bold text-white underline underline-offset-4 hover:text-kuning">← Beranda</a>
 

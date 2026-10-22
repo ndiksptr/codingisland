@@ -6,7 +6,7 @@ import {
 } from '../ui.js';
 import {
   daftarKelasPublik, cekKodeKelas, cekUsernameSiswa, sarankanUsername,
-  daftarSiswa, periksaKolomSiswa, KOIN_AWAL
+  daftarSiswa, periksaKolomSiswa
 } from '../store.js';
 import { pindah } from '../router.js';
 
@@ -302,7 +302,7 @@ export async function renderDaftar(halaman) {
       isi: `
         <p class="text-xl font-bold">Selamat datang di Coding Island</p>
         <div class="mt-4 inline-flex items-center gap-2 rounded-2xl bg-kuning px-4 py-2 font-judul text-2xl font-extrabold">
-          <img src="image/item/koin.png" alt="" class="w-10 h-10 object-contain"> +${KOIN_AWAL} koin
+          <img src="image/item/koin.png" alt="" class="w-10 h-10 object-contain"> +${hasil.siswa.koin} koin
         </div>
         <p class="mt-3">Ini hadiah awal dari Robot Tutor. Pakai koin untuk membeli petunjuk ya!</p>`,
       tombol: [{ teks: 'Ayo ke Peta!', nilai: true, ikon: 'image/item/roket.png' }]

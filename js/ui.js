@@ -22,8 +22,20 @@ export function gambarRobot(pose = 'hai') {
 }
 
 /** Tag <img> Robot Tutor. */
-export function robot(pose = 'hai', { kelas = '', alt = 'Robot Tutor' } = {}) {
-  return `<img src="${gambarRobot(pose)}" alt="${esc(alt)}" class="${kelas}" draggable="false">`;
+export function robot(pose = 'hai', { kelas = '', alt = 'Robot Tutor', lambat = false } = {}) {
+  return `<img src="${gambarRobot(pose)}" alt="${esc(alt)}" class="${kelas}" draggable="false" decoding="async"${lambat ? ' loading="lazy"' : ''}>`;
+}
+
+// ---------- Pramuat gambar (mis. background zona saat kartunya disorot) ----------
+const sudahDipramuat = new Set();
+export function pramuatGambar(url) {
+  if (!url || sudahDipramuat.has(url)) return;
+  sudahDipramuat.add(url);
+  const tautan = document.createElement('link');
+  tautan.rel = 'preload';
+  tautan.as = 'image';
+  tautan.href = url;
+  document.head.appendChild(tautan);
 }
 
 // ---------- Tombol besar ----------
@@ -102,7 +114,8 @@ const SELEKTOR_FOKUS = 'a[href], button:not([disabled]), input:not([disabled]), 
  *   pose: 'gembira',                           // pose Robot Tutor (opsional)
  *   tombol: [{ teks: 'Lanjut', nilai: 'lanjut' }],
  *   bisaDitutup: true,
- *   saatBuka: (kotak) => {}                    // pasang event tambahan (opsional)
+ *   saatBuka: (kotak, tutup) => {}             // pasang event tambahan; tutup(nilai) menutup modal (opsional)
+ *   lebar: false                               // true untuk modal lebar (tabel, kode)
  * })
  */
 export function bukaModal({
@@ -111,7 +124,8 @@ export function bukaModal({
   pose = '',
   tombol: daftarTombol = [{ teks: 'Oke', nilai: true }],
   bisaDitutup = true,
-  saatBuka = null
+  saatBuka = null,
+  lebar = false
 } = {}) {
   return new Promise((resolve) => {
     const fokusSebelumnya = document.activeElement;
@@ -120,7 +134,7 @@ export function bukaModal({
     const latar = document.createElement('div');
     latar.className = 'modal-latar';
     latar.innerHTML = `
-      <div class="modal-kotak muncul" role="dialog" aria-modal="true" aria-labelledby="${idJudul}">
+      <div class="modal-kotak muncul ${lebar ? 'modal-lebar' : ''}" role="dialog" aria-modal="true" aria-labelledby="${idJudul}">
         ${bisaDitutup ? `<button type="button" class="modal-tutup" aria-label="Tutup" data-tutup>${IKON_TUTUP}</button>` : ''}
         ${pose ? robot(pose, { kelas: 'modal-gambar melayang', alt: '' }) : ''}
         <h2 id="${idJudul}" class="modal-judul">${esc(judul)}</h2>
@@ -176,7 +190,7 @@ export function bukaModal({
     document.body.classList.add('modal-terbuka');
 
     kotak.setAttribute('tabindex', '-1');
-    if (typeof saatBuka === 'function') saatBuka(kotak);
+    if (typeof saatBuka === 'function') saatBuka(kotak, tutup);
     // Fokus ke tombol aksi pertama, atau ke kotak modal
     const fokusAwal = kotak.querySelector('.modal-aksi .tombol') || kotak.querySelector(SELEKTOR_FOKUS) || kotak;
     fokusAwal.focus();
@@ -187,7 +201,8 @@ export function bukaModal({
 const IKON_TOAST = {
   sukses: 'image/item/benar.png',
   peringatan: 'image/item/salah.png',
-  info: 'image/robot/hai.png'
+  info: 'image/robot/hai.png',
+  galat: 'image/robot/kaget.png' // kesalahan tak terduga: robot kaget
 };
 
 function ambilWadahToast() {
@@ -210,7 +225,7 @@ export function toast(pesan, jenis = 'info', durasi = 3200) {
   const jenisAman = IKON_TOAST[jenis] ? jenis : 'info';
   const el = document.createElement('div');
   el.className = `toast toast-${jenisAman}`;
-  el.setAttribute('role', jenisAman === 'peringatan' ? 'alert' : 'status');
+  el.setAttribute('role', jenisAman === 'peringatan' || jenisAman === 'galat' ? 'alert' : 'status');
   el.innerHTML = `<img src="${IKON_TOAST[jenisAman]}" alt=""><span>${esc(pesan)}</span>`;
   ambilWadahToast().appendChild(el);
 
@@ -339,4 +354,68 @@ export function pasangKotakPin(fieldset, { saatUbah = null, saatLengkap = null }
       kotak.forEach((k) => { k.type = ya ? 'text' : 'password'; });
     }
   };
+}
+
+
+// ---------- Modal berisi form ----------
+/**
+ * Modal form yang tetap terbuka jika simpan gagal.
+ * isi: HTML kolom-kolom form. saatSimpan(formData, form) boleh async:
+ *   - kembalikan { galat: 'pesan' } untuk menampilkan pesan dan tetap membuka modal
+ *   - melempar Error juga menampilkan pesannya
+ *   - nilai lain menutup modal dan menjadi hasil Promise (null jika dibatalkan)
+ */
+export function bukaFormModal({ judul, isi, teksSimpan = 'Simpan', varianSimpan = 'utama', lebar = false, saatSimpan }) {
+  return bukaModal({
+    judul,
+    lebar,
+    tombol: [],
+    isi: `
+      <form class="form-modal" novalidate>
+        ${isi}
+        <p class="pesan-kolom pesan-galat" data-galat-form role="alert"></p>
+        <div class="form-aksi">
+          <button type="button" class="tombol tombol-sekunder tombol-kecil" data-batal>Batal</button>
+          <button type="submit" class="tombol tombol-${esc(varianSimpan)} tombol-kecil" data-simpan>${esc(teksSimpan)}</button>
+        </div>
+      </form>`,
+    saatBuka: (kotak, tutup) => {
+      const form = kotak.querySelector('form');
+      const galat = form.querySelector('[data-galat-form]');
+      const tombolSimpan = form.querySelector('[data-simpan]');
+      form.querySelector('[data-batal]').addEventListener('click', () => tutup(null));
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        galat.textContent = '';
+        tombolSimpan.disabled = true;
+        try {
+          const hasil = await saatSimpan(new FormData(form), form);
+          if (hasil && hasil.galat) {
+            galat.textContent = hasil.galat;
+            return;
+          }
+          tutup(hasil ?? true);
+        } catch (err) {
+          galat.textContent = err.message || 'Terjadi kesalahan.';
+        } finally {
+          tombolSimpan.disabled = false;
+        }
+      });
+      // Fokus ke kolom pertama setelah modal tampil
+      setTimeout(() => form.querySelector('input:not([type="hidden"]), select, textarea')?.focus(), 0);
+    }
+  });
+}
+
+// ---------- Unduh berkas teks (CSV) ----------
+export function unduhBerkas(namaBerkas, isi, tipe = 'text/csv;charset=utf-8') {
+  const blob = new Blob(['﻿', isi], { type: tipe }); // BOM agar Excel membaca UTF-8
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = namaBerkas;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }

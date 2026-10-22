@@ -8,8 +8,11 @@
 const SIMBOL_ROBOT = { '>': 'timur', '<': 'barat', '^': 'utara', v: 'selatan' };
 const PANAH_ARAH = { timur: '>', barat: '<', utara: '^', selatan: 'v' };
 
-/** Buat objek dunia dari array baris teks (atau satu string bergaris baru). */
-export function duniaDariTeks(peta) {
+/**
+ * Buat objek dunia dari array baris teks (atau satu string bergaris baru).
+ * opsi.rintangan: jenis rintangan untuk simbol # (batu, karang, kaktus, es)
+ */
+export function duniaDariTeks(peta, { rintangan = 'batu' } = {}) {
   const baris = (Array.isArray(peta) ? peta : String(peta).split('\n')).map((b) => b.trim()).filter(Boolean);
   const dunia = {
     kolom: Math.max(...baris.map((b) => b.length)),
@@ -24,7 +27,7 @@ export function duniaDariTeks(peta) {
     [...teks].forEach((c, x) => {
       if (SIMBOL_ROBOT[c]) dunia.robot = { x, y, arah: SIMBOL_ROBOT[c] };
       else if (c === 'F') dunia.tujuan = { x, y };
-      else if (c === '#') dunia.rintangan.push({ jenis: 'batu', x, y });
+      else if (c === '#') dunia.rintangan.push({ jenis: rintangan, x, y });
       else if (c === 'O') dunia.jurang.push({ x, y });
       else if (c === '$') dunia.item.push({ jenis: 'koin', x, y, wajib: true });
       else if (c === '*') dunia.item.push({ jenis: 'koin', x, y, wajib: false });

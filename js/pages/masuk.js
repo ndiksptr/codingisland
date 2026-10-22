@@ -24,7 +24,7 @@ function papanAngkaHTML() {
 
 /** Tujuan setelah masuk: hanya rute siswa yang diizinkan. */
 function tujuanAman(ke) {
-  return typeof ke === 'string' && (ke === '/peta' || ke.startsWith('/peta/') || ke.startsWith('/level/')) ? ke : '/peta';
+  return typeof ke === 'string' && (ke === '/peta' || ke === '/juara' || ke === '/profil' || ke.startsWith('/peta/') || ke.startsWith('/level/')) ? ke : '/peta';
 }
 
 export async function renderMasuk(halaman, { query }) {

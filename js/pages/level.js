@@ -2,10 +2,10 @@
 // Kiri (±40%): kartu soal, chip perintah, editor, tombol. Kanan (±60%): panggung 16:9.
 // Di HP panggung tampil di atas, editor di bawah.
 
-import { esc, robot, tombol, bukaModal, toast } from '../ui.js';
+import { esc, robot, tombol, bukaModal, toast, gambarRobot, goyangkan } from '../ui.js';
 import {
   getKelas, getProgres, getDrafKode, simpanDrafKode, getPreferensi, simpanPreferensi,
-  catatPercobaan, tambahLamaBermain
+  catatPercobaan, tambahLamaBermain, beliClue, getSiswa, getHargaClue
 } from '../store.js';
 import { pindah } from '../router.js';
 import { LABEL_JENIS } from '../data/levels.js';
@@ -13,9 +13,10 @@ import { ikonGembok, ikonBug, ikonPanah } from '../game/ikon.js';
 import { buatEditor } from '../game/editor.js';
 import { buatPanggung } from '../game/panggung.js';
 import { jalankanKodeSiswa } from '../game/runner.js';
-import { hitungBintang, NILAI_BINTANG } from '../game/skor.js';
+import { hitungBintang, NILAI_BINTANG, CLUE, bintangMaksimal } from '../game/skor.js';
 import { kurangiGerak } from '../game/efek.js';
 import { muatPeta } from './peta.js';
+import { bukaBantuan } from './bantuan.js';
 
 const KECEPATAN = { pelan: 700, normal: 400, cepat: 160 };
 const URL_CONFETTI = 'https://esm.sh/canvas-confetti@1.9.3';
@@ -48,12 +49,12 @@ function kartuInfo(isi) {
 }
 
 // Tulis nama perintah di instruksi sebagai kode, mis. maju(4)
-function formatInstruksi(teks) {
+export function formatInstruksi(teks) {
   return esc(teks).replace(/\b([a-z_]+\(\d*\))/g, '<code class="kode-inline">$1</code>');
 }
 
 // tujuanTeks boleh berupa objek {teks, jenis, jumlah} atau teks biasa
-function normalkanTujuan(t) {
+export function normalkanTujuan(t) {
   if (typeof t !== 'string') return t;
   const ambil = t.match(/ambil\s+(\d+)/i);
   if (ambil) return { teks: t, jenis: 'ambil', jumlah: Number(ambil[1]) };
@@ -160,8 +161,16 @@ export async function renderLevel(halaman, { params }) {
               <span class="lencana-jenis" data-jenis="${esc(level.jenis)}">${lencana}</span>
               ${progres?.selesai ? `<span class="text-sm font-bold">Terbaik: ${'★'.repeat(progres.bintang)}${'☆'.repeat(3 - progres.bintang)}</span>` : ''}
             </div>
-            <h1 class="mt-2 font-judul text-3xl sm:text-4xl font-extrabold text-teal-tua leading-tight">${esc(level.judul)}</h1>
+            <div class="mt-2 flex items-start gap-3">
+              <h1 class="flex-1 font-judul text-3xl sm:text-4xl font-extrabold text-teal-tua leading-tight">${esc(level.judul)}</h1>
+              ${level.jenis === 'boss' ? '<img src="image/item/piala.png" alt="Piala boss" class="piala-soal melayang">' : ''}
+            </div>
             <p class="mt-2 text-lg">${formatInstruksi(level.instruksi || level.ringkasan || '')}</p>
+            ${tingkat >= 5 && level.tantanganBonus ? `
+              <p class="tantangan-bonus mt-3">
+                <img src="image/item/berlian.png" alt="" class="w-7 h-7 object-contain shrink-0">
+                <span><strong>Tantangan bonus:</strong> ${formatInstruksi(level.tantanganBonus)}</span>
+              </p>` : ''}
             ${daftarTujuan.length ? `
               <h2 class="mt-4 font-judul text-xl font-extrabold">Tujuan</h2>
               <ul class="daftar-tujuan mt-1">
@@ -187,6 +196,12 @@ export async function renderLevel(halaman, { params }) {
               <span class="label-kolom mb-0">Kode</span>
               <span class="text-sm font-bold text-teal-tua" data-info-baris></span>
             </div>
+            ${level.jenis === 'debug' ? `
+              <div class="banner-bug" role="note">
+                <span class="banner-bug-ikon">${ikonBug(26)}</span>
+                <p class="flex-1 font-bold">Ada bug di kode ini! Temukan dan perbaiki</p>
+                <button type="button" class="tombol tombol-sekunder tombol-kecil" data-kode-awal>Kembalikan kode awal</button>
+              </div>` : ''}
             <div class="editor-kode" data-editor><p class="p-4 font-bold text-teal-tua">Menyiapkan editor...</p></div>
           </div>
 
@@ -200,13 +215,19 @@ export async function renderLevel(halaman, { params }) {
               ${Object.keys(KECEPATAN).map((k) => `
                 <label><input type="radio" name="kecepatan" value="${k}" ${k === kecepatan ? 'checked' : ''}><span>${k[0].toUpperCase() + k.slice(1)}</span></label>`).join('')}
             </div>
-            <div data-slot-clue></div>
+            <button type="button" class="tombol tombol-sekunder tombol-bulat-besar" data-bantuan aria-label="Bantuan perintah" title="Bantuan perintah">?</button>
+            <div data-slot-clue>
+              <button type="button" class="tombol tombol-sekunder tombol-clue" data-clue aria-haspopup="dialog">
+                <img src="image/item/koin.png" alt="" class="tombol-ikon"><span>Clue</span>
+                <span class="lencana-clue" data-jumlah-clue>${progres?.clueDibeli || 0}/3</span>
+              </button>
+            </div>
           </div>
         </div>
 
         <!-- Kolom kanan: panggung -->
         <div class="order-1 lg:order-2 lg:sticky lg:top-24 flex flex-col gap-2 min-w-0">
-          <div data-wadah-panggung></div>
+          <div data-wadah-panggung class="${level.jenis === 'boss' ? 'bingkai-boss' : ''}"></div>
           <div class="flex flex-wrap items-center justify-between gap-2">
             ${sakelar('Tampilkan petak', 'data-sakelar-petak', tampilPetakAwal)}
             <span class="hidden sm:inline text-sm font-bold text-teal-tua">Ctrl + Enter untuk menjalankan</span>
@@ -278,6 +299,129 @@ export async function renderLevel(halaman, { params }) {
     simpanPreferensi({ kecepatan });
   }));
 
+  // ---------- Level debug: kembalikan kode awal ----------
+  $('[data-kode-awal]')?.addEventListener('click', async () => {
+    const ya = await bukaModal({
+      judul: 'Kembalikan kode awal?',
+      isi: '<p>Kode yang sudah kamu ubah akan diganti dengan kode awal yang masih ada bug-nya.</p>',
+      pose: 'berpikir',
+      tombol: [
+        { teks: 'Batal', nilai: false, varian: 'sekunder' },
+        { teks: 'Ya, kembalikan', nilai: true }
+      ]
+    });
+    if (!ya) return;
+    const awal = level.kodeAwal || '';
+    editor.setNilai(awal);
+    drafTertunda = awal;
+    simpanDraf();
+    perbaruiInfoBaris(awal);
+    editor.bersihkanSorotan();
+    panggung.reset();
+    resetTujuan();
+    toast('Kode awal dikembalikan. Cari bug-nya ya!', 'info');
+  });
+
+  // ---------- Toko clue ----------
+  const lencanaClue = $('[data-jumlah-clue]');
+  const clueKini = () => progres?.clueDibeli || 0;
+  const catatanClue = { 1: 'Bintang tetap bisa 3.', 2: 'Bintang paling banyak jadi 2.', 3: 'Bintang paling banyak jadi 1.' };
+
+  function daftarClueHTML() {
+    return CLUE.map((c) => {
+      const dibeli = c.nomor <= clueKini();
+      const bisaBeli = c.nomor === clueKini() + 1;
+      const status = dibeli ? 'dibeli' : bisaBeli ? 'tersedia' : 'terkunci';
+      return `
+        <div class="kartu-clue" data-status="${status}" data-kartu-clue="${c.nomor}">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <p class="font-judul text-lg font-extrabold leading-tight">Clue ${c.nomor}: ${esc(c.nama)}</p>
+            ${dibeli
+              ? '<span class="chip-clue-dibeli">Sudah dibeli</span>'
+              : `<span class="chip-clue-harga"><img src="image/item/koin.png" alt="">${hargaClue[c.nomor - 1]} koin</span>`}
+          </div>
+          ${dibeli
+            ? `<pre class="isi-clue">${esc(level.clue?.[c.nomor - 1] || 'Clue belum tersedia.')}</pre>`
+            : bisaBeli
+              ? `<p class="text-sm mt-1">${catatanClue[c.nomor]}</p>
+                 <button type="button" class="tombol tombol-utama tombol-kecil mt-2" data-beli-clue="${c.nomor}">Beli Clue ${c.nomor} (${hargaClue[c.nomor - 1]} koin)</button>`
+              : `<p class="mt-1 flex items-center gap-2 text-sm font-bold">${ikonGembok(16)} Beli Clue ${c.nomor - 1} dulu</p>`}
+        </div>`;
+    }).join('');
+  }
+
+  function aturanBintangHTML() {
+    const b = (n) => '<img src="image/item/bintang.png" alt="" class="inline w-5 h-5 object-contain align-text-bottom">'.repeat(n);
+    return `
+      <div class="aturan-bintang">
+        <p class="font-judul text-lg font-extrabold">Cara dapat bintang</p>
+        <ul>
+          <li>${b(1)} Robot sampai di tujuan.</li>
+          <li>${b(1)} Tambah 1 kalau kamu tidak memakai clue, atau hanya Clue 1.</li>
+          <li>${b(1)} Tambah 1 kalau kodemu paling banyak ${level.batasBaris || '-'} baris.</li>
+          <li>Kalau membeli Clue 3, kamu hanya bisa dapat ${b(1)}.</li>
+        </ul>
+        <p class="mt-2 font-bold" data-maks-bintang>Sekarang kamu masih bisa dapat ${bintangMaksimal(clueKini())} bintang.</p>
+      </div>`;
+  }
+
+  let hargaClue = CLUE.map((c) => c.harga);
+  async function bukaTokoClue() {
+    hargaClue = await getHargaClue(); // harga bisa diubah admin
+    const dataSiswa = await getSiswa(siswa.id);
+    await bukaModal({
+      judul: 'Toko Clue',
+      pose: 'berpikir',
+      isi: `
+        <p>Koinmu: <strong class="inline-flex items-center gap-1"><img src="image/item/koin.png" alt="" class="w-5 h-5 object-contain"><span data-koin-clue>${dataSiswa?.koin ?? 0}</span></strong></p>
+        <p class="gelembung gelembung-toko mt-3" data-pesan-clue role="status" hidden></p>
+        <div class="mt-3 flex flex-col gap-3 text-left" data-daftar-clue>${daftarClueHTML()}</div>
+        ${aturanBintangHTML()}`,
+      tombol: [{ teks: 'Tutup', nilai: true, varian: 'sekunder' }],
+      saatBuka: (kotak) => {
+        const gambar = kotak.querySelector('.modal-gambar');
+        const pesan = kotak.querySelector('[data-pesan-clue]');
+        kotak.addEventListener('click', async (e) => {
+          const btn = e.target.closest('[data-beli-clue]');
+          if (!btn) return;
+          const nomor = Number(btn.dataset.beliClue);
+          // Clue 3 perlu konfirmasi karena bintang maksimal jadi 1
+          if (nomor === 3 && !btn.dataset.yakin) {
+            btn.dataset.yakin = '1';
+            btn.classList.replace('tombol-utama', 'tombol-bahaya');
+            btn.textContent = 'Yakin? Bintang maksimal jadi 1';
+            return;
+          }
+          btn.disabled = true;
+          const hasil = await beliClue(siswa.id, level.id, nomor);
+          if (!hasil.ok) {
+            btn.disabled = false;
+            if (gambar) gambar.src = gambarRobot('sedih');
+            pesan.textContent = hasil.pesan;
+            pesan.hidden = false;
+            goyangkan(kotak.querySelector(`[data-kartu-clue="${nomor}"]`));
+            if (hasil.alasan === 'koin') {
+              panggung.aturPose('sedih');
+              panggung.bicara(hasil.pesan);
+            }
+            return;
+          }
+          progres = { ...(progres || {}), clueDibeli: hasil.clueDibeli };
+          lencanaClue.textContent = `${hasil.clueDibeli}/3`;
+          if (gambar) gambar.src = gambarRobot('gembira');
+          pesan.textContent = `Clue ${nomor} terbuka! Baca pelan-pelan ya.`;
+          pesan.hidden = false;
+          kotak.querySelector('[data-koin-clue]').textContent = hasil.siswa?.koin ?? '';
+          kotak.querySelector('[data-daftar-clue]').innerHTML = daftarClueHTML();
+          kotak.querySelector('[data-maks-bintang]').textContent = `Sekarang kamu masih bisa dapat ${bintangMaksimal(hasil.clueDibeli)} bintang.`;
+          kotak.querySelector(`[data-kartu-clue="${nomor}"] .isi-clue`)?.scrollIntoView({ block: 'nearest' });
+        });
+      }
+    });
+  }
+  $('[data-clue]').addEventListener('click', bukaTokoClue);
+  $('[data-bantuan]').addEventListener('click', () => bukaBantuan(perintah));
+
   // ---------- Daftar tujuan bercentang ----------
   let jumlahAmbil = 0;
   function aturTujuan(i, tercapai) {
@@ -319,17 +463,53 @@ export async function renderLevel(halaman, { params }) {
     return { path: '/peta', ada: false };
   }
 
+  // ---------- Animasi piala boss ----------
+  function animasiPiala(berlian) {
+    return new Promise((resolve) => {
+      const lapisan = document.createElement('div');
+      lapisan.className = 'lapisan-piala';
+      lapisan.setAttribute('role', 'status');
+      lapisan.innerHTML = `
+        <div class="piala-sinar" aria-hidden="true"></div>
+        <img src="image/item/piala.png" alt="" class="piala-besar">
+        <p class="piala-teks">Boss dikalahkan!</p>
+        ${berlian ? `<p class="piala-berlian"><img src="image/item/berlian.png" alt="">+${berlian} berlian</p>` : ''}`;
+      document.body.appendChild(lapisan);
+      let selesai = false;
+      const tutup = () => {
+        if (selesai) return;
+        selesai = true;
+        lapisan.remove();
+        resolve();
+      };
+      lapisan.addEventListener('click', tutup);
+      setTimeout(tutup, kurangiGerak() ? 1500 : 2800);
+    });
+  }
+
   // ---------- Modal hasil ----------
-  async function tampilkanHasil({ bintang, nilai, koinDidapat, jumlahBaris, clueDibeli }) {
-    let saran = '';
-    if (bintang < 3) {
-      saran = clueDibeli > 0
-        ? 'Selesaikan tanpa clue untuk dapat lebih banyak bintang.'
-        : `Coba pakai paling banyak ${level.batasBaris} baris untuk 3 bintang. Kodemu sekarang ${jumlahBaris} baris.`;
+  async function tampilkanHasil({ bintang, nilai, koinDidapat, berlianDidapat = 0, juara = false, jumlahBaris, clueDibeli }) {
+    // Saran untuk bintang berikutnya, sesuai aturan bintang
+    const saranDaftar = [];
+    if (clueDibeli >= 3) {
+      saranDaftar.push('Kamu memakai Clue 3, jadi level ini paling banyak 1 bintang. Di level lain, coba sampai Clue 1 saja ya!');
+    } else {
+      if (clueDibeli >= 2) saranDaftar.push('Kamu memakai Clue 2, jadi bintang paling banyak 2.');
+      if (level.batasBaris && jumlahBaris > level.batasBaris) {
+        saranDaftar.push(`Pakai paling banyak ${level.batasBaris} baris untuk tambahan 1 bintang. Kodemu sekarang ${jumlahBaris} baris.`);
+      }
     }
-    const lanjut = await tujuanLanjut();
+    const saran = saranDaftar.join(' ');
+    const masihBisa = bintang < bintangMaksimal(clueDibeli);
+
+    // Boss pertama kali kalah: kembali ke peta (memicu animasi pulau baru) atau ke sertifikat juara
+    let lanjut = await tujuanLanjut();
+    let teksLanjut = lanjut.ada ? 'Lanjut ke level berikutnya' : 'Lihat Peta Pulau';
+    if (juara) { lanjut = { path: '/juara', ada: true }; teksLanjut = 'Lihat Sertifikat Juara'; }
+    else if (berlianDidapat) { lanjut = { path: '/peta', ada: true }; teksLanjut = 'Kembali ke Peta'; }
+
     const pilihan = await bukaModal({
-      judul: bintang === 3 ? 'Sempurna!' : 'Hebat, berhasil!',
+      judul: juara ? 'Kamu Juara Coding Island!' : bintang === 3 ? 'Sempurna!' : 'Hebat, berhasil!',
       pose: 'gembira',
       isi: `
         <div class="flex justify-center items-end gap-1 my-2" role="img" aria-label="${bintang} dari 3 bintang">
@@ -340,10 +520,14 @@ export async function renderLevel(halaman, { params }) {
           ? `<div class="mt-3 inline-flex items-center gap-2 rounded-2xl bg-kuning px-4 py-2 font-judul text-2xl font-extrabold muncul" style="animation-delay:1.4s">
                <img src="image/item/koin.png" alt="" class="w-9 h-9 object-contain"> +${koinDidapat} koin</div>`
           : '<p class="mt-2">Hadiah koin level ini sudah kamu ambil. Kejar bintang baru ya!</p>'}
+        ${berlianDidapat
+          ? `<div class="mt-3 ml-2 inline-flex items-center gap-2 rounded-2xl bg-mint px-4 py-2 font-judul text-2xl font-extrabold muncul" style="animation-delay:1.7s">
+               <img src="image/item/berlian.png" alt="" class="w-9 h-9 object-contain"> +${berlianDidapat} berlian</div>`
+          : ''}
         ${saran ? `<p class="mt-3 rounded-2xl bg-mint p-3 font-bold">${esc(saran)}</p>` : ''}`,
       tombol: [
-        { teks: bintang < 3 ? 'Coba lagi untuk 3 bintang' : 'Main lagi', nilai: 'ulang', varian: 'sekunder' },
-        { teks: lanjut.ada ? 'Lanjut ke level berikutnya' : 'Lihat Peta Pulau', nilai: 'lanjut', ikon: 'image/item/roket.png' }
+        { teks: masihBisa ? 'Coba lagi untuk 3 bintang' : 'Main lagi', nilai: 'ulang', varian: 'sekunder' },
+        { teks: teksLanjut, nilai: 'lanjut', ikon: juara ? 'image/item/piala.png' : 'image/item/roket.png' }
       ]
     });
     if (pilihan === 'lanjut') pindah(lanjut.path);
@@ -427,8 +611,15 @@ export async function renderLevel(halaman, { params }) {
         ledakkanConfetti();
         await new Promise((r) => setTimeout(r, kurangiGerak() ? 0 : 800));
         if (token.batal) return;
+        if (level.jenis === 'boss' && tercatat?.berlianDidapat) await animasiPiala(tercatat.berlianDidapat);
         await tampilkanHasil({
-          bintang, nilai, koinDidapat: tercatat?.koinDidapat || 0, jumlahBaris: hasil.jumlahBaris, clueDibeli
+          bintang,
+          nilai,
+          koinDidapat: tercatat?.koinDidapat || 0,
+          berlianDidapat: tercatat?.berlianDidapat || 0,
+          juara: !!tercatat?.juara,
+          jumlahBaris: hasil.jumlahBaris,
+          clueDibeli
         });
         return;
       }

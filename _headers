@@ -1,0 +1,16 @@
+# Header untuk Cloudflare Pages (https://developers.cloudflare.com/pages/configuration/headers/)
+
+# Header keamanan dasar untuk semua halaman dan berkas
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+
+# Aset statis disimpan di cache browser selama 1 hari (86400 detik)
+/image/*
+  Cache-Control: public, max-age=86400
+
+/css/*
+  Cache-Control: public, max-age=86400
+
+/js/*
+  Cache-Control: public, max-age=86400

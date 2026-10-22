@@ -20,7 +20,7 @@ export function footerSitus() {
             © ${tahun} · Belajar dengan
             <img src="image/item/hati.png" alt="cinta" class="inline w-5 h-5 object-contain">
           </p>
-          <button type="button" data-reset-demo class="text-sm text-white/80 underline underline-offset-4 hover:text-kuning">
+          <button type="button" data-reset-demo class="min-h-[44px] px-2 text-sm text-white underline underline-offset-4 hover:text-kuning">
             Reset data demo
           </button>
         </div>

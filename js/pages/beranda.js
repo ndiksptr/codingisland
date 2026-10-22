@@ -40,7 +40,7 @@ function bagianHero(sesi) {
 
       <div class="relative z-10 mx-auto w-full max-w-6xl px-4 sm:px-6 pt-10 pb-24 md:py-16 grid md:grid-cols-2 items-center gap-6 md:gap-10">
         <!-- Teks dan tombol -->
-        <div class="order-2 md:order-1 text-center md:text-left text-white">
+        <div class="order-2 md:order-1 text-center md:text-left text-white hero-panel">
           <p class="muncul inline-block rounded-2xl bg-kuning text-tinta font-bold px-4 py-1 text-base sm:text-lg">
             Untuk siswa kelas 3 – 6
           </p>

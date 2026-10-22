@@ -9,7 +9,7 @@
 // Render boleh async. Jika render mengembalikan fungsi, fungsi itu
 // dipanggil saat pindah halaman (untuk membersihkan timer, worker, dll).
 
-import { loader, robot } from './ui.js';
+import { loader, robot, toast } from './ui.js';
 
 const daftarRute = [];
 const NAMA_APLIKASI = 'Coding Island';
@@ -84,14 +84,17 @@ function gulirKeAtas() {
   catch { window.scrollTo(0, 0); }
 }
 
-// Halaman cadangan jika render gagal
-function halamanError() {
+/** Halaman cadangan jika render gagal (robot kaget, bukan layar putih). */
+export function halamanError() {
   return `
     <section class="tinggi-layar flex flex-col items-center justify-center gap-4 px-4 text-center">
-      ${robot('sedih', { kelas: 'w-40 h-auto', alt: 'Robot Tutor sedih' })}
-      <h1 class="font-judul text-4xl font-extrabold text-teal-tua">Ups, ada yang rusak</h1>
-      <p class="text-xl max-w-md">Coba muat ulang halaman ini ya.</p>
-      <button type="button" class="tombol tombol-utama" onclick="location.reload()">Muat Ulang</button>
+      ${robot('kaget', { kelas: 'w-40 h-auto melayang', alt: 'Robot Tutor kaget' })}
+      <h1 class="font-judul text-4xl font-extrabold text-teal-tua">Ups, ada yang tidak beres</h1>
+      <p class="text-xl max-w-md">Robot Tutor tersandung. Coba muat ulang halaman ini ya.</p>
+      <div class="flex flex-wrap justify-center gap-3">
+        <button type="button" class="tombol tombol-utama" onclick="location.reload()">Muat Ulang</button>
+        <a href="#/" class="tombol tombol-sekunder">Ke Beranda</a>
+      </div>
     </section>`;
 }
 
@@ -144,7 +147,10 @@ async function tampilkan() {
   } catch (err) {
     clearTimeout(timerLoader);
     console.error(err);
-    if (nomor === nomorNavigasi) wadah.innerHTML = halamanError();
+    if (nomor === nomorNavigasi) {
+      wadah.innerHTML = halamanError();
+      toast('Ups, halaman ini gagal dibuka. Coba lagi ya.', 'galat', 4500);
+    }
   }
 
   gulirKeAtas();

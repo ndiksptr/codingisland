@@ -16,7 +16,7 @@ function isiSiswa(siswa) {
           <p class="font-judul font-extrabold text-teal-tua">${esc(kelas)}</p>
           <div class="mt-1 flex flex-wrap gap-2">
             ${daftar.map((s) => `
-              <button type="button" class="rounded-xl bg-mint hover:bg-teal px-2.5 py-1 font-kode font-bold text-sm"
+              <button type="button" class="min-h-[44px] rounded-xl bg-mint hover:bg-teal px-3 py-1 font-kode font-bold text-sm"
                 data-pakai-username="${esc(s.username)}" data-pakai-rahasia="${esc(s.pin)}"
                 aria-label="Pakai akun ${esc(s.namaPanggilan)}">${esc(s.username)}</button>`).join('')}
           </div>

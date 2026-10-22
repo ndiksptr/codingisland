@@ -15,7 +15,7 @@ function isiHeader(s) {
   const avatar = s.avatar === 'wanita' ? 'wanita' : 'pria';
   return `
     <div class="mx-auto max-w-6xl px-4 sm:px-6 h-16 sm:h-20 flex items-center gap-3">
-      <a href="#/peta" class="flex items-center gap-2 sm:gap-3 min-w-0 flex-1 rounded-2xl" aria-label="Ke peta pulau">
+      <a href="#/profil" class="flex items-center gap-2 sm:gap-3 min-w-0 flex-1 rounded-2xl" aria-label="Lihat profil ${esc(s.namaPanggilan)}">
         <img src="image/profile/${avatar}.png" alt="" class="w-11 h-11 sm:w-14 sm:h-14 shrink-0 rounded-full bg-mint border-[3px] border-white object-cover">
         <span class="min-w-0">
           <span class="block text-xs sm:text-sm text-white/80 leading-none">Halo,</span>

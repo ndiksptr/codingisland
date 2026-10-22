@@ -9,10 +9,12 @@
 
 import { LEVEL_AWAL } from './data/levels.js';
 import { ZONA } from './data/zona.js';
-import { hitungKoin } from './game/skor.js';
+import { hitungKoin, CLUE, BERLIAN_BOSS } from './game/skor.js';
+import { alasanBelumSiap } from './game/validasi-level.js';
+import { SEMUA_PERINTAH } from './game/interpreter.js';
 
 const AWALAN = 'ci_';
-const VERSI_DATA = 3;        // naikkan jika bentuk data berubah
+const VERSI_DATA = 5;        // naikkan jika bentuk data berubah
 const VERSI_ISI_ULANG = 2;   // data lebih tua dari versi ini diisi ulang total; selebihnya cukup dimigrasi
 const MASA_SESI_MS = 8 * 60 * 60 * 1000;   // sesi berlaku 8 jam
 const BATAS_GAGAL = 5;                       // salah 5 kali ...
@@ -33,7 +35,10 @@ const KUNCI = {
   percobaan: 'percobaan',
   versi: 'versi',
   draf: 'draf',
-  preferensi: 'preferensi'
+  preferensi: 'preferensi',
+  catatan: 'catatan',
+  pengaturan: 'pengaturan',
+  nilaiTimpa: 'nilai_timpa'
 };
 
 // =====================================================================
@@ -63,12 +68,14 @@ function hapusKunci(kunci) {
 }
 
 function hapusSemuaKunci() {
-  const daftar = [];
-  for (let i = 0; i < localStorage.length; i++) {
-    const k = localStorage.key(i);
-    if (k && k.startsWith(AWALAN)) daftar.push(k);
-  }
-  daftar.forEach((k) => localStorage.removeItem(k));
+  try {
+    const daftar = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith(AWALAN)) daftar.push(k);
+    }
+    daftar.forEach((k) => localStorage.removeItem(k));
+  } catch { /* penyimpanan diblokir: tidak ada yang bisa dihapus */ }
 }
 
 function beritahu(entitas) {
@@ -227,7 +234,7 @@ async function isiDataContoh() {
         totalBintang += bintang;
         totalClue += clueDibeli;
         idSelesai.add(level.id);
-        if (level.jenis === 'boss') berlian += 1; // bonus boss
+        if (level.jenis === 'boss') berlian += BERLIAN_BOSS; // hadiah boss
       }
 
       // Sebagian siswa sedang mencoba level berikutnya
@@ -265,16 +272,40 @@ async function isiDataContoh() {
   beritahu('sesi');
 }
 
-// Migrasi ringan: perbarui level bawaan tanpa menghapus akun dan progres
+// Migrasi ringan: perbarui isi level bawaan tanpa menghapus akun, progres, dan level buatan guru.
+// Status terbit, urutan, dan kelas nonaktif yang diatur guru/admin tetap dipertahankan.
 function migrasiData() {
   const level = baca(KUNCI.level, []);
   for (const awal of LEVEL_AWAL) {
     const i = level.findIndex((l) => l.id === awal.id);
-    if (i >= 0) level[i] = { ...level[i], ...salin(awal) };
-    else level.push(salin(awal));
+    if (i >= 0) {
+      const lama = level[i];
+      level[i] = {
+        ...lama,
+        ...salin(awal),
+        ...(lama.terbit === false ? { terbit: false } : {}),
+        ...(lama.urutan != null ? { urutan: lama.urutan } : {}),
+        ...(lama.kelasNonaktif ? { kelasNonaktif: lama.kelasNonaktif } : {})
+      };
+    } else level.push(salin(awal));
   }
+  for (const z of ZONA) rapikanUrutan(level, z.id);
   tulis(KUNCI.level, level);
   tulis(KUNCI.versi, VERSI_DATA);
+}
+
+/** Level terlihat oleh siswa di kelas ini? (terbit, kelas tujuan cocok, tidak dinonaktifkan untuk kelas itu) */
+function levelTerlihatUntukKelas(l, kelasId) {
+  return l.terbit !== false &&
+    (!l.kelasIds || l.kelasIds.includes(kelasId)) &&
+    !(l.kelasNonaktif || []).includes(kelasId);
+}
+
+/** Urutkan ulang level satu zona menjadi 1..n dengan boss selalu di akhir. */
+function rapikanUrutan(levels, zona) {
+  const z = levels.filter((l) => l.zona === zona).sort((p, q) => (p.urutan ?? 0) - (q.urutan ?? 0));
+  [...z.filter((l) => l.jenis !== 'boss'), ...z.filter((l) => l.jenis === 'boss')]
+    .forEach((l, i) => { l.urutan = i + 1; });
 }
 
 // Pastikan data contoh sudah ada sebelum fungsi publik bekerja
@@ -463,11 +494,11 @@ export async function cekUsernameSiswa(username, kecualiId = null) {
     : { tersedia: true, pesan: 'Username bisa dipakai!' };
 }
 
-/** Saran username: nama panggilan + angka, dijamin belum dipakai. */
-export async function sarankanUsername(namaPanggilan) {
-  await siap();
+// Saran username sinkron (dipakai pendaftaran, tambah siswa oleh guru, dan impor CSV)
+function buatSaranUsername(namaPanggilan) {
   let dasar = String(namaPanggilan || '').toLowerCase().normalize('NFD').replace(/[^a-z]/g, '').slice(0, 12);
   if (!dasar) dasar = 'robot';
+  if (dasar.length < 2) dasar = `${dasar}${dasar}`;
   const dipakai = new Set(baca(KUNCI.siswa, []).map((s) => s.username));
   for (let i = 0; i < 50; i++) {
     const angka = i < 30 ? 10 + Math.floor(Math.random() * 90) : 100 + Math.floor(Math.random() * 900);
@@ -475,6 +506,12 @@ export async function sarankanUsername(namaPanggilan) {
     if (!dipakai.has(calon)) return calon;
   }
   return `${dasar}${Date.now() % 10000}`;
+}
+
+/** Saran username: nama panggilan + angka, dijamin belum dipakai. */
+export async function sarankanUsername(namaPanggilan) {
+  await siap();
+  return buatSaranUsername(namaPanggilan);
 }
 
 /**
@@ -515,7 +552,7 @@ export async function daftarSiswa(data) {
     username: d.username,
     pinHash: hash,
     salt,
-    koin: KOIN_AWAL,
+    koin: bacaPengaturan().koinAwal,
     berlian: 0,
     zonaTerlihat: [ZONA[0].id],
     dibuatPada: sekarang()
@@ -793,7 +830,7 @@ export async function tambahSiswa(data) {
   const siswa = {
     id: buatId('siswa'), namaLengkap: d.namaLengkap, namaPanggilan: d.namaPanggilan,
     jenisKelamin: d.avatar === 'pria' ? 'L' : 'P', avatar: d.avatar, kelasId: d.kelasId,
-    username: d.username, pinHash: hash, salt, koin: KOIN_AWAL, berlian: 0,
+    username: d.username, pinHash: hash, salt, koin: bacaPengaturan().koinAwal, berlian: 0,
     zonaTerlihat: [ZONA[0].id], dibuatPada: sekarang()
   };
   const semua = baca(KUNCI.siswa, []);
@@ -910,7 +947,7 @@ export async function simpanLevel(level) {
  */
 export async function daftarLevelTerbit({ kelasId, zona } = {}) {
   const semua = await daftarLevel({ zona });
-  return semua.filter((l) => l.terbit !== false && (!l.kelasIds || !kelasId || l.kelasIds.includes(kelasId)));
+  return semua.filter((l) => (kelasId ? levelTerlihatUntukKelas(l, kelasId) : l.terbit !== false));
 }
 
 export async function hapusLevel(id) {
@@ -964,11 +1001,18 @@ export async function hapusProgres(siswaId, levelId = null) {
   return true;
 }
 
+// Boss zona terakhir: menyelesaikannya berarti tamat (juara)
+const idBossTerakhir = () => {
+  const zonaAkhir = ZONA[ZONA.length - 1].id;
+  return baca(KUNCI.level, []).filter((l) => l.zona === zonaAkhir && l.jenis === 'boss').map((l) => l.id);
+};
+
 /**
  * Catat satu kali menekan Jalankan.
  * hasil: { berhasil, bintang, nilai, kode, detik, judul }
- * Menyimpan bintang & nilai terbaik, kode terakhir, lama bermain, memberi koin, dan mencatat aktivitas.
- * Hasil: { progres, koinDidapat, pertamaKali, bintangLama, siswa }
+ * Menyimpan bintang & nilai terbaik, kode terakhir, lama bermain, memberi koin
+ * (dan 3 berlian saat boss pertama kali selesai), lalu mencatat aktivitas.
+ * Hasil: { progres, koinDidapat, berlianDidapat, pertamaKali, bintangLama, juara, siswa }
  */
 export async function catatPercobaan(siswaId, levelId, hasil) {
   await siap();
@@ -984,9 +1028,15 @@ export async function catatPercobaan(siswaId, levelId, hasil) {
   p.kodeTerakhir = String(hasil.kode ?? '');
   p.detik = (p.detik || 0) + Math.max(0, Math.round(Number(hasil.detik) || 0));
   let koinDidapat = 0;
+  let berlianDidapat = 0;
+  const level = baca(KUNCI.level, []).find((l) => l.id === levelId);
   if (hasil.berhasil) {
     const bintang = Math.min(3, Math.max(1, Math.round(hasil.bintang || 1)));
     koinDidapat = hitungKoin({ pertamaKali, bintangLama, bintangBaru: bintang });
+    if (pertamaKali) {
+      p.selesaiPada = sekarang();
+      if (level?.jenis === 'boss') berlianDidapat = BERLIAN_BOSS;
+    }
     p.selesai = true;
     p.bintang = Math.max(bintangLama, bintang);
     p.nilai = Math.max(p.nilai || 0, Math.min(100, Math.round(hasil.nilai || 0)));
@@ -1000,16 +1050,86 @@ export async function catatPercobaan(siswaId, levelId, hasil) {
     : `Mencoba level ${judul} (belum berhasil)`);
 
   let siswa = null;
-  if (koinDidapat > 0) {
+  if (koinDidapat > 0 || berlianDidapat > 0) {
     const daftar = baca(KUNCI.siswa, []);
     const s = daftar.find((x) => x.id === siswaId);
     if (s) {
       s.koin = (s.koin || 0) + koinDidapat;
+      s.berlian = (s.berlian || 0) + berlianDidapat;
       tulis(KUNCI.siswa, daftar);
       siswa = tanpaRahasia(s);
     }
   }
-  return { progres: salin(p), koinDidapat, pertamaKali, bintangLama, siswa };
+  if (berlianDidapat) tambahAktivitas(siswaId, 'piala', `Mengalahkan ${judul} dan mendapat piala`);
+  const juara = !!hasil.berhasil && pertamaKali && idBossTerakhir().includes(levelId);
+  if (juara) tambahAktivitas(siswaId, 'juara', 'Menjadi Juara Coding Island');
+  return { progres: salin(p), koinDidapat, berlianDidapat, pertamaKali, bintangLama, juara, siswa };
+}
+
+/**
+ * Beli clue untuk satu level. Clue harus dibeli berurutan (1, 2, lalu 3).
+ * Clue yang sudah dibeli bisa dibuka lagi tanpa bayar.
+ * Hasil: { ok: true, clueDibeli, siswa, dibayar } atau { ok: false, alasan: 'koin' | 'urutan', kurang, pesan }
+ */
+export async function beliClue(siswaId, levelId, nomor) {
+  await siap();
+  const clue = CLUE.find((c) => c.nomor === nomor);
+  if (!clue) return { ok: false, alasan: 'urutan', pesan: 'Clue tidak ada.' };
+
+  const semuaProgres = baca(KUNCI.progres, []);
+  let p = semuaProgres.find((x) => x.siswaId === siswaId && x.levelId === levelId);
+  const sudah = p?.clueDibeli || 0;
+  const daftar = baca(KUNCI.siswa, []);
+  const s = daftar.find((x) => x.id === siswaId);
+  if (!s) throw new Error('Siswa tidak ditemukan.');
+
+  if (nomor <= sudah) return { ok: true, clueDibeli: sudah, siswa: tanpaRahasia(s), dibayar: 0 };
+  if (nomor !== sudah + 1) return { ok: false, alasan: 'urutan', pesan: `Beli Clue ${sudah + 1} dulu ya.` };
+  const harga = bacaPengaturan().hargaClue[nomor - 1];
+  if ((s.koin || 0) < harga) {
+    return {
+      ok: false,
+      alasan: 'koin',
+      kurang: harga - (s.koin || 0),
+      pesan: 'Koinmu belum cukup. Selesaikan atau ulangi level lain untuk mengumpulkan koin.'
+    };
+  }
+
+  s.koin -= harga;
+  tulis(KUNCI.siswa, daftar);
+  if (!p) {
+    p = { siswaId, levelId, ...PROGRES_KOSONG };
+    semuaProgres.push(p);
+  }
+  p.clueDibeli = nomor;
+  p.diperbarui = sekarang();
+  tulis(KUNCI.progres, semuaProgres);
+  const judul = baca(KUNCI.level, []).find((l) => l.id === levelId)?.judul || levelId;
+  tambahAktivitas(siswaId, 'clue', `Membeli Clue ${nomor} di level ${judul}`);
+  return { ok: true, clueDibeli: nomor, siswa: tanpaRahasia(s), dibayar: harga };
+}
+
+/**
+ * Data sertifikat juara, atau null jika boss zona terakhir belum selesai.
+ * Hasil: { namaLengkap, kelas, totalBintang, maksBintang, tanggal }
+ */
+export async function getRingkasanJuara(siswaId) {
+  await siap();
+  const siswa = baca(KUNCI.siswa, []).find((s) => s.id === siswaId);
+  if (!siswa) return null;
+  const progres = baca(KUNCI.progres, []).filter((p) => p.siswaId === siswaId);
+  const bossAkhir = progres.find((p) => idBossTerakhir().includes(p.levelId) && p.selesai);
+  if (!bossAkhir) return null;
+  const level = baca(KUNCI.level, []).filter((l) => levelTerlihatUntukKelas(l, siswa.kelasId));
+  const idLevel = new Set(level.map((l) => l.id));
+  const kelas = baca(KUNCI.kelas, []).find((k) => k.id === siswa.kelasId);
+  return {
+    namaLengkap: siswa.namaLengkap,
+    kelas: kelas?.nama || '-',
+    totalBintang: progres.filter((p) => p.selesai && idLevel.has(p.levelId)).reduce((n, p) => n + (p.bintang || 0), 0),
+    maksBintang: level.length * 3,
+    tanggal: bossAkhir.selesaiPada || bossAkhir.diperbarui
+  };
 }
 
 /** Tambah lama bermain (detik) tanpa menambah percobaan, mis. saat meninggalkan halaman level. */
@@ -1090,4 +1210,891 @@ export async function hapusAktivitas({ siswaId } = {}) {
   await siap();
   tulis(KUNCI.aktivitas, siswaId ? baca(KUNCI.aktivitas, []).filter((a) => a.siswaId !== siswaId) : []);
   return true;
+}
+
+
+// =====================================================================
+// Pengaturan permainan (diubah admin)
+// =====================================================================
+const PENGATURAN_BAWAAN = { hargaClue: CLUE.map((c) => c.harga), koinAwal: KOIN_AWAL };
+
+function bacaPengaturan() {
+  const p = baca(KUNCI.pengaturan, {});
+  return {
+    hargaClue: Array.isArray(p.hargaClue) && p.hargaClue.length === 3 ? p.hargaClue.slice() : PENGATURAN_BAWAAN.hargaClue.slice(),
+    koinAwal: Number.isInteger(p.koinAwal) ? p.koinAwal : PENGATURAN_BAWAAN.koinAwal
+  };
+}
+
+/** Harga Clue 1–3 yang berlaku sekarang (boleh dibaca siapa saja). */
+export async function getHargaClue() {
+  await siap();
+  return bacaPengaturan().hargaClue;
+}
+
+// =====================================================================
+// API DASHBOARD GURU
+// Semua fungsi guru*/admin* membaca sesi guru yang sedang masuk dan MEMBATASI data
+// pada kelas yang diampu guru tersebut (admin: semua kelas). Saat store ini diganti
+// API Cloudflare Pages Functions + D1, pemeriksaan yang sama dilakukan di server.
+// =====================================================================
+const HARI_MS = 864e5;
+
+function aksesGuru() {
+  const sesi = baca(KUNCI.sesi, null);
+  if (!sesi || sesi.jenis !== 'guru' || Date.now() > sesi.kadaluarsa) {
+    throw new Error('Sesi guru sudah berakhir. Silakan masuk lagi.');
+  }
+  const guru = baca(KUNCI.guru, []).find((g) => g.id === sesi.id);
+  if (!guru) throw new Error('Akun guru tidak ditemukan.');
+  const admin = guru.peran === 'admin';
+  const semuaKelas = baca(KUNCI.kelas, []);
+  const kelas = admin ? semuaKelas : semuaKelas.filter((k) => guru.kelasIds.includes(k.id));
+  return { guru, admin, kelas, kelasIds: new Set(kelas.map((k) => k.id)) };
+}
+
+function wajibAdmin(a) {
+  if (!a.admin) throw new Error('Fitur ini khusus admin.');
+}
+
+function bolehKelas(a, kelasId) {
+  if (!a.kelasIds.has(kelasId)) throw new Error('Kelas ini bukan kelas yang Anda ampu.');
+}
+
+// Filter kelas opsional; tetap harus di dalam akses
+function saringKelas(a, kelasId) {
+  if (!kelasId) return null;
+  bolehKelas(a, kelasId);
+  return kelasId;
+}
+
+// Siswa yang boleh dilihat (admin juga melihat siswa tanpa kelas)
+function siswaDalamAkses(a, kelasId = null) {
+  return baca(KUNCI.siswa, []).filter((s) =>
+    (kelasId ? s.kelasId === kelasId : (a.admin || a.kelasIds.has(s.kelasId))));
+}
+
+function ambilSiswaBoleh(a, id) {
+  const s = baca(KUNCI.siswa, []).find((x) => x.id === id);
+  if (!s || !(a.admin || a.kelasIds.has(s.kelasId))) throw new Error('Siswa tidak ditemukan di kelas Anda.');
+  return s;
+}
+
+const urutKelas = (x, y) => x.tingkat - y.tingkat || x.nama.localeCompare(y.nama);
+
+function acakPin() {
+  const a = new Uint32Array(1);
+  crypto.getRandomValues(a);
+  return String(a[0] % 10000).padStart(4, '0');
+}
+
+function acakPassword() {
+  const huruf = 'abcdefghjkmnpqrstuvwxyz23456789';
+  const a = new Uint8Array(8);
+  crypto.getRandomValues(a);
+  return [...a].map((n) => huruf[n % huruf.length]).join('');
+}
+
+function levelUntukKelas(levels, kelasId) {
+  return levels.filter((l) => levelTerlihatUntukKelas(l, kelasId));
+}
+
+/**
+ * Statistik per siswa. Nilai siswa = rata-rata nilai level yang sudah selesai.
+ * Terakhir aktif = waktu terbaru dari aktivitas, progres, atau tanggal daftar.
+ */
+function hitungStatistik(daftarSiswa) {
+  const levels = baca(KUNCI.level, []);
+  const progres = baca(KUNCI.progres, []);
+  const kelas = baca(KUNCI.kelas, []);
+  const terakhir = new Map();
+  for (const a of baca(KUNCI.aktivitas, [])) if (!terakhir.has(a.siswaId)) terakhir.set(a.siswaId, a.waktu); // terbaru di depan
+  return daftarSiswa.map((s) => {
+    const lv = levelUntukKelas(levels, s.kelasId);
+    const ids = new Set(lv.map((l) => l.id));
+    const pr = progres.filter((p) => p.siswaId === s.id && ids.has(p.levelId));
+    const selesai = pr.filter((p) => p.selesai);
+    const waktu = [terakhir.get(s.id), s.dibuatPada, ...pr.map((p) => p.diperbarui)].filter(Boolean).sort();
+    return {
+      siswa: s,
+      levels: lv,
+      progres: pr,
+      baris: {
+        id: s.id,
+        namaLengkap: s.namaLengkap,
+        namaPanggilan: s.namaPanggilan,
+        avatar: s.avatar,
+        jenisKelamin: s.jenisKelamin,
+        kelasId: s.kelasId,
+        kelasNama: kelas.find((k) => k.id === s.kelasId)?.nama || 'Tanpa kelas',
+        username: s.username,
+        koin: s.koin || 0,
+        berlian: s.berlian || 0,
+        levelSelesai: selesai.length,
+        totalLevel: lv.length,
+        totalBintang: selesai.reduce((n, p) => n + (p.bintang || 0), 0),
+        nilai: selesai.length ? Math.round(selesai.reduce((n, p) => n + (p.nilai || 0), 0) / selesai.length) : 0,
+        terakhirAktif: waktu[waktu.length - 1] || null,
+        dibuatPada: s.dibuatPada
+      }
+    };
+  });
+}
+
+const rataRata = (angka) => (angka.length ? Math.round(angka.reduce((n, x) => n + x, 0) / angka.length) : 0);
+
+/** Profil guru yang masuk, kelas yang boleh diakses, dan pengaturan. */
+export async function guruKonteks() {
+  await siap();
+  const a = aksesGuru();
+  return {
+    guru: tanpaRahasia(a.guru),
+    admin: a.admin,
+    kelas: a.kelas.map(salin).sort(urutKelas),
+    pengaturan: bacaPengaturan()
+  };
+}
+
+/** Data halaman Ringkasan. filter: { kelasId } */
+export async function guruRingkasan({ kelasId } = {}) {
+  await siap();
+  const a = aksesGuru();
+  const k = saringKelas(a, kelasId);
+  const kelasDipakai = k ? a.kelas.filter((x) => x.id === k) : a.kelas;
+  const stat = hitungStatistik(siswaDalamAkses(a, k));
+  const levels = baca(KUNCI.level, []);
+  const sekarangMs = Date.now();
+  const batas7 = sekarangMs - 7 * HARI_MS;
+
+  const levelTerbit = levels.filter((l) => kelasDipakai.some((kk) => levelTerlihatUntukKelas(l, kk.id))).length;
+
+  // Siswa yang perlu bantuan: macet (>= 5 percobaan tanpa selesai) atau tidak aktif 7 hari
+  const perluBantuan = [];
+  for (const x of stat) {
+    const alasan = [];
+    let macet = false;
+    for (const p of x.progres.filter((pp) => !pp.selesai && (pp.percobaan || 0) >= 5)) {
+      const judul = levels.find((l) => l.id === p.levelId)?.judul || p.levelId;
+      alasan.push(`${p.percobaan} kali mencoba "${judul}" tetapi belum selesai`);
+      macet = true;
+    }
+    const terakhirMs = x.baris.terakhirAktif ? Date.parse(x.baris.terakhirAktif) : 0;
+    const hariDiam = Math.floor((sekarangMs - terakhirMs) / HARI_MS);
+    if (terakhirMs < batas7) alasan.push(`Tidak aktif ${hariDiam} hari`);
+    if (alasan.length) perluBantuan.push({ ...x.baris, alasan, macet, hariDiam });
+  }
+  perluBantuan.sort((p, q) => Number(q.macet) - Number(p.macet) || q.hariDiam - p.hariDiam);
+
+  // Rata-rata progres per zona (persen level selesai)
+  const progresZona = ZONA.map((z) => {
+    const persen = stat.map((x) => {
+      const lvZ = x.levels.filter((l) => l.zona === z.id);
+      if (!lvZ.length) return 0;
+      const selesai = x.progres.filter((p) => p.selesai && lvZ.some((l) => l.id === p.levelId)).length;
+      return (selesai / lvZ.length) * 100;
+    });
+    return { id: z.id, nama: z.nama, warna: z.warna, persen: rataRata(persen) };
+  });
+
+  const peta = new Map(stat.map((x) => [x.siswa.id, x.baris]));
+  const aktivitas = baca(KUNCI.aktivitas, [])
+    .filter((ak) => peta.has(ak.siswaId))
+    .slice(0, 10)
+    .map((ak) => ({ ...ak, namaSiswa: peta.get(ak.siswaId).namaPanggilan, kelasNama: peta.get(ak.siswaId).kelasNama }));
+
+  const bernilai = stat.filter((x) => x.baris.levelSelesai > 0).map((x) => x.baris.nilai);
+  return {
+    statistik: {
+      jumlahSiswa: stat.length,
+      jumlahKelas: kelasDipakai.length,
+      levelTerbit,
+      rataNilai: rataRata(bernilai),
+      aktif7: stat.filter((x) => x.baris.terakhirAktif && Date.parse(x.baris.terakhirAktif) >= batas7).length
+    },
+    perluBantuan,
+    progresZona,
+    aktivitas
+  };
+}
+
+// ---------- Kelas ----------
+export async function guruDaftarKelas() {
+  await siap();
+  const a = aksesGuru();
+  const guruList = baca(KUNCI.guru, []);
+  const stat = hitungStatistik(siswaDalamAkses(a));
+  return a.kelas.map((k) => {
+    const st = stat.filter((x) => x.siswa.kelasId === k.id);
+    return {
+      ...salin(k),
+      guru: k.guruIds.map((id) => guruList.find((g) => g.id === id)).filter(Boolean).map((g) => ({ id: g.id, nama: g.nama })),
+      jumlahSiswa: st.length,
+      rataNilai: rataRata(st.filter((x) => x.baris.levelSelesai > 0).map((x) => x.baris.nilai))
+    };
+  }).sort(urutKelas);
+}
+
+/** Tambah (tanpa id) atau ubah kelas. guruIds hanya dipakai jika admin. */
+export async function guruSimpanKelas(data) {
+  await siap();
+  const a = aksesGuru();
+  const isi = {
+    nama: data.nama,
+    tingkat: Number(data.tingkat),
+    ...(data.kodeKelas ? { kodeKelas: data.kodeKelas } : {})
+  };
+  if (data.id) {
+    bolehKelas(a, data.id);
+    if (a.admin && Array.isArray(data.guruIds)) isi.guruIds = data.guruIds;
+    return ubahKelas(data.id, isi);
+  }
+  // Guru biasa otomatis menjadi pengampu kelas yang dibuatnya
+  isi.guruIds = a.admin ? (data.guruIds || []) : [a.guru.id];
+  return tambahKelas(isi);
+}
+
+export async function guruKodeKelasBaru(kelasId) {
+  await siap();
+  const a = aksesGuru();
+  bolehKelas(a, kelasId);
+  const kode = await buatKodeKelas();
+  await ubahKelas(kelasId, { kodeKelas: kode });
+  return kode;
+}
+
+/** Hapus kelas, hanya jika tidak ada siswanya. */
+export async function guruHapusKelas(kelasId) {
+  await siap();
+  const a = aksesGuru();
+  bolehKelas(a, kelasId);
+  if (baca(KUNCI.siswa, []).some((s) => s.kelasId === kelasId)) {
+    throw new Error('Kelas masih berisi siswa. Pindahkan atau hapus siswanya dulu.');
+  }
+  return hapusKelas(kelasId);
+}
+
+// ---------- Siswa ----------
+/** Daftar siswa beserta statistik. filter: { kelasId } */
+export async function guruDaftarSiswa({ kelasId } = {}) {
+  await siap();
+  const a = aksesGuru();
+  const k = saringKelas(a, kelasId);
+  return hitungStatistik(siswaDalamAkses(a, k)).map((x) => x.baris);
+}
+
+/** Detail satu siswa: profil, progres per zona, progres per level (termasuk kode terakhir), dan catatan guru. */
+export async function guruDetailSiswa(siswaId) {
+  await siap();
+  const a = aksesGuru();
+  const s = ambilSiswaBoleh(a, siswaId);
+  const [x] = hitungStatistik([s]);
+  const peta = new Map(x.progres.map((p) => [p.levelId, p]));
+  const urutZona = (l) => ZONA.findIndex((z) => z.id === l.zona);
+  const levels = x.levels.slice().sort((p, q) => urutZona(p) - urutZona(q) || (p.urutan ?? 0) - (q.urutan ?? 0));
+  const catatan = baca(KUNCI.catatan, {})[siswaId] || null;
+  return {
+    siswa: x.baris,
+    zona: ZONA.map((z) => {
+      const lvZ = levels.filter((l) => l.zona === z.id);
+      const selesai = lvZ.filter((l) => peta.get(l.id)?.selesai).length;
+      return { id: z.id, nama: z.nama, warna: z.warna, selesai, total: lvZ.length, persen: lvZ.length ? Math.round((selesai / lvZ.length) * 100) : 0 };
+    }),
+    levels: levels.map((l) => {
+      const p = peta.get(l.id);
+      return {
+        id: l.id, zona: l.zona, urutan: l.urutan, judul: l.judul, jenis: l.jenis,
+        selesai: !!p?.selesai, bintang: p?.bintang || 0, nilai: p?.nilai || 0, percobaan: p?.percobaan || 0,
+        clueDibeli: p?.clueDibeli || 0, detik: p?.detik || 0, diperbarui: p?.diperbarui || null,
+        kodeTerakhir: p?.kodeTerakhir || ''
+      };
+    }),
+    catatan: catatan ? salin(catatan) : null
+  };
+}
+
+export async function guruSimpanCatatan(siswaId, teks) {
+  await siap();
+  const a = aksesGuru();
+  ambilSiswaBoleh(a, siswaId);
+  const semua = baca(KUNCI.catatan, {});
+  semua[siswaId] = { teks: String(teks || '').slice(0, 4000), diperbarui: sekarang(), guruId: a.guru.id, guruNama: a.guru.nama };
+  tulis(KUNCI.catatan, semua);
+  return salin(semua[siswaId]);
+}
+
+/**
+ * Tambah siswa oleh guru. Username dibuat otomatis jika kosong, PIN 4 angka selalu acak.
+ * Hasil: { siswa, pin } (PIN hanya dikembalikan sekali untuk dicatat guru)
+ */
+export async function guruTambahSiswa(data) {
+  await siap();
+  const a = aksesGuru();
+  bolehKelas(a, data.kelasId);
+  const pin = acakPin();
+  const avatar = data.avatar || (data.jenisKelamin === 'P' ? 'wanita' : 'pria');
+  const username = String(data.username || '').trim().toLowerCase() || buatSaranUsername(data.namaPanggilan);
+  const siswa = await tambahSiswa({ ...data, avatar, username, pin });
+  tambahAktivitas(siswa.id, 'daftar', `Didaftarkan oleh ${a.guru.nama}`);
+  return { siswa, pin };
+}
+
+export async function guruUbahSiswa(siswaId, perubahan) {
+  await siap();
+  const a = aksesGuru();
+  ambilSiswaBoleh(a, siswaId);
+  const boleh = {};
+  for (const kunci of ['namaLengkap', 'namaPanggilan', 'avatar', 'kelasId', 'username']) {
+    if (kunci in perubahan) boleh[kunci] = perubahan[kunci];
+  }
+  if ('kelasId' in boleh) bolehKelas(a, boleh.kelasId);
+  return ubahSiswa(siswaId, boleh);
+}
+
+export async function guruPindahKelas(siswaId, kelasId) {
+  return guruUbahSiswa(siswaId, { kelasId });
+}
+
+/** PIN baru 4 angka acak, dikembalikan sekali untuk dicatat guru. */
+export async function guruResetPin(siswaId) {
+  await siap();
+  const a = aksesGuru();
+  ambilSiswaBoleh(a, siswaId);
+  const pin = acakPin();
+  await ubahSiswa(siswaId, { pin });
+  return pin;
+}
+
+export async function guruHapusSiswa(siswaId) {
+  await siap();
+  const a = aksesGuru();
+  ambilSiswaBoleh(a, siswaId);
+  const catatan = baca(KUNCI.catatan, {});
+  if (catatan[siswaId]) { delete catatan[siswaId]; tulis(KUNCI.catatan, catatan); }
+  return hapusSiswa(siswaId);
+}
+
+// ---------- Impor CSV ----------
+const normalNamaKelas = (t) => String(t || '').toLowerCase().replace(/kelas/g, '').replace(/[^a-z0-9]/g, '');
+
+function normalJenisKelamin(t) {
+  const v = String(t || '').trim().toLowerCase();
+  if (['l', 'lk', 'laki', 'laki-laki', 'laki laki', 'pria', 'putra'].includes(v)) return 'L';
+  if (['p', 'pr', 'perempuan', 'wanita', 'putri'].includes(v)) return 'P';
+  return null;
+}
+
+function periksaBarisImpor(a, baris, nomor) {
+  const namaLengkap = String(baris.namaLengkap || '').trim().replace(/\s+/g, ' ');
+  const namaPanggilan = String(baris.namaPanggilan || '').trim() || namaLengkap.split(' ')[0] || '';
+  const jenisKelamin = normalJenisKelamin(baris.jenisKelamin);
+  const kelas = a.kelas.find((k) => normalNamaKelas(k.nama) === normalNamaKelas(baris.kelas));
+  const masalah = [];
+  const p1 = periksaKolomSiswa('namaLengkap', namaLengkap);
+  if (p1) masalah.push(p1);
+  const p2 = periksaKolomSiswa('namaPanggilan', namaPanggilan);
+  if (p2) masalah.push(`Nama panggilan: ${p2}`);
+  if (!jenisKelamin) masalah.push('Jenis kelamin harus L atau P.');
+  if (!kelas) masalah.push(`Kelas "${baris.kelas || ''}" tidak ditemukan atau bukan kelas Anda.`);
+  return {
+    nomor,
+    data: { namaLengkap, namaPanggilan, jenisKelamin, kelasId: kelas?.id || null, kelasNama: kelas?.nama || String(baris.kelas || '') },
+    ok: masalah.length === 0,
+    pesan: masalah.join(' ')
+  };
+}
+
+/** Periksa baris CSV tanpa membuat akun. baris: [{ namaLengkap, namaPanggilan, jenisKelamin, kelas }] */
+export async function guruPratinjauImpor(baris) {
+  await siap();
+  const a = aksesGuru();
+  return baris.map((b, i) => periksaBarisImpor(a, b, i + 1));
+}
+
+/** Buat akun untuk baris yang valid. Hasil per baris: { nomor, ok, pesan, data, username, pin } */
+export async function guruImporSiswa(baris) {
+  await siap();
+  const a = aksesGuru();
+  const hasil = [];
+  for (const [i, b] of baris.entries()) {
+    const cek = periksaBarisImpor(a, b, i + 1);
+    if (!cek.ok) { hasil.push(cek); continue; }
+    try {
+      const { siswa, pin } = await guruTambahSiswa({
+        namaLengkap: cek.data.namaLengkap,
+        namaPanggilan: cek.data.namaPanggilan,
+        avatar: cek.data.jenisKelamin === 'P' ? 'wanita' : 'pria',
+        kelasId: cek.data.kelasId
+      });
+      hasil.push({ ...cek, username: siswa.username, pin });
+    } catch (err) {
+      hasil.push({ ...cek, ok: false, pesan: err.message });
+    }
+  }
+  return hasil;
+}
+
+// ---------- Aktivitas ----------
+/** filter: { kelasId, siswaId, jenis, batas } */
+export async function guruAktivitas({ kelasId, siswaId, jenis, batas = 200 } = {}) {
+  await siap();
+  const a = aksesGuru();
+  const k = saringKelas(a, kelasId);
+  const stat = hitungStatistik(siswaDalamAkses(a, k));
+  const peta = new Map(stat.map((x) => [x.siswa.id, x.baris]));
+  if (siswaId && !peta.has(siswaId)) throw new Error('Siswa tidak ditemukan di kelas Anda.');
+  const semua = baca(KUNCI.aktivitas, []).filter((ak) =>
+    peta.has(ak.siswaId) && (!siswaId || ak.siswaId === siswaId) && (!jenis || ak.jenis === jenis));
+  return {
+    total: semua.length,
+    daftar: semua.slice(0, batas).map((ak) => ({
+      ...ak,
+      namaSiswa: peta.get(ak.siswaId).namaLengkap,
+      kelasNama: peta.get(ak.siswaId).kelasNama
+    }))
+  };
+}
+
+// ---------- Pengaturan akun sendiri ----------
+export async function guruUbahNama(nama) {
+  await siap();
+  const a = aksesGuru();
+  return ubahGuru(a.guru.id, { nama });
+}
+
+export async function guruUbahPassword(passwordLama, passwordBaru) {
+  await siap();
+  const a = aksesGuru();
+  if (!(await cocokRahasia(passwordLama, a.guru.salt, a.guru.passwordHash))) throw new Error('Password lama salah.');
+  if (String(passwordBaru || '').length < 6) throw new Error('Password baru minimal 6 karakter.');
+  await ubahGuru(a.guru.id, { password: passwordBaru });
+  return true;
+}
+
+// ---------- Khusus admin ----------
+export async function adminSimpanPengaturan({ hargaClue, koinAwal }) {
+  await siap();
+  wajibAdmin(aksesGuru());
+  const harga = (hargaClue || []).map((h) => Math.round(Number(h)));
+  if (harga.length !== 3 || harga.some((h) => !Number.isFinite(h) || h < 0 || h > 999)) throw new Error('Harga clue harus angka 0–999.');
+  const koin = Math.round(Number(koinAwal));
+  if (!Number.isFinite(koin) || koin < 0 || koin > 999) throw new Error('Koin awal harus angka 0–999.');
+  tulis(KUNCI.pengaturan, { hargaClue: harga, koinAwal: koin });
+  return bacaPengaturan();
+}
+
+export async function adminDaftarGuru() {
+  await siap();
+  wajibAdmin(aksesGuru());
+  const kelas = baca(KUNCI.kelas, []);
+  return baca(KUNCI.guru, []).map((g) => ({
+    ...tanpaRahasia(g),
+    kelas: g.kelasIds.map((id) => kelas.find((k) => k.id === id)).filter(Boolean).sort(urutKelas).map((k) => ({ id: k.id, nama: k.nama }))
+  })).sort((p, q) => (p.peran === q.peran ? p.nama.localeCompare(q.nama) : p.peran === 'admin' ? -1 : 1));
+}
+
+/** Tambah (tanpa id, wajib password) atau ubah guru. */
+export async function adminSimpanGuru(data) {
+  await siap();
+  const a = aksesGuru();
+  wajibAdmin(a);
+  if (data.id) {
+    if (data.id === a.guru.id && data.peran && data.peran !== 'admin') throw new Error('Anda tidak bisa menurunkan peran akun sendiri.');
+    const perubahan = {};
+    for (const kunci of ['nama', 'username', 'peran', 'kelasIds']) if (kunci in data) perubahan[kunci] = data[kunci];
+    return ubahGuru(data.id, perubahan);
+  }
+  return tambahGuru(data);
+}
+
+export async function adminHapusGuru(guruId) {
+  await siap();
+  const a = aksesGuru();
+  wajibAdmin(a);
+  if (guruId === a.guru.id) throw new Error('Anda tidak bisa menghapus akun sendiri.');
+  return hapusGuru(guruId);
+}
+
+/** Password baru acak 8 karakter, dikembalikan sekali untuk dicatat admin. */
+export async function adminResetPasswordGuru(guruId) {
+  await siap();
+  wajibAdmin(aksesGuru());
+  const password = acakPassword();
+  await ubahGuru(guruId, { password });
+  return password;
+}
+
+
+// =====================================================================
+// API LEVEL & SOAL (dashboard guru)
+// Guru melihat level bawaan + level yang ditujukan ke kelasnya + level buatannya sendiri.
+// Guru hanya bisa mengubah level buatannya; level bawaan hanya bisa diubah admin dan tidak
+// bisa dihapus (guru menonaktifkannya untuk kelasnya, admin menonaktifkannya untuk semua).
+// =====================================================================
+const BATAS_TEKS = 5000;
+
+function levelBolehDilihat(a, l) {
+  return !!l.bawaan || a.admin || l.pembuat?.id === a.guru.id || (l.kelasIds || []).some((k) => a.kelasIds.has(k));
+}
+
+function levelBolehDiubah(a, l) {
+  return a.admin || (!l.bawaan && l.pembuat?.id === a.guru.id);
+}
+
+function statusLevelUntuk(a, l) {
+  if (!l.bawaan) return l.terbit ? 'terbit' : 'draf';
+  if (l.terbit === false) return 'nonaktif';
+  if (a.admin) return 'terbit';
+  const non = (l.kelasNonaktif || []).filter((k) => a.kelasIds.has(k));
+  if (!non.length) return 'terbit';
+  return non.length >= a.kelasIds.size ? 'nonaktif' : 'sebagian';
+}
+
+function ambilLevelBoleh(a, id) {
+  const l = baca(KUNCI.level, []).find((x) => x.id === id);
+  if (!l || !levelBolehDilihat(a, l)) throw new Error('Level tidak ditemukan.');
+  return l;
+}
+
+function ringkasLevel(a, l, kelas) {
+  const bisaEdit = levelBolehDiubah(a, l);
+  return {
+    id: l.id,
+    zona: l.zona,
+    urutan: l.urutan,
+    judul: l.judul,
+    jenis: l.jenis,
+    tingkat: l.tingkat || [3, 4, 5, 6],
+    bawaan: !!l.bawaan,
+    status: statusLevelUntuk(a, l),
+    kelasIds: l.kelasIds ? l.kelasIds.slice() : null,
+    kelas: l.kelasIds ? l.kelasIds.map((id) => kelas.find((k) => k.id === id)?.nama).filter(Boolean) : null,
+    pembuat: l.bawaan ? 'Bawaan' : (l.pembuat?.nama || '-'),
+    bisaEdit,
+    bisaPindah: bisaEdit && l.jenis !== 'boss',
+    bisaHapus: !l.bawaan && bisaEdit
+  };
+}
+
+/** Semua level yang boleh dilihat guru, urut per zona lalu urutan main. */
+export async function guruDaftarLevel() {
+  await siap();
+  const a = aksesGuru();
+  const kelas = baca(KUNCI.kelas, []);
+  const urutZona = (l) => ZONA.findIndex((z) => z.id === l.zona);
+  return baca(KUNCI.level, [])
+    .filter((l) => levelBolehDilihat(a, l))
+    .sort((p, q) => urutZona(p) - urutZona(q) || (p.urutan ?? 0) - (q.urutan ?? 0))
+    .map((l) => ringkasLevel(a, l, kelas));
+}
+
+/** Data lengkap satu level (untuk edit atau coba main). */
+export async function guruGetLevel(id) {
+  await siap();
+  const a = aksesGuru();
+  const l = ambilLevelBoleh(a, id);
+  return { ...salin(l), ...ringkasLevel(a, l, baca(KUNCI.kelas, [])), tingkat: l.tingkat || [3, 4, 5, 6] };
+}
+
+function periksaDunia(d) {
+  if (!d || !Number.isInteger(d.kolom) || !Number.isInteger(d.baris)) throw new Error('Data panggung tidak lengkap.');
+  if (d.kolom < 4 || d.kolom > 12 || d.baris < 3 || d.baris > 8) throw new Error('Ukuran panggung tidak valid.');
+  const dalam = (o) => o && Number.isInteger(o.x) && Number.isInteger(o.y) && o.x >= 0 && o.y >= 0 && o.x < d.kolom && o.y < d.baris;
+  const robot = dalam(d.robot) ? { x: d.robot.x, y: d.robot.y, arah: ['utara', 'timur', 'selatan', 'barat'].includes(d.robot.arah) ? d.robot.arah : 'timur' } : null;
+  return {
+    kolom: d.kolom,
+    baris: d.baris,
+    robot,
+    tujuan: dalam(d.tujuan) ? { x: d.tujuan.x, y: d.tujuan.y } : null,
+    item: (d.item || []).filter(dalam).map((it) => ({ jenis: it.jenis === 'berlian' ? 'berlian' : 'koin', x: it.x, y: it.y, wajib: it.jenis === 'berlian' ? false : it.wajib !== false })),
+    rintangan: (d.rintangan || []).filter(dalam).map((r) => ({ jenis: String(r.jenis || 'batu').slice(0, 20), x: r.x, y: r.y })),
+    jurang: (d.jurang || []).filter(dalam).map((j) => ({ x: j.x, y: j.y }))
+  };
+}
+
+function normalTujuan(daftar) {
+  return (Array.isArray(daftar) ? daftar : []).map((t) => (t.jenis === 'ambil'
+    ? { teks: String(t.teks || '').trim().slice(0, 80) || `Ambil ${Number(t.jumlah) || 0} koin`, jenis: 'ambil', jumlah: Math.max(1, Math.round(Number(t.jumlah) || 1)) }
+    : { teks: String(t.teks || '').trim().slice(0, 80) || 'Sampai di bendera', jenis: 'sampai' })).slice(0, 6);
+}
+
+function idLevelBaru(zona) {
+  const ada = new Set(baca(KUNCI.level, []).map((l) => l.id));
+  let id;
+  do { id = `${zona}-g${acakHex(3)}`; } while (ada.has(id));
+  return id;
+}
+
+// Sisipkan level di akhir zona tetapi sebelum boss (boss baru ditaruh paling akhir)
+function sisipkanSebelumBoss(levels, level) {
+  const lain = levels.filter((l) => l.zona === level.zona && l.id !== level.id);
+  const acuan = level.jenis === 'boss' ? lain : lain.filter((l) => l.jenis !== 'boss');
+  level.urutan = (acuan.length ? Math.max(...acuan.map((l) => l.urutan ?? 0)) : 0) + 0.5;
+}
+
+/**
+ * Simpan level (baru jika tanpa id). opsi.terbit: true untuk menerbitkan (wajib lolos validasi),
+ * false untuk menyimpan sebagai draf. kelasIds null hanya boleh untuk admin (= semua kelas).
+ */
+export async function guruSimpanLevel(data, { terbit = false } = {}) {
+  await siap();
+  const a = aksesGuru();
+  const semua = baca(KUNCI.level, []);
+  const lama = data.id ? semua.find((l) => l.id === data.id) : null;
+  if (data.id && !lama) throw new Error('Level tidak ditemukan.');
+  if (lama && !levelBolehDiubah(a, lama)) throw new Error('Anda hanya bisa mengubah level buatan Anda sendiri.');
+
+  if (!ZONA.some((z) => z.id === data.zona)) throw new Error('Pilih zona.');
+  if (!['ketik', 'debug', 'boss'].includes(data.jenis)) throw new Error('Pilih jenis level.');
+  const judul = String(data.judul || '').trim().replace(/\s+/g, ' ');
+  if (judul.length < 3 || judul.length > 60) throw new Error('Judul 3–60 huruf.');
+
+  let kelasIds;
+  if (data.kelasIds === null && a.admin) kelasIds = null;
+  else {
+    kelasIds = [...new Set(Array.isArray(data.kelasIds) ? data.kelasIds : [])];
+    const bolehSemua = new Set(a.admin ? baca(KUNCI.kelas, []).map((k) => k.id) : [...a.kelasIds]);
+    if (kelasIds.some((k) => !bolehSemua.has(k))) throw new Error('Ada kelas tujuan yang bukan kelas Anda.');
+  }
+  const tingkat = [...new Set((data.tingkat || []).map(Number))].filter((t) => [3, 4, 5, 6].includes(t)).sort();
+  if (!tingkat.length) throw new Error('Pilih minimal satu tingkat kelas sasaran.');
+
+  const zonaLama = lama?.zona;
+  const level = {
+    ...(lama ? salin(lama) : {}),
+    id: lama?.id || idLevelBaru(data.zona),
+    zona: data.zona,
+    jenis: data.jenis,
+    judul,
+    instruksi: String(data.instruksi || '').trim().slice(0, 500),
+    ringkasan: String(data.instruksi || '').trim().slice(0, 120) || judul,
+    tantanganBonus: String(data.tantanganBonus || '').trim().slice(0, 200),
+    tingkat,
+    kelasIds,
+    dunia: periksaDunia(data.dunia),
+    perintahTersedia: (data.perintahTersedia || []).filter((x) => SEMUA_PERINTAH.includes(x)),
+    kodeAwal: String(data.kodeAwal || '').slice(0, BATAS_TEKS),
+    solusi: String(data.solusi || '').slice(0, BATAS_TEKS),
+    batasBaris: Math.min(50, Math.max(1, Math.round(Number(data.batasBaris) || 1))),
+    clue: [0, 1, 2].map((i) => String(data.clue?.[i] || '').trim().slice(0, 500)),
+    tujuanTeks: normalTujuan(data.tujuanTeks),
+    terbit: !!terbit,
+    bawaan: !!lama?.bawaan,
+    pembuat: lama ? (lama.pembuat ?? null) : { id: a.guru.id, nama: a.guru.nama },
+    dibuatPada: lama?.dibuatPada || sekarang(),
+    diperbarui: sekarang()
+  };
+
+  if (terbit) {
+    const alasan = alasanBelumSiap(level);
+    if (alasan.length) throw new Error(`Belum bisa diterbitkan: ${alasan.join(' ')}`);
+  }
+
+  if (lama) {
+    if (zonaLama !== level.zona || (lama.jenis === 'boss') !== (level.jenis === 'boss')) sisipkanSebelumBoss(semua, level);
+    Object.assign(lama, level);
+  } else {
+    sisipkanSebelumBoss(semua, level);
+    semua.push(level);
+  }
+  rapikanUrutan(semua, level.zona);
+  if (zonaLama && zonaLama !== level.zona) rapikanUrutan(semua, zonaLama);
+  tulis(KUNCI.level, semua);
+  return guruGetLevel(level.id);
+}
+
+/** Salin level menjadi draf baru milik guru ini (disisipkan sebelum boss). */
+export async function guruDuplikatLevel(id) {
+  await siap();
+  const a = aksesGuru();
+  const asli = ambilLevelBoleh(a, id);
+  const semua = baca(KUNCI.level, []);
+  const salinan = {
+    ...salin(asli),
+    id: idLevelBaru(asli.zona),
+    judul: `Salinan ${asli.judul}`.slice(0, 60),
+    bawaan: false,
+    terbit: false,
+    kelasIds: a.admin ? (asli.kelasIds ? asli.kelasIds.slice() : null) : [...a.kelasIds],
+    kelasNonaktif: undefined,
+    pembuat: { id: a.guru.id, nama: a.guru.nama },
+    tingkat: asli.tingkat || [3, 4, 5, 6],
+    dibuatPada: sekarang(),
+    diperbarui: sekarang()
+  };
+  delete salinan.kelasNonaktif;
+  sisipkanSebelumBoss(semua, salinan);
+  semua.push(salinan);
+  rapikanUrutan(semua, salinan.zona);
+  tulis(KUNCI.level, semua);
+  return guruGetLevel(salinan.id);
+}
+
+/** Geser level satu langkah (arah -1 naik, +1 turun). Boss tidak bisa digeser dan tidak bisa dilewati. */
+export async function guruPindahUrutanLevel(id, arah) {
+  await siap();
+  const a = aksesGuru();
+  const semua = baca(KUNCI.level, []);
+  const l = semua.find((x) => x.id === id);
+  if (!l || !levelBolehDilihat(a, l)) throw new Error('Level tidak ditemukan.');
+  if (!levelBolehDiubah(a, l)) throw new Error('Urutan level ini hanya bisa diubah admin atau pembuatnya.');
+  if (l.jenis === 'boss') throw new Error('Level boss selalu berada di urutan terakhir.');
+  rapikanUrutan(semua, l.zona);
+  const nonBoss = semua.filter((x) => x.zona === l.zona && x.jenis !== 'boss').sort((p, q) => p.urutan - q.urutan);
+  const i = nonBoss.indexOf(l);
+  const j = i + (arah < 0 ? -1 : 1);
+  if (j < 0 || j >= nonBoss.length) throw new Error(arah < 0 ? 'Level sudah paling atas.' : 'Level sudah tepat sebelum boss.');
+  [l.urutan, nonBoss[j].urutan] = [nonBoss[j].urutan, l.urutan];
+  rapikanUrutan(semua, l.zona);
+  tulis(KUNCI.level, semua);
+  return true;
+}
+
+/** Hapus level buatan guru beserta progres dan draf kodenya. Level bawaan tidak bisa dihapus. */
+export async function guruHapusLevel(id) {
+  await siap();
+  const a = aksesGuru();
+  const semua = baca(KUNCI.level, []);
+  const l = semua.find((x) => x.id === id);
+  if (!l || !levelBolehDilihat(a, l)) throw new Error('Level tidak ditemukan.');
+  if (l.bawaan) throw new Error('Level bawaan tidak bisa dihapus. Nonaktifkan saja.');
+  if (!levelBolehDiubah(a, l)) throw new Error('Anda hanya bisa menghapus level buatan Anda sendiri.');
+  const sisa = semua.filter((x) => x.id !== id);
+  rapikanUrutan(sisa, l.zona);
+  tulis(KUNCI.level, sisa);
+  tulis(KUNCI.progres, baca(KUNCI.progres, []).filter((p) => p.levelId !== id));
+  const draf = baca(KUNCI.draf, {});
+  for (const k of Object.keys(draf)) if (k.endsWith(`|${id}`)) delete draf[k];
+  tulis(KUNCI.draf, draf);
+  return true;
+}
+
+/**
+ * Aktifkan / nonaktifkan level.
+ * Bawaan: admin untuk semua kelas; guru hanya untuk kelas yang diampunya.
+ * Buatan guru: sama dengan terbit / jadikan draf (terbit wajib lolos validasi).
+ */
+export async function guruAturAktifLevel(id, aktif) {
+  await siap();
+  const a = aksesGuru();
+  const semua = baca(KUNCI.level, []);
+  const l = semua.find((x) => x.id === id);
+  if (!l || !levelBolehDilihat(a, l)) throw new Error('Level tidak ditemukan.');
+  if (l.bawaan && !a.admin) {
+    const non = new Set(l.kelasNonaktif || []);
+    for (const k of a.kelasIds) { if (aktif) non.delete(k); else non.add(k); }
+    l.kelasNonaktif = [...non];
+  } else {
+    if (!levelBolehDiubah(a, l)) throw new Error('Anda hanya bisa mengatur level buatan Anda sendiri.');
+    if (aktif && !l.bawaan) {
+      const alasan = alasanBelumSiap(l);
+      if (alasan.length) throw new Error(`Belum bisa diterbitkan: ${alasan.join(' ')}`);
+    }
+    l.terbit = !!aktif;
+  }
+  l.diperbarui = sekarang();
+  tulis(KUNCI.level, semua);
+  return ringkasLevel(a, l, baca(KUNCI.kelas, []));
+}
+
+
+// =====================================================================
+// NILAI (dashboard guru)
+// Nilai akhir = rata-rata nilai semua level yang terbit untuk kelas itu (belum selesai = 0),
+// dibulatkan, minimal 1 (skala 1–100). Guru boleh menimpa dengan alasan wajib.
+// =====================================================================
+const kunciTimpa = (siswaId, kelasId) => `${siswaId}|${kelasId}`;
+
+/**
+ * Matriks nilai satu kelas.
+ * Hasil: { kelas, levels: [{ id, zona, zonaNama, warna, urutan, judul, jenis }],
+ *          siswa: [{ id, namaLengkap, namaPanggilan, avatar, sel: { [levelId]: {...} }, nilaiOtomatis, nilaiAkhir, timpa }] }
+ */
+export async function guruMatriksNilai(kelasId) {
+  await siap();
+  const a = aksesGuru();
+  bolehKelas(a, kelasId);
+  const kelas = baca(KUNCI.kelas, []).find((k) => k.id === kelasId);
+  const urutZona = (l) => ZONA.findIndex((z) => z.id === l.zona);
+  const levels = baca(KUNCI.level, [])
+    .filter((l) => levelTerlihatUntukKelas(l, kelasId))
+    .sort((p, q) => urutZona(p) - urutZona(q) || (p.urutan ?? 0) - (q.urutan ?? 0));
+  const progres = baca(KUNCI.progres, []);
+  const timpa = baca(KUNCI.nilaiTimpa, {});
+
+  const siswa = baca(KUNCI.siswa, [])
+    .filter((s) => s.kelasId === kelasId)
+    .sort((p, q) => p.namaLengkap.localeCompare(q.namaLengkap))
+    .map((s) => {
+      const sel = {};
+      let jumlah = 0;
+      for (const l of levels) {
+        const pr = progres.find((x) => x.siswaId === s.id && x.levelId === l.id);
+        const nilai = pr?.selesai ? (pr.nilai || 0) : 0;
+        jumlah += nilai;
+        sel[l.id] = pr
+          ? { dimainkan: true, selesai: !!pr.selesai, bintang: pr.bintang || 0, nilai, percobaan: pr.percobaan || 0, clueDibeli: pr.clueDibeli || 0 }
+          : { dimainkan: false, selesai: false, bintang: 0, nilai: 0, percobaan: 0, clueDibeli: 0 };
+      }
+      const nilaiOtomatis = Math.max(1, levels.length ? Math.round(jumlah / levels.length) : 1);
+      const t = timpa[kunciTimpa(s.id, kelasId)] || null;
+      return {
+        id: s.id,
+        namaLengkap: s.namaLengkap,
+        namaPanggilan: s.namaPanggilan,
+        avatar: s.avatar,
+        sel,
+        nilaiOtomatis,
+        nilaiAkhir: t ? t.nilai : nilaiOtomatis,
+        timpa: t ? salin(t) : null
+      };
+    });
+
+  return {
+    kelas: salin(kelas),
+    levels: levels.map((l) => {
+      const z = ZONA.find((x) => x.id === l.zona);
+      return { id: l.id, zona: l.zona, zonaNama: z?.nama || l.zona, warna: z?.warna || '#55A9A0', urutan: l.urutan, judul: l.judul, jenis: l.jenis };
+    }),
+    siswa
+  };
+}
+
+/** Timpa nilai akhir seorang siswa (1–100) dengan alasan wajib. */
+export async function guruTimpaNilai(siswaId, kelasId, nilai, alasan) {
+  await siap();
+  const a = aksesGuru();
+  bolehKelas(a, kelasId);
+  const s = ambilSiswaBoleh(a, siswaId);
+  if (s.kelasId !== kelasId) throw new Error('Siswa tidak ada di kelas ini.');
+  const n = Math.round(Number(nilai));
+  if (!Number.isFinite(n) || n < 1 || n > 100) throw new Error('Nilai harus angka 1 sampai 100.');
+  const teks = String(alasan || '').trim();
+  if (teks.length < 5) throw new Error('Tulis alasan penimpaan nilai (minimal 5 huruf).');
+  const semua = baca(KUNCI.nilaiTimpa, {});
+  semua[kunciTimpa(siswaId, kelasId)] = { nilai: n, alasan: teks.slice(0, 300), guruId: a.guru.id, guruNama: a.guru.nama, waktu: sekarang() };
+  tulis(KUNCI.nilaiTimpa, semua);
+  return salin(semua[kunciTimpa(siswaId, kelasId)]);
+}
+
+/** Kembalikan nilai akhir ke nilai otomatis. */
+export async function guruHapusTimpaNilai(siswaId, kelasId) {
+  await siap();
+  const a = aksesGuru();
+  bolehKelas(a, kelasId);
+  ambilSiswaBoleh(a, siswaId);
+  const semua = baca(KUNCI.nilaiTimpa, {});
+  delete semua[kunciTimpa(siswaId, kelasId)];
+  tulis(KUNCI.nilaiTimpa, semua);
+  return true;
+}
+
+// =====================================================================
+// Profil siswa (memakai sesi siswa yang sedang masuk)
+// =====================================================================
+export async function ubahAvatarSaya(avatar) {
+  await siap();
+  const sesi = baca(KUNCI.sesi, null);
+  if (!sesi || sesi.jenis !== 'siswa' || Date.now() > sesi.kadaluarsa) throw new Error('Masuk dulu ya.');
+  if (!['pria', 'wanita'].includes(avatar)) throw new Error('Pilih salah satu gambar ya.');
+  return ubahSiswa(sesi.id, { avatar });
 }

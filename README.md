@@ -1,185 +1,187 @@
 # Coding Island
 
-Game edukasi belajar mengetik kode dan logika sederhana untuk siswa SD kelas 3–6.
-Siswa menggerakkan Robot Tutor dengan mini-bahasa berbahasa Indonesia (`maju()`, `belok_kanan()`, `ulangi 3 { }`, dan seterusnya) sambil menjelajahi 4 pulau.
+**Coding Island** adalah game edukasi berbasis web untuk siswa SD kelas 3–6. Siswa belajar mengetik kode dan logika sederhana dengan mini-bahasa berbahasa Indonesia (`maju()`, `belok_kanan()`, `ulangi 3 { }`, `jika ada_jurang() { }`, dan lainnya) untuk menggerakkan **Robot Tutor** sambil menjelajahi 4 pulau:
 
-Dokumen terkait:
-- [UJI-COBA.md](UJI-COBA.md): daftar uji coba Tahap 1–5 yang bisa dicentang.
-- [REVISI.md](REVISI.md): tempat menulis permintaan revisi.
+| Pulau | Konsep | Level |
+|---|---|---|
+| Pantai | Urutan perintah | 4 (termasuk 1 debug dan 1 boss) |
+| Laut | Perulangan (`ulangi`) | 3 |
+| Gurun | Lompat dan kondisi (`jika … lainnya`) | 3 |
+| Pegunungan Salju | `selama`, `bukan`, dan variabel (`buat`) | 3 |
+
+Fitur utama:
+- **Siswa:** mendaftar sendiri dengan kode kelas, peta pulau, level ketik/debug/boss, bintang dan koin, toko clue, piala dan berlian, profil, sertifikat juara, dan halaman bantuan.
+- **Guru:** dashboard dengan ringkasan, kelas, siswa (termasuk impor CSV), level dan soal (editor dunia), nilai 1–100 (ekspor CSV dan cetak), serta aktivitas.
+- **Admin:** semua fitur guru ditambah kelola akun guru dan pengaturan permainan.
+- **Teknis:** website statis tanpa proses build (HTML, CSS, JavaScript ES module), hash router, dan kode siswa dijalankan oleh interpreter buatan sendiri di Web Worker (tanpa `eval`).
+
+Dokumen lain: [UJI-COBA.md](UJI-COBA.md) (daftar uji Tahap 1–9) dan [REVISI.md](REVISI.md) (catatan revisi).
 
 ---
 
-## 1. Cara menjalankan
+## 1. Akun demo
 
-Website ini statis, tanpa proses build. Karena memakai ES module dan Web Worker, aplikasi **harus dibuka lewat server lokal**. Membuka `index.html` langsung dari folder (`file://`) tidak akan berjalan.
-
-Pilih salah satu cara dari folder proyek:
-
-| Cara | Perintah |
-|---|---|
-| Python | `python -m http.server 8000` lalu buka `http://localhost:8000` |
-| Node | `npx serve .` lalu buka alamat yang muncul |
-| VS Code | Pasang ekstensi **Live Server**, klik kanan `index.html` → *Open with Live Server* |
-
-Penting:
-- Buka lewat **`localhost`** (atau `https`). PIN dan password di-hash dengan `crypto.subtle`, yang tidak tersedia jika dibuka lewat IP jaringan seperti `http://192.168.x.x`.
-- Untuk melihat tampilan HP, pakai mode perangkat di DevTools (F12 → ikon HP).
-- Perlu internet untuk Google Fonts, Tailwind CDN, CodeMirror, dan confetti. Jika CodeMirror gagal dimuat, editor otomatis berganti ke textarea biasa.
-
-### Akun demo
-
-Data contoh dibuat otomatis saat pertama kali dibuka. Akun demo juga tampil di halaman masuk dan bisa diisi dengan tombol **Pakai**.
+Data contoh dibuat otomatis saat aplikasi pertama kali dibuka. Akun demo juga tampil di halaman masuk dan bisa diisi dengan tombol **Pakai**.
 
 | Peran | Username | Password / PIN |
 |---|---|---|
 | Admin | `admin` | `admin123` |
 | Guru (Kelas 3A, 4A) | `bu.sari` | `guru123` |
 | Guru (Kelas 5A, 6A) | `pak.budi` | `guru123` |
-| Siswa | `andi3`, `aisyah3`, `dimas4`, `farhan5`, `naufal6`, dan lainnya (5 per kelas) | PIN `1234` |
+| Siswa | `andi3`, `aisyah3`, `dimas4`, `zahra4`, `farhan5`, `salsa5`, `naufal6`, `aurel6`, dan lainnya (5 per kelas) | PIN `1234` |
 
-Kode kelas untuk pendaftaran: `PULAU3`, `PULAU4`, `PULAU5`, `PULAU6` (huruf besar/kecil tidak berpengaruh).
+- Kode kelas untuk pendaftaran siswa: `PULAU3`, `PULAU4`, `PULAU5`, `PULAU6` (huruf besar/kecil tidak berpengaruh).
+- Untuk mengembalikan semua data ke awal, klik **Reset data demo** di footer beranda, atau buka menu **Pengaturan** sebagai admin.
 
-Untuk mengembalikan semua data ke awal, klik **Reset data demo** di footer halaman beranda.
-
----
-
-## 2. Struktur folder
-
-```
-coding_island/
-├── index.html              Halaman tunggal: font, Tailwind CDN + konfigurasi warna, memuat js/main.js
-├── css/app.css             Token warna, komponen, panggung, dan animasi (hormat prefers-reduced-motion)
-├── image/                  Aset gambar (background, robot, item, profile)
-└── js/
-    ├── main.js             Daftar rute, penjaga rute, reset data demo
-    ├── router.js           Router hash (#/peta, #/level/:id), penjaga, muatUlang()
-    ├── ui.js               Tombol, kartu, modal, toast, loader, kotak PIN, pesan validasi
-    ├── store.js            SATU-SATUNYA pintu data (localStorage, awalan ci_)
-    ├── dev.js              ciDev di console (hanya di localhost)
-    ├── data/
-    │   ├── zona.js         4 zona: id, nama, konsep, gambar, warna aksen
-    │   └── levels.js       13 level awal + isi soal (baru pantai-1 dan pantai-2)
-    ├── game/
-    │   ├── interpreter.js  Tokenizer → parser (AST) → evaluator → jejak peristiwa
-    │   ├── worker.js       Web Worker tempat kode siswa dijalankan
-    │   ├── runner.js       Pembungkus worker + batas waktu 2 detik
-    │   ├── editor.js       CodeMirror 6 (esm.sh, versi dipin) + cadangan textarea
-    │   ├── panggung.js     Panggung 16:9, robot, item, animasi jejak
-    │   ├── kemajuan.js     Aturan buka-kunci zona dan level
-    │   ├── jalur.js        Jalur berkelok + posisi level otomatis di peta
-    │   ├── skor.js         Aturan bintang, nilai, koin
-    │   ├── dunia.js        Ubah dunia level dari/ke peta teks
-    │   ├── ikon.js         SVG: gembok, bug, panah, bendera, rintangan
-    │   ├── efek.js         Animasi roket "pulau baru terbuka"
-    │   └── uji-interpreter-kasus.js  22 kasus uji otomatis
-    ├── pages/              Halaman siswa & umum (beranda, daftar, masuk, peta, level, dst.)
-    └── guru/sementara.js   Halaman guru sementara (dashboard lengkap menyusul)
-```
-
-### Aturan teknis yang dipegang
-- Tanpa proses build: HTML, CSS, dan JavaScript murni (ES module) ditambah Tailwind CDN.
-- Hash router, jadi bisa di-hosting di Cloudflare Pages tanpa konfigurasi tambahan.
-- **Semua akses data hanya lewat `js/store.js`** (fungsi async). Nanti cukup modul ini yang diganti ke API Cloudflare Pages Functions + D1.
-- Kode siswa **tidak pernah** dijalankan dengan `eval` atau `new Function`, tetapi lewat interpreter buatan sendiri di Web Worker.
-- Tidak memakai gambar dari internet. Elemen tambahan (gembok, batu, bendera, bug, jurang) dibuat dengan SVG atau CSS.
-- `image/robot/marah.png` tidak dipakai untuk siswa.
+> **Penting:** semua data (akun, progres, nilai) disimpan di **localStorage browser**, terpisah untuk setiap perangkat dan browser. Siswa yang bermain di komputer A tidak terlihat di dashboard guru di komputer B. Untuk dipakai bersama satu sekolah, `js/store.js` perlu diganti ke API Cloudflare Pages Functions + D1 (lihat bagian 7).
 
 ---
 
-## 3. Ringkasan per tahap
+## 2. Menjalankan secara lokal
 
-### Tahap 1: Fondasi
-- `index.html` memuat Baloo 2, Nunito, JetBrains Mono, dan Tailwind CDN dengan nama warna proyek: `teal-tua`, `teal`, `mint`, `kuning`, `tinta`, `oranye`, `latar`.
-- `css/app.css` berisi token warna yang sama plus kelas animasi `.melayang`, `.muncul`, `.goyang`. Semua animasi mati saat *prefers-reduced-motion* aktif.
-- Router hash dengan parameter (`#/level/:id`), gulir ke atas saat pindah halaman, dan halaman 404 "Pulau tidak ditemukan".
-- Helper UI: tombol besar (utama, sekunder, bahaya), kartu, modal dengan fokus terkunci, toast, dan loader robot berpikir.
-- Landing page: hero pantai, robot melayang, bagian "Jelajahi 4 Pulau", bagian "Cara Bermain", dan footer.
+Aplikasi memakai ES module dan Web Worker, jadi **harus dibuka lewat server lokal**. Membuka `index.html` langsung dari folder (`file://`) tidak akan berjalan.
 
-### Tahap 2: Data, pendaftaran, dan masuk
-- `store.js` menyimpan entitas guru, kelas, siswa, level, progres, dan aktivitas.
-  - PIN dan password di-hash SHA-256 dengan salt acak, dan sesi berlaku 8 jam.
-  - Data contoh: 1 admin, 2 guru, 4 kelas, dan 20 siswa dengan progres acak ber-seed tetap, jadi hasilnya sama setiap reset.
-- `#/daftar` terdiri dari 3 langkah: nama dan avatar → kelas dan kode kelas → username (disarankan otomatis dan dicek unik) serta PIN 4 kotak. Setelah berhasil muncul modal +20 koin.
-- `#/masuk` (siswa) memakai papan angka besar. `#/guru/masuk` untuk guru dan admin. Setelah 5 kali salah, percobaan ditahan 1 menit.
-- Penjaga rute:
-  - `#/peta` dan `#/level/*` hanya untuk siswa.
-  - `#/guru/*` hanya untuk guru dan admin.
-  - `#/guru/guru` hanya untuk admin.
-- Header siswa menampilkan avatar, nama panggilan, koin, berlian, dan tombol keluar.
+Dari folder proyek, pilih salah satu:
 
-### Tahap 3: Peta pulau
-- 13 level: Pantai 4, Laut 3, Gurun 3, Salju 3. Level terakhir tiap zona adalah **boss**, dan ada satu level **debug** per zona.
-- `#/peta` menampilkan ringkasan 4 pulau dengan progres, bintang, dan status terkunci atau terbuka.
-- `#/peta/:zona` menampilkan background penuh, jalur putus-putus berkelok, dan lingkaran level yang ditata **otomatis**. Robot memberi tips dan berganti melamun setelah 20 detik tanpa interaksi.
-- Aturan buka-kunci:
-  - Zona berikutnya terbuka setelah boss zona sebelumnya selesai.
-  - Sebuah level terbuka jika level sebelumnya selesai.
-- Animasi roket dan robot terbang sekali saat pulau baru terbuka.
+| Cara | Perintah | Alamat |
+|---|---|---|
+| Python | `python -m http.server 8000` | `http://localhost:8000` |
+| Node.js | `npx serve .` | alamat yang muncul di terminal |
+| VS Code | ekstensi **Live Server** → klik kanan `index.html` → *Open with Live Server* | biasanya `http://127.0.0.1:5500/index.html` |
 
-### Tahap 4: Interpreter
-- Mini-bahasa:
-
-```
-// komentar
-maju()            maju(3)         belok_kiri()    belok_kanan()
-ambil()           lompat()
-ulangi 3 { ... }
-jika ada_rintangan() { ... } lainnya { ... }
-selama bukan sampai_tujuan() { ... }
-buat langkah = 3
-langkah = langkah + 1
-```
-
-- Syarat yang tersedia: `ada_rintangan()`, `ada_jurang()`, `ada_koin()`, `sampai_tujuan()`, dan kata `bukan` di depannya untuk membalik.
-- Pengaman: kode berhenti setelah 1000 langkah eksekusi, dan worker dimatikan paksa setelah 2 detik.
-- Pesan galat ramah anak dan selalu menyebut nomor baris. Salah ketik diberi saran (jarak Levenshtein).
-- Halaman pengembang: `http://localhost:8000/?dev=1#/uji-interpreter`.
-
-### Tahap 5: Halaman level yang bisa dimainkan
-- `pantai-1` (maju lurus 4 petak) dan `pantai-2` (ambil 2 koin lalu belok) sudah lengkap. Level lain menampilkan "sedang disiapkan".
-- Laptop: kiri berisi soal, tujuan bercentang, chip perintah, editor, dan tombol; kanan berisi panggung 16:9. HP: panggung di atas.
-- Editor CodeMirror 6 punya nomor baris, warna kode, dan autocomplete. Kode tersimpan otomatis per level.
-- **Bantu ketik** (klik chip untuk menyisipkan perintah) selalu aktif untuk kelas 3–4. Kelas 5–6 bisa menyalakannya lewat sakelar.
-- Animasi jejak berjalan sambil menyorot baris kode yang sedang dijalankan. Ekspresi robot berganti sesuai hasil.
-- Saat berhasil: confetti, lalu modal bintang dan koin.
-- Aturan sementara: bintang 1 = selesai, 2 = tanpa clue, 3 = tanpa clue dan jumlah baris ≤ `batasBaris`. Nilai 70 / 85 / 100. Koin: +10 saat pertama selesai, ditambah +5 untuk tiap bintang baru.
+Catatan:
+- Buka lewat **`localhost`** atau **`https`**. PIN dan password di-hash dengan `crypto.subtle`, yang tidak tersedia di alamat IP jaringan seperti `http://192.168.x.x`.
+- Perlu internet untuk Google Fonts, Tailwind CDN, CodeMirror (esm.sh), dan confetti. Jika CodeMirror gagal dimuat, editor otomatis memakai textarea biasa.
+- Setelah kode diubah, tekan **Ctrl + F5** agar browser tidak memakai file lama. Saat menguji, buka DevTools (F12) → **Network** → centang **Disable cache**.
 
 ---
 
-## 4. Alat bantu pengembang
+## 3. Deploy ke Cloudflare Pages
+
+Proyek ini situs statis murni, jadi **tidak perlu build command**. Semua path aset sudah relatif dan huruf besar-kecilnya sudah dicocokkan dengan nama file asli. Ini penting karena server Cloudflare membedakan `Pantai.jpeg` dan `pantai.jpeg`, sedangkan Windows tidak.
+
+Berkas yang dibutuhkan situs:
+
+```
+index.html   _headers   css/   js/   image/
+```
+
+- `_headers` berisi cache 1 hari untuk `image/`, `css/`, `js/` dan header keamanan dasar (`X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`).
+- **Tidak perlu `_redirects`**: aplikasi memakai hash router (`#/peta`, `#/guru/siswa`), jadi semua halaman dilayani oleh `index.html`.
+
+### 3a. Lewat dashboard Cloudflare (unggah folder)
+
+1. Siapkan folder bersih berisi **hanya** berkas di atas. Jangan ikutkan folder `.git` atau berkas cadangan. Dengan PowerShell dari folder proyek:
+   ```powershell
+   Remove-Item -Recurse -Force ..\coding-island-publik -ErrorAction SilentlyContinue
+   New-Item -ItemType Directory ..\coding-island-publik | Out-Null
+   Copy-Item index.html, _headers -Destination ..\coding-island-publik
+   Copy-Item css, js, image -Destination ..\coding-island-publik -Recurse
+   ```
+2. Masuk ke [dash.cloudflare.com](https://dash.cloudflare.com) → **Workers & Pages** → **Create** → tab **Pages** → **Upload assets**.
+3. Isi nama proyek `coding-island`, lalu **Create project**.
+4. Seret folder `coding-island-publik` (atau file ZIP berisinya) ke area unggah → **Deploy site**.
+5. Setelah selesai, situs tersedia di `https://coding-island.pages.dev`. Untuk memperbarui, buka proyek → **Create deployment** → unggah ulang folder yang baru.
+
+### 3b. Lewat perintah (Wrangler)
+
+Butuh Node.js 18 atau lebih baru.
+
+```bash
+# sekali saja: masuk ke akun Cloudflare
+npx wrangler login
+
+# deploy dari folder proyek
+npx wrangler pages deploy . --project-name=coding-island
+```
+
+- Saat pertama kali, Wrangler menawarkan untuk membuat proyek `coding-island`. Pilih **production branch** `main`.
+- Wrangler tidak mengunggah folder `.git` dan `node_modules`. Berkas dokumen seperti `README.md`, `UJI-COBA.md`, dan `REVISI.md` ikut terunggah dan bisa dibuka publik. Jika tidak diinginkan, deploy folder bersih dari langkah 3a: `npx wrangler pages deploy ..\coding-island-publik --project-name=coding-island`.
+
+### 3c. Setelah deploy
+
+- **Domain berbeda:** jika domain bukan `coding-island.pages.dev` (misalnya domain sekolah), ganti alamat pada `og:url` dan `og:image` di `index.html` supaya pratinjau tautan di WhatsApp/Facebook tampil benar.
+- **Cache 1 hari:** pengunjung lama bisa masih memakai CSS/JS lama sampai 1 hari setelah pembaruan. Minta mereka menekan Ctrl + F5, atau perpendek `max-age` di `_headers` selama masa pengembangan.
+- **Uji di HP:** buka alamat `https://…pages.dev` di HP. Karena sudah `https`, hashing PIN berjalan normal.
+
+---
+
+## 4. Catatan Tailwind CSS
+
+`index.html` memuat **Tailwind lewat CDN** (`cdn.tailwindcss.com`) beserta konfigurasi warna di dalam tag `<script>`. Cara ini **hanya untuk demo**: ukurannya besar, CSS dibuat di browser setiap kali halaman dibuka, dan Console menampilkan peringatan "should not be used in production".
+
+Untuk versi produksi, buat CSS Tailwind sekali dengan **Tailwind CLI**:
+
+1. Buat `tailwind.config.js` di root. Isi `theme.extend`-nya disalin dari konfigurasi di `index.html`, lalu tambahkan:
+   ```js
+   module.exports = {
+     content: ['./index.html', './js/**/*.js'],
+     theme: { extend: { /* salin colors & fontFamily dari index.html */ } }
+   };
+   ```
+2. Buat `src/tailwind.css` berisi:
+   ```css
+   @tailwind base;
+   @tailwind components;
+   @tailwind utilities;
+   ```
+3. Jalankan:
+   ```bash
+   npx tailwindcss@3 -i src/tailwind.css -o css/tailwind.css --minify
+   ```
+4. Di `index.html`, hapus `<script src="https://cdn.tailwindcss.com/…">` dan blok `tailwind.config = {…}`, lalu tambahkan `<link rel="stylesheet" href="css/tailwind.css">` **sebelum** `css/app.css`.
+5. Ulangi langkah 3 setiap kali ada kelas Tailwind baru di HTML atau JS.
+
+---
+
+## 5. Fitur pengembang (tersembunyi)
+
+Fitur pengembang tidak terlihat oleh pengguna biasa dan hanya aktif jika alamat mengandung `?dev=1`, misalnya `https://coding-island.pages.dev/?dev=1#/peta` atau `http://localhost:8000/?dev=1#/peta`.
 
 | Alat | Cara pakai |
 |---|---|
-| `ciDev` di console | Hanya di localhost. Masuk sebagai siswa, lalu buka console (F12). `ciDev.selesaikanLevel('pantai-4', 3)` menandai level selesai, `ciDev.resetProgres()` menghapus progres siswa itu, `ciDev.bantuan()` menampilkan daftar perintah. |
-| Uji interpreter | `/?dev=1#/uji-interpreter`: coba kode bebas di dunia contoh atau klik **Jalankan semua tes** (22 kasus). |
-| Reset data | Tautan **Reset data demo** di footer beranda. |
-| Hapus total | DevTools → Application → Local Storage → hapus kunci berawalan `ci_`. |
+| Panel Dev | Tombol oranye **Dev** di pojok kiri bawah: selesaikan level, tuntaskan pulau, reset progres, validasi semua level, tautan ke Uji Interpreter (masuk sebagai siswa dulu) |
+| `ciDev` di Console | `ciDev.selesaikanLevel('pantai-4', 3)`, `ciDev.tuntaskanPulau('pantai')`, `ciDev.resetProgres()`, `ciDev.validasiLevel()`, `ciDev.bantuan()` |
+| Uji Interpreter | `/?dev=1#/uji-interpreter`: coba kode di dunia contoh, atau klik **Jalankan semua tes** (22 kasus) |
 
-### Menulis dunia level dengan cepat
-`js/game/dunia.js` bisa mengubah peta teks menjadi data dunia:
+Karena datanya tersimpan di browser, siswa yang tahu `?dev=1` bisa mengubah progresnya sendiri. Ini tidak bisa dicegah sampai data dipindah ke server (bagian 7).
 
-```js
-import { duniaDariTeks } from './js/game/dunia.js';
-duniaDariTeks([
-  '>.$.#...',
-  '...O....',
-  '......F.'
-]);
-// >  <  ^  v  robot (arah)    F tujuan    # batu    O jurang    $ koin wajib    * koin bebas
+---
+
+## 6. Struktur folder
+
+```
+coding_island/
+├── index.html          Halaman tunggal: meta & ikon, font, Tailwind CDN, memuat js/main.js
+├── _headers            Header cache & keamanan untuk Cloudflare Pages
+├── css/app.css         Token warna, komponen, panggung, dashboard, gaya cetak, animasi
+├── image/              Aset: background/, robot/, item/, profile/, favicon-32.png,
+│                       apple-touch-icon.png (180 px), og-image.jpg (1200×630)
+└── js/
+    ├── main.js         Daftar rute, penjaga rute, penangkap error global
+    ├── router.js       Hash router dengan parameter (#/level/:id) dan penjaga rute
+    ├── ui.js           Tombol, kartu, modal, toast, loader, form modal, PIN, unduh berkas
+    ├── store.js        SATU-SATUNYA pintu data (localStorage, awalan ci_)
+    ├── dev.js          Panel Dev & ciDev (hanya dengan ?dev=1)
+    ├── data/           zona.js (4 pulau), levels.js (13 level bawaan)
+    ├── game/           interpreter, worker, runner, editor (CodeMirror), panggung, kemajuan,
+    │                   jalur peta, skor, validasi level, ikon SVG, efek
+    ├── pages/          Halaman siswa & umum (beranda, daftar, masuk, peta, level, profil, juara, bantuan)
+    └── guru/           Dashboard guru (ringkasan, kelas, siswa, level & soal, nilai, aktivitas, guru, pengaturan)
 ```
 
+Aturan teknis yang dipegang:
+- **Tanpa proses build:** HTML, CSS, dan JavaScript murni (ES module).
+- **Satu pintu data:** semua akses data hanya lewat `js/store.js`. Fungsi dashboard `guru*`/`admin*` membatasi data pada kelas yang diampu guru.
+- **Kode siswa** dijalankan interpreter buatan sendiri di Web Worker, dibatasi 1000 langkah dan 2 detik.
+- **Gambar tambahan** (gembok, rintangan, bendera, bug, jurang) dibuat dengan SVG/CSS; tidak ada gambar dari internet.
+- **Ukuran gambar:** keempat background sudah dikompres ke 121–175 KB (sebelumnya 580–715 KB) dengan nama file tetap.
+- **Aksesibilitas & ketahanan:** fokus keyboard terlihat, modal mengunci fokus, animasi mati saat *prefers-reduced-motion*, dan error tak terduga ditampilkan sebagai toast robot kaget.
+
 ---
 
-## 5. Hosting di Cloudflare Pages
-1. Unggah isi folder ini ke repositori Git, atau unggah langsung lewat dashboard Cloudflare Pages.
-2. Build command: *(kosong)*. Output directory: `/` (root).
-3. Karena memakai hash router (`#/...`), tidak perlu aturan *redirect*.
-4. Catatan: `ciDev` otomatis mati di domain selain localhost. Tailwind CDN hanya untuk demo; untuk produksi sebaiknya CSS-nya di-*build*.
+## 7. Langkah berikutnya
 
----
-
-## 6. Yang belum dikerjakan (tahap berikutnya)
-- Tahap 6: tombol clue bertingkat yang dibeli dengan koin, serta perapian aturan bintang dan koin.
-- Isi soal untuk 11 level lainnya, termasuk level debug dan boss beserta hadiah piala dan berlian.
-- Dashboard guru dan admin dengan navbar vertikal: kelola kelas, siswa, level atau soal, serta nilai 1–100.
-- Penggantian `store.js` ke API Cloudflare Pages Functions + D1.
+- **Data bersama satu sekolah:** ganti isi `js/store.js` menjadi pemanggilan `fetch()` ke Cloudflare Pages Functions + D1. Nama dan bentuk fungsi publiknya sudah async dan bisa dipertahankan. Fungsi `guru*`/`admin*` dipindah ke server dengan pemeriksaan sesi yang sama.
+- **Tailwind CLI:** ganti Tailwind CDN dengan CSS hasil build (bagian 4).
+- **Data demo:** nonaktifkan akun demo dan tautan "Reset data demo" sebelum dipakai sungguhan.

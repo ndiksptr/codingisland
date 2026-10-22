@@ -2,8 +2,8 @@
 // #/peta        : ringkasan 4 pulau
 // #/peta/:zona  : peta satu pulau dengan jalur berkelok dan lingkaran level
 
-import { esc, robot, gambarRobot, tombol, bukaModal, toast } from '../ui.js';
-import { sesiAktif, daftarLevelTerbit, getSemuaProgres, aturZonaTerlihat } from '../store.js';
+import { esc, robot, gambarRobot, tombol, bukaModal, toast, pramuatGambar } from '../ui.js';
+import { sesiAktif, daftarLevelTerbit, getSemuaProgres, aturZonaTerlihat, getRingkasanJuara } from '../store.js';
 import { pindah } from '../router.js';
 import { ZONA } from '../data/zona.js';
 import { LABEL_JENIS } from '../data/levels.js';
@@ -110,6 +110,7 @@ function kartuZonaHTML(sz) {
 
 export async function renderPeta(halaman) {
   const { siswa, status } = await muatPeta();
+  const juara = await getRingkasanJuara(siswa.id);
   const totalBintang = status.reduce((n, z) => n + z.bintang, 0);
   const maksBintang = status.reduce((n, z) => n + z.bintangMaks, 0);
   const totalSelesai = status.reduce((n, z) => n + z.selesai, 0);
@@ -131,6 +132,15 @@ export async function renderPeta(halaman) {
         </div>
       </div>
 
+      ${juara ? `
+        <a href="#/juara" class="spanduk-juara mt-6">
+          <img src="image/item/piala.png" alt="" class="w-14 h-14 object-contain melayang">
+          <span class="flex-1">
+            <span class="block font-judul text-2xl font-extrabold">Kamu Juara Coding Island!</span>
+            <span class="block font-bold">Klik untuk melihat dan mencetak sertifikatmu.</span>
+          </span>
+        </a>` : ''}
+
       <ol class="mt-6 sm:mt-8 grid gap-5 sm:gap-6 md:grid-cols-2">
         ${status.map(kartuZonaHTML).join('')}
       </ol>
@@ -140,6 +150,14 @@ export async function renderPeta(halaman) {
     const terkunci = e.target.closest('.kartu-zona[data-status="terkunci"]');
     if (terkunci) toast(`${terkunci.dataset.syarat} ya!`, 'info');
   });
+
+  // Pramuat background peta zona begitu kartunya disorot/difokus
+  const pramuat = (e) => {
+    const kartu = e.target.closest?.('a.kartu-zona');
+    if (kartu) pramuatGambar(kartu.querySelector('.kartu-zona-gambar')?.getAttribute('src'));
+  };
+  halaman.addEventListener('pointerover', pramuat);
+  halaman.addEventListener('focusin', pramuat);
 
   await periksaPulauBaru(siswa, status);
 }
