@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Coding Island: belajar ngoding sambil berpetualang bersama Robot Tutor.">
+  <meta name="theme-color" content="#287A74">
+  <title>Coding Island</title>
+  <link rel="icon" type="image/png" href="image/robot/hai.png">
+
+  <!-- Font dari Google Fonts: Baloo 2 (judul), Nunito (isi), JetBrains Mono (kode) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700;800&family=JetBrains+Mono:wght@400;600;700&family=Nunito:wght@400;600;700;800&display=swap">
+
+  <!-- Tailwind CSS lewat CDN (untuk demo, tanpa proses build) -->
+  <script src="https://cdn.tailwindcss.com/3.4.16"></script>
+  <script>
+    // Warna dan font proyek didaftarkan agar bisa dipakai sebagai kelas, mis. bg-teal-tua, text-tinta, font-judul
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            teal: { DEFAULT: '#55A9A0', tua: '#287A74' },
+            mint: '#AEEED3',
+            kuning: '#FFF8B0',
+            tinta: '#12332F',
+            oranye: '#E8743B',
+            latar: '#F6FBF9'
+          },
+          fontFamily: {
+            judul: ['"Baloo 2"', 'system-ui', 'sans-serif'],
+            isi: ['Nunito', 'system-ui', 'sans-serif'],
+            kode: ['"JetBrains Mono"', 'ui-monospace', 'monospace']
+          }
+        }
+      }
+    };
+  </script>
+
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body class="font-isi text-tinta bg-latar">
+  <a href="#app" class="lewati-konten" data-lewati>Lewati ke isi halaman</a>
+
+  <!-- Semua halaman dirender router ke dalam elemen ini -->
+  <main id="app" tabindex="-1"></main>
+
+  <noscript>
+    <div style="padding:2rem;text-align:center;font-size:1.25rem">
+      Coding Island butuh JavaScript. Nyalakan JavaScript di browser ya.
+    </div>
+  </noscript>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
