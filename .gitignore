@@ -9,3 +9,7 @@ node_modules/
 
 # Cadangan database dari wrangler d1 export
 cadangan*.sql
+
+# Hasil Playwright
+test-results/
+playwright-report/

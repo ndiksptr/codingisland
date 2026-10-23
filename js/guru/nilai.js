@@ -5,9 +5,9 @@
 import { esc, bukaFormModal, toast, unduhBerkas } from '../ui.js';
 import { guruMatriksNilai, guruTimpaNilai, guruHapusTimpaNilai, simpanPreferensi } from '../store.js';
 import { muatUlang } from '../router.js';
-import { IKON, kosong, avatarSiswa, formatTanggal, buatCSV } from './komponen.js';
+import { IKON, kosong, avatarSiswa, formatTanggal } from './komponen.js';
+import { csvNilai, labelLevelNilai } from './csv.js';
 
-const LABEL_SINGKAT = { pantai: 'P', laut: 'L', gurun: 'G', salju: 'S' };
 
 function selHTML(c, l) {
   const keterangan = c.dimainkan
@@ -38,11 +38,7 @@ export async function renderNilai(wadah, { konteks, kelasId }) {
     if (akhir && akhir.zona === l.zona) akhir.jumlah++;
     else kelompok.push({ zona: l.zona, nama: l.zonaNama, warna: l.warna, jumlah: 1 });
   }
-  const nomorDiZona = {};
-  const labelLevel = levels.map((l) => {
-    nomorDiZona[l.zona] = (nomorDiZona[l.zona] || 0) + 1;
-    return `${LABEL_SINGKAT[l.zona] || l.zona[0].toUpperCase()}${nomorDiZona[l.zona]}`;
-  });
+  const labelLevel = labelLevelNilai(levels); // P1, P2, L1, ... (sama dengan kolom CSV)
   const rata = siswa.length ? Math.round(siswa.reduce((n, s) => n + s.nilaiAkhir, 0) / siswa.length) : 0;
 
   wadah.innerHTML = `
@@ -111,18 +107,8 @@ export async function renderNilai(wadah, { konteks, kelasId }) {
   wadah.querySelector('[data-cetak]')?.addEventListener('click', () => window.print());
 
   wadah.querySelector('[data-ekspor]')?.addEventListener('click', () => {
-    const kolomLevel = levels.map((l, i) => `${labelLevel[i]} ${l.judul}`);
-    const kolom = ['Nama lengkap', 'Kelas', ...kolomLevel, 'Nilai akhir', 'Ditimpa', 'Alasan'];
-    const baris = siswa.map((s) => ({
-      'Nama lengkap': s.namaLengkap,
-      Kelas: data.kelas.nama,
-      ...Object.fromEntries(levels.map((l, i) => [kolomLevel[i], s.sel[l.id].nilai])),
-      'Nilai akhir': s.nilaiAkhir,
-      Ditimpa: s.timpa ? 'Ya' : 'Tidak',
-      Alasan: s.timpa?.alasan || ''
-    }));
     const nama = `nilai-${data.kelas.nama.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${new Date().toISOString().slice(0, 10)}.csv`;
-    unduhBerkas(nama, buatCSV(kolom, baris)); // unduhBerkas menambahkan BOM UTF-8
+    unduhBerkas(nama, csvNilai(data)); // unduhBerkas menambahkan BOM UTF-8
     toast(`CSV nilai ${data.kelas.nama} diunduh.`, 'sukses');
   });
 

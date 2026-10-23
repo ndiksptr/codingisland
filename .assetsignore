@@ -1,21 +1,28 @@
-# .assetsignore — berkas yang TIDAK diunggah sebagai berkas statis (khusus server, build, atau dokumen)
-.git
-.gitignore
-.wrangler
-node_modules
-package.json
-package-lock.json
-src
-tailwind.config.cjs
-.dev.vars
-.dev.vars.example
-cadangan*.sql
-.assetsignore
-wrangler.toml
-worker.js
-schema.sql
-migrations
-functions
-server
-scripts
-*.md
+# .assetsignore — berkas yang TIDAK diunggah sebagai berkas statis (khusus server, build, tes, atau dokumen)
+# PENTING: aturannya seperti .gitignore. Nama tanpa "/" di depan berlaku di SEMUA folder,
+# jadi "worker.js" dulu ikut membuang js/game/worker.js (Web Worker interpreter siswa).
+# Karena itu setiap baris di bawah ditambatkan ke akar proyek dengan "/" di depan.
+/.git
+/.gitignore
+/.wrangler
+/node_modules
+/package.json
+/package-lock.json
+/src
+/tailwind.config.cjs
+/playwright.config.mjs
+/tests
+/test-results
+/playwright-report
+/.dev.vars
+/.dev.vars.example
+/cadangan*.sql
+/.assetsignore
+/wrangler.toml
+/worker.js
+/schema.sql
+/migrations
+/functions
+/server
+/scripts
+/*.md

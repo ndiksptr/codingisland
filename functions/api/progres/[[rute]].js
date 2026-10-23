@@ -2,7 +2,7 @@
 //   GET  /api/progres                     semua progres saya
 //   GET  /api/progres/juara               data sertifikat (null jika boss pulau terakhir belum selesai)
 //   GET  /api/progres/:levelId            progres satu level (atau null)
-//   POST /api/progres/:levelId/percobaan  { kode, detik } — server MENJALANKAN ULANG kode dengan interpreter
+//   POST /api/progres/:levelId/percobaan  { kode, detik } — level terkunci ditolak 403; server MENJALANKAN ULANG kode dengan interpreter
 //                                         yang sama, lalu menghitung berhasil, bintang, nilai, koin, berlian
 //   POST /api/progres/:levelId/clue       { nomor } — beli clue berurutan; teks clue dikirim setelah dibeli
 //   POST /api/progres/:levelId/lama       { detik } — tambah lama bermain
@@ -18,6 +18,7 @@ import {
 import { jalankanKode } from '../../../js/game/interpreter.js';
 import { hitungBintang, hitungKoin, NILAI_BINTANG, BERLIAN_BOSS, CLUE, KOIN_SELESAI_PERTAMA, KOIN_PER_BINTANG_BARU } from '../../../js/game/skor.js';
 import { ZONA } from '../../../js/data/zona.js';
+import { hitungPeta } from '../../../js/game/kemajuan.js';
 
 const MAKS_KODE = 5000;
 const MAKS_DETIK = 600;
@@ -35,15 +36,22 @@ async function levelUntukSiswa(db, siswa, levelId) {
   return l;
 }
 
-/** Level + progres siswa dalam satu kali bolak-balik ke D1. */
+/**
+ * Level + progres siswa dalam satu kali bolak-balik ke D1, sekaligus memeriksa level itu TERBUKA
+ * dengan aturan yang sama dengan peta (js/game/kemajuan.js): level/pulau terkunci ditolak 403.
+ */
 async function levelDanProgres(db, siswa, levelId) {
   const [rl, rp] = await db.batch([
-    perintah(db, 'SELECT * FROM level WHERE id = ?', levelId),
-    perintah(db, 'SELECT * FROM progres WHERE siswa_id = ? AND level_id = ?', siswa.id, levelId)
+    perintah(db, 'SELECT * FROM level'),
+    perintah(db, 'SELECT * FROM progres WHERE siswa_id = ?', siswa.id)
   ]);
-  const l = rl.results?.[0] ? levelKeObjek(rl.results[0]) : null;
-  if (!l || !levelTerlihatUntukKelas(l, siswa.kelas_id)) throw new GalatApi(404, 'Level tidak ditemukan.');
-  return { level: l, progres: rp.results?.[0] ? progresKeObjek(rp.results[0]) : null };
+  const terlihat = (rl.results || []).map(levelKeObjek).filter((x) => levelTerlihatUntukKelas(x, siswa.kelas_id));
+  const l = terlihat.find((x) => x.id === levelId);
+  if (!l) throw new GalatApi(404, 'Level tidak ditemukan.');
+  const semuaProgres = (rp.results || []).map(progresKeObjek);
+  const status = hitungPeta(terlihat, semuaProgres).flatMap((z) => z.levels).find((x) => x.id === levelId)?.status;
+  if (status === 'terkunci') throw new GalatApi(403, 'Level ini masih terkunci. Selesaikan level sebelumnya dulu ya.');
+  return { level: l, progres: semuaProgres.find((p) => p.levelId === levelId) || null };
 }
 
 const pastikanBarisProgres = (db, siswaId, levelId) =>

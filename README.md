@@ -15,7 +15,7 @@ Fitur utama:
 - **Admin:** semua fitur guru ditambah kelola akun guru dan pengaturan permainan.
 - **Teknis:** tampilan statis tanpa proses build (HTML, CSS, JavaScript ES module) dan hash router. Berjalan sebagai **Cloudflare Worker** (`worker.js`) dengan API di `functions/api` dan data di **Cloudflare D1**. Kode siswa dijalankan interpreter buatan sendiri di Web Worker (tanpa `eval`), lalu dijalankan ulang di server untuk menghitung nilai.
 
-Dokumen lain: [UJI-COBA.md](UJI-COBA.md) (daftar uji Tahap 1–11) dan [REVISI.md](REVISI.md) (catatan revisi).
+Cara menjalankan tes otomatis ada di bagian 8.
 
 ---
 
@@ -249,6 +249,8 @@ coding_island/
 │   ├── progres/        progres, jalankan (dinilai ulang di server), beli clue, juara
 │   ├── nilai/          matriks nilai, timpa nilai
 │   └── aktivitas/      log aktivitas, data Ringkasan dashboard
+├── tests/              Tes otomatis: helper.mjs, unit/, api/, e2e/ (Playwright), beban/, jalankan-lokal.mjs
+├── playwright.config.mjs Konfigurasi tes end-to-end (Chromium)
 ├── server/             Modul bersama API: http (router, galat), kripto (PBKDF2, token, perbandingan
 │                       waktu-konstan), sesi (cookie, peran, kelas yang diampu), data (kueri D1),
 │                       batas (batas percobaan berjendela), statistik, siapkan-db (isi database kosong),
@@ -269,7 +271,8 @@ coding_island/
     ├── game/           interpreter, worker, runner, editor (CodeMirror), panggung, kemajuan,
     │                   jalur peta, skor, validasi level, aturan isian siswa, ikon SVG, efek
     ├── pages/          Halaman siswa & umum (beranda, daftar, masuk, pasang, peta, level, profil, juara, bantuan)
-    └── guru/           Dashboard guru (ringkasan, kelas, siswa, level & soal, nilai, aktivitas, guru, pengaturan)
+    └── guru/           Dashboard guru (ringkasan, kelas, siswa, level & soal, nilai, aktivitas, guru, pengaturan);
+                        csv.js = pembuat CSV nilai (fungsi murni, diuji di tests/unit)
 ```
 
 Aturan teknis yang dipegang:
@@ -284,6 +287,34 @@ Aturan teknis yang dipegang:
 
 ---
 
-## 8. Langkah berikutnya
+## 8. Pengujian otomatis
+
+Semua tes ada di folder `tests/`: unit (`node:test`), API (`node:test`), end-to-end (Playwright, Chromium), dan beban.
+
+```bash
+npm install
+npx playwright install chromium   # sekali saja
+npm run test:lokal                # server uji sendiri + database kosong + semua tes
+```
+
+`test:lokal` menyalakan `wrangler dev` sendiri (port 8788 dan 8789, database kosong di `.wrangler/`), menjalankan unit, API, dan end-to-end, lalu menguji ulang sisi "mode pengembang mati". Hasil yang diharapkan: empat baris `LULUS`.
+
+Ke server yang sudah berjalan (`npx wrangler dev`, sebaiknya database kosong):
+
+| Perintah | Isi |
+|---|---|
+| `npm run test:unit` | interpreter, 13 level bawaan, bintang/nilai/koin, Nilai Akhir, CSV (tanpa server) |
+| `npm run test:api` | pemasangan, akun & batas login, matriks hak akses, jalankan & level terkunci, clue paralel, nilai, keamanan umum |
+| `npm run test:e2e` | alur siswa & guru di browser, error console, HP 375 px, keyboard di modal |
+| `npm test` | unit, API, lalu end-to-end |
+
+- `KODE_PASANG` diambil dari `.dev.vars`; tes memasang admin uji `admin.uji` bila database masih kosong. Setiap tes membuat kelas, guru, dan siswanya sendiri.
+- Ke staging: atur `BASE_URL`, `KODE_PASANG`, dan `ADMIN_PASSWORD`, lalu `npm test`.
+- Tes beban (hanya staging): `BASE_URL=https://codingisland-staging.<akun>.workers.dev npm run test:beban -- --siswa 90`. Mencoba skripnya di komputer sendiri: `npm run test:beban -- --izinkan-lokal`.
+- Tes **menolak** berjalan ke domain produksi (`codingisland.ndiksptr159.workers.dev`).
+
+---
+
+## 9. Langkah berikutnya
 
 - **Cadangan data:** ekspor database secara berkala (bagian 4d).

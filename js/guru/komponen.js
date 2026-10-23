@@ -148,11 +148,5 @@ export function bacaCSV(teks) {
   };
 }
 
-/** Ubah array objek menjadi teks CSV (pemisah koma). */
-export function buatCSV(kolom, data) {
-  const sel = (v) => {
-    const t = String(v ?? '');
-    return /[",\n;]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
-  };
-  return [kolom.join(','), ...data.map((d) => kolom.map((k) => sel(d[k])).join(','))].join('\r\n');
-}
+/** Ubah array objek menjadi teks CSV (pemisah koma). Isinya ada di csv.js agar bisa diuji di Node. */
+export { buatCSV } from './csv.js';

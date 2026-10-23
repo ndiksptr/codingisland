@@ -40,3 +40,14 @@ export function hitungKoin({ pertamaKali, bintangLama = 0, bintangBaru = 0 }) {
   const tambahanBintang = Math.max(0, bintangBaru - bintangLama);
   return (pertamaKali ? KOIN_SELESAI_PERTAMA : 0) + tambahanBintang * KOIN_PER_BINTANG_BARU;
 }
+
+/**
+ * Nilai Akhir siswa satu kelas (skala 1–100): rata-rata nilai SEMUA level yang terbit untuk kelas itu,
+ * level yang belum selesai dihitung 0, dibulatkan, minimal 1. Tanpa level: 1.
+ * nilaiLevel: daftar nilai level yang sudah selesai (0–100), jumlahLevel: banyaknya level terbit.
+ */
+export function hitungNilaiAkhir(nilaiLevel, jumlahLevel) {
+  if (!jumlahLevel) return 1;
+  const jumlah = nilaiLevel.reduce((n, x) => n + (Number(x) || 0), 0);
+  return Math.min(100, Math.max(1, Math.round(jumlah / jumlahLevel)));
+}

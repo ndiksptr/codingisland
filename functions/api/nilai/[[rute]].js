@@ -2,12 +2,14 @@
 //   GET    /api/nilai/:kelasId              matriks siswa x level terbit + nilai akhir
 //   PUT    /api/nilai/:kelasId/:siswaId     { nilai, alasan } timpa nilai akhir (1–100, alasan wajib)
 //   DELETE /api/nilai/:kelasId/:siswaId     kembalikan ke nilai otomatis
-// Nilai akhir = rata-rata nilai semua level terbit untuk kelas itu (belum selesai = 0), dibulatkan, minimal 1.
+// Nilai akhir = hitungNilaiAkhir (js/game/skor.js): rata-rata nilai semua level terbit untuk kelas itu
+// (belum selesai = 0), dibulatkan, 1–100.
 
 import { buatRouter, bacaJson, GalatApi } from '../../../server/http.js';
 import { aksesGuru, bolehKelas, ambilSiswaBoleh } from '../../../server/sesi.js';
 import { semua, jalankan, sekarang, semuaLevel, semuaKelas, levelTerlihatUntukKelas } from '../../../server/data.js';
 import { ZONA } from '../../../js/data/zona.js';
+import { hitungNilaiAkhir } from '../../../js/game/skor.js';
 
 export const onRequest = buatRouter([
   ['GET', ':kelasId', async (ctx, { kelasId }) => {
@@ -35,16 +37,14 @@ export const onRequest = buatRouter([
       }),
       siswa: siswaBaris.map((s) => {
         const sel = {};
-        let jumlah = 0;
         for (const l of levels) {
           const p = kunciProgres.get(`${s.id}|${l.id}`);
           const nilai = p?.selesai ? (p.nilai || 0) : 0;
-          jumlah += nilai;
           sel[l.id] = p
             ? { dimainkan: true, selesai: !!p.selesai, bintang: p.bintang || 0, nilai, percobaan: p.percobaan || 0, clueDibeli: p.clue_dibeli || 0 }
             : { dimainkan: false, selesai: false, bintang: 0, nilai: 0, percobaan: 0, clueDibeli: 0 };
         }
-        const nilaiOtomatis = Math.max(1, levels.length ? Math.round(jumlah / levels.length) : 1);
+        const nilaiOtomatis = hitungNilaiAkhir(levels.map((l) => sel[l.id].nilai), levels.length);
         const t = timpa.get(s.id);
         return {
           id: s.id,
