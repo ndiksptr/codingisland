@@ -75,9 +75,9 @@ function bagianHero(sesi) {
     </section>`;
 }
 
-function kartuZona(z) {
+function kartuZona(z, i) {
   return `
-    <article class="kartu p-0 overflow-hidden flex flex-col">
+    <article class="kartu p-0 overflow-hidden flex flex-col" data-gulir-muncul style="--tunda-gulir:${i * 0.12}s">
       <div class="relative aspect-video">
         <img src="${esc(z.gambar)}" alt="Pemandangan ${esc(z.nama)}" class="absolute inset-0 w-full h-full object-cover" loading="lazy">
         <span class="absolute top-3 left-3 rounded-2xl bg-teal-tua text-white font-judul font-bold px-3 py-0.5 text-base shadow">
@@ -96,12 +96,12 @@ function bagianZona() {
   return `
     <section id="pulau" class="scroll-mt-4 py-16 sm:py-20">
       <div class="mx-auto max-w-6xl px-4 sm:px-6">
-        <div class="text-center max-w-2xl mx-auto">
+        <div class="text-center max-w-2xl mx-auto" data-gulir-muncul>
           <h2 class="font-judul text-4xl sm:text-5xl font-extrabold text-teal-tua">Jelajahi 4 Pulau</h2>
           <p class="mt-3 text-lg sm:text-xl">Setiap pulau punya jurus coding baru. Selesaikan semua dan jadi juara!</p>
         </div>
         <div class="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-          ${ZONA.map(kartuZona).join('')}
+          ${ZONA.map((z, i) => kartuZona(z, i)).join('')}
         </div>
       </div>
     </section>`;
@@ -109,7 +109,7 @@ function bagianZona() {
 
 function langkah(nomor, judul, teks, ilustrasi) {
   return `
-    <li class="kartu flex flex-col items-center text-center gap-4">
+    <li class="kartu flex flex-col items-center text-center gap-4" data-gulir-muncul style="--tunda-gulir:${(nomor - 1) * 0.15}s">
       <span class="grid place-items-center w-12 h-12 rounded-full bg-teal-tua text-white font-judul text-2xl font-extrabold" aria-hidden="true">${nomor}</span>
       <div class="w-full h-40 rounded-2xl bg-latar grid place-items-center p-3">${ilustrasi}</div>
       <h3 class="font-judul text-2xl font-extrabold text-teal-tua">
@@ -153,7 +153,7 @@ function bagianCaraBermain() {
   return `
     <section class="py-16 sm:py-20 bg-mint/40">
       <div class="mx-auto max-w-6xl px-4 sm:px-6">
-        <div class="text-center max-w-2xl mx-auto">
+        <div class="text-center max-w-2xl mx-auto" data-gulir-muncul>
           <h2 class="font-judul text-4xl sm:text-5xl font-extrabold text-teal-tua">Cara Bermain</h2>
           <p class="mt-3 text-lg sm:text-xl">Cuma tiga langkah. Gampang, kan?</p>
         </div>
@@ -162,11 +162,37 @@ function bagianCaraBermain() {
           ${langkah(2, 'Jalankan Robot', 'Tekan tombol Jalankan dan lihat robot bergerak ke bendera.', ilustrasiJalankan)}
           ${langkah(3, 'Kumpulkan Bintang', 'Selesaikan level, dapatkan bintang dan koin!', ilustrasiBintang)}
         </ol>
-        <div class="mt-10 flex justify-center">
+        <div class="mt-10 flex justify-center" data-gulir-muncul>
           ${tombol({ teks: 'Ayo Mulai!', href: '#/daftar', varian: 'utama', ikon: 'image/item/roket-miring.png' })}
         </div>
       </div>
     </section>`;
+}
+
+/**
+ * Animasi muncul saat digulir: elemen [data-gulir-muncul] naik perlahan ketika masuk layar.
+ * Mati bila pengguna memilih "kurangi gerak" atau browser tidak mendukung IntersectionObserver.
+ * Hasil: fungsi pembersih untuk router.
+ */
+function pasangAnimasiGulir(akar) {
+  const kurangiGerak = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (kurangiGerak || !('IntersectionObserver' in window)) return () => {};
+  const pengamat = new IntersectionObserver((entri) => {
+    for (const e of entri) {
+      if (!e.isIntersecting) continue;
+      const el = e.target;
+      el.classList.add('terlihat');
+      pengamat.unobserve(el); // cukup sekali
+      // Setelah selesai, lepas kelasnya agar efek hover kartu kembali normal (tanpa jeda)
+      const jeda = parseFloat(getComputedStyle(el).transitionDelay) || 0;
+      setTimeout(() => el.classList.remove('gulir-muncul', 'terlihat'), (jeda + 0.8) * 1000);
+    }
+  }, { rootMargin: '0px 0px -10% 0px', threshold: 0.15 });
+  akar.querySelectorAll('[data-gulir-muncul]').forEach((el) => {
+    el.classList.add('gulir-muncul');
+    pengamat.observe(el);
+  });
+  return () => pengamat.disconnect();
 }
 
 /** Render landing page. */
@@ -180,4 +206,6 @@ export async function renderBeranda(halaman) {
     const kurangiGerak = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     target?.scrollIntoView({ behavior: kurangiGerak ? 'auto' : 'smooth', block: 'start' });
   });
+
+  return pasangAnimasiGulir(halaman);
 }

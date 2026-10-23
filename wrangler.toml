@@ -15,6 +15,12 @@ directory = "."
 binding = "ASSETS"
 run_worker_first = ["/api/*"]
 
+# Smart Placement: Worker dijalankan di dekat database D1, bukan di dekat pengunjung.
+# Satu permintaan API berisi beberapa kueri D1; tanpa ini setiap kueri menempuh jarak jauh
+# (terukur 0,3–0,8 detik per permintaan dari Indonesia). Berkas statis tetap dilayani dari dekat pengunjung.
+[placement]
+mode = "smart"
+
 # Log, waktu CPU, dan error tampil di dashboard (Workers & Pages -> codingisland -> Observability)
 [observability]
 enabled = true

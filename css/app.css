@@ -1240,6 +1240,15 @@ a.kartu-zona:hover .kartu-zona-gambar { transform: scale(1.05); }
 
 .melayang { animation: melayang 3.5s ease-in-out infinite; }
 .muncul { animation: muncul .4s cubic-bezier(.2, .9, .3, 1.2) both; }
+
+/* Muncul saat digulir (halaman utama). Kelas ditambahkan lewat JS, jadi tanpa JS tetap terlihat. */
+.gulir-muncul {
+  opacity: 0;
+  transform: translateY(32px) scale(.97);
+  transition: opacity .7s ease, transform .7s cubic-bezier(.2, .9, .3, 1.1);
+  transition-delay: var(--tunda-gulir, 0s);
+}
+.gulir-muncul.terlihat { opacity: 1; transform: none; }
 .goyang { animation: goyang .5s ease-in-out; }
 .halaman-masuk { animation: pudar-masuk .25s ease both; }
 
@@ -1251,6 +1260,7 @@ a.kartu-zona:hover .kartu-zona-gambar { transform: scale(1.05); }
 
 /* Hormati pengguna yang memilih mengurangi gerakan */
 @media (prefers-reduced-motion: reduce) {
+  .gulir-muncul { opacity: 1 !important; transform: none !important; transition: none !important; }
   html { scroll-behavior: auto; }
   .melayang, .muncul, .goyang, .halaman-masuk, .toast, .modal-latar, .loader-titik span,
   .bulatan-level, .terbang-melintas, .lompat-gembira, .bintang-muncul, .piala-sinar, .piala-besar, .piala-teks, .piala-berlian {
@@ -1297,6 +1307,7 @@ a.kartu-zona:hover .kartu-zona-gambar { transform: scale(1.05); }
 
 /* ---------- Gaya cetak (sertifikat juara) ---------- */
 @media print {
+  .gulir-muncul { opacity: 1 !important; transform: none !important; }
   @page { size: A4 landscape; margin: 10mm; }
   body { background: #fff !important; }
   .header-siswa, .no-print, .tombol-dev, .panel-dev, .wadah-toast, .lewati-konten { display: none !important; }

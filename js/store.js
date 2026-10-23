@@ -12,7 +12,10 @@ import { periksaKolomSiswa } from './game/aturan-siswa.js';
 export { periksaKolomSiswa };
 
 const AWALAN = 'ci_';
-const LAMA_CACHE_SESI_MS = 15 * 1000; // sesi dibaca ulang dari server paling cepat tiap 15 detik
+const LAMA_CACHE_SESI_MS = 60 * 1000; // sesi dibaca ulang dari server paling cepat tiap 60 detik
+// Data baca siswa (level, progres, kelas, dll.) disimpan sebentar agar pindah halaman tidak menunggu server.
+// Semua cache dibuang setiap ada permintaan yang mengubah data (lihat api()).
+const LAMA_CACHE_DATA_MS = 60 * 1000;
 
 // =====================================================================
 // Helper
@@ -45,7 +48,7 @@ const JEDA_COBA_ULANG_MS = 800;
  * Permintaan GET dicoba ulang SEKALI bila gagal karena jaringan atau server sibuk.
  * Permintaan yang mengubah data tidak diulang otomatis (agar tidak terkirim dua kali).
  */
-async function api(path, { metode = 'GET', data } = {}) {
+async function api(path, { metode = 'GET', data, simpanCache = false } = {}) {
   const bolehUlang = metode === 'GET';
   for (let ke = 1; ; ke++) {
     let res;
@@ -70,7 +73,8 @@ async function api(path, { metode = 'GET', data } = {}) {
       if (res.status === 401) lupakanSesi();
       throw isi?.galat ? new Error(isi.galat) : galatLambat();
     }
-    if (metode !== 'GET') lupakanSesi(); // data berubah: sesi (koin, nama) dibaca ulang
+    // Data berubah: sesi (koin, nama) & data baca tersimpan diambil ulang dari server
+    if (metode !== 'GET' && !simpanCache) lupakanSesi();
     return isi;
   }
 }
@@ -105,6 +109,22 @@ let cacheSesi = null; // { waktu, janji } — janji berisi respons /api/auth/ses
 
 function lupakanSesi() {
   cacheSesi = null;
+  cacheBaca.clear();
+}
+
+// ---------- Cache data baca (60 detik, dibuang saat ada perubahan) ----------
+const cacheBaca = new Map(); // path -> { waktu, janji }
+
+/** GET dengan cache singkat. Hasil berupa salinan, jadi halaman bebas mengubahnya. */
+async function bacaTersimpan(path) {
+  let c = cacheBaca.get(path);
+  if (!c || Date.now() - c.waktu >= LAMA_CACHE_DATA_MS) {
+    const janji = api(path);
+    c = { waktu: Date.now(), janji };
+    cacheBaca.set(path, c);
+    janji.catch(() => { if (cacheBaca.get(path) === c) cacheBaca.delete(path); }); // galat tidak disimpan
+  }
+  return structuredClone(await c.janji);
 }
 
 /**
@@ -171,7 +191,7 @@ export async function statusTahan(jenis) {
 // =====================================================================
 /** Kelas untuk dropdown pendaftaran (tanpa kode kelas). */
 export async function daftarKelasPublik() {
-  return api('kelas/publik');
+  return bacaTersimpan('kelas/publik');
 }
 
 export async function cekKodeKelas(kelasId, kode) {
@@ -224,14 +244,14 @@ async function ubahGuru(id, perubahan) {
 
 export async function getKelas(id) {
   if (!id) return null;
-  return api(`kelas/${enc(id)}`);
+  return bacaTersimpan(`kelas/${enc(id)}`);
 }
 
 
 /** Siswa yang sedang masuk membaca datanya sendiri; guru membaca siswa di kelasnya. */
 export async function getSiswa(id) {
   const sesi = await sesiAktif();
-  if (sesi?.jenis === 'siswa') return sesi.pengguna.id === id ? api('siswa/saya') : null;
+  if (sesi?.jenis === 'siswa') return sesi.pengguna.id === id ? bacaTersimpan('siswa/saya') : null;
   return (await guruDetailSiswa(id)).siswa;
 }
 
@@ -265,25 +285,26 @@ export async function getLevel(id) {
  * Solusi tidak dikirim; teks clue hanya ada untuk clue yang sudah dibeli.
  */
 export async function daftarLevelTerbit({ zona } = {}) {
-  const levels = await api(`level/terbit${qs({ zona })}`);
+  const levels = await bacaTersimpan(`level/terbit${qs({ zona })}`);
   for (const l of levels) clueTerbit.set(l.id, l.clue);
   return levels;
 }
 
 export async function getHargaClue() {
-  return api('level/harga-clue');
+  return bacaTersimpan('level/harga-clue');
 }
 
 // =====================================================================
 // Progres (selalu milik siswa yang sedang masuk)
 // =====================================================================
 export async function getSemuaProgres({ levelId } = {}) {
-  const semua = await api('progres');
+  const semua = await bacaTersimpan('progres');
   return levelId ? semua.filter((p) => p.levelId === levelId) : semua;
 }
 
+// Diambil dari daftar progres yang sudah tersimpan (tanpa permintaan tambahan ke server)
 export async function getProgres(_siswaId, levelId) {
-  return api(`progres/${enc(levelId)}`);
+  return (await bacaTersimpan('progres')).find((p) => p.levelId === levelId) || null;
 }
 
 /** Alat pengembang (MODE_DEV=1 di server). */
@@ -329,13 +350,14 @@ export async function beliClue(_siswaId, levelId, nomor) {
 
 /** Data sertifikat juara, atau null jika boss zona terakhir belum selesai. */
 export async function getRingkasanJuara() {
-  return api('progres/juara');
+  return bacaTersimpan('progres/juara');
 }
 
+// Lama bermain tidak tampil di peta, jadi cache tidak perlu dibuang
 export async function tambahLamaBermain(_siswaId, levelId, detik) {
   const d = Math.max(0, Math.round(Number(detik) || 0));
   if (!d) return null;
-  return api(`progres/${enc(levelId)}/lama`, { metode: 'POST', data: { detik: d } });
+  return api(`progres/${enc(levelId)}/lama`, { metode: 'POST', data: { detik: d }, simpanCache: true });
 }
 
 // =====================================================================
@@ -367,7 +389,7 @@ export async function simpanPreferensi(perubahan) {
 // API DASHBOARD GURU (server memeriksa peran & kelas yang diampu)
 // =====================================================================
 export async function guruKonteks() {
-  return api('auth/konteks');
+  return bacaTersimpan('auth/konteks');
 }
 
 export async function guruRingkasan({ kelasId } = {}) {
