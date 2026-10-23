@@ -1,9 +1,9 @@
-# Daftar Uji Coba: Tahap 1–10B
+# Daftar Uji Coba: Tahap 1–9
 
-Cara pakai: jalankan `npx wrangler dev` lalu buka `http://localhost:8787` (lihat [README.md](README.md) bagian 2), lalu centang `[x]` setiap butir yang sudah sesuai.
+Cara pakai: jalankan server lokal (lihat [README.md](README.md)), lalu centang `[x]` setiap butir yang sudah sesuai.
 Jika ada yang tidak sesuai, catat nomornya (misalnya **U2.7**) di [REVISI.md](REVISI.md).
 
-Sebelum mulai, kembalikan data ke contoh awal agar sama dengan daftar ini: masuk sebagai `admin` → **Pengaturan** → **Reset data demo** (atau hentikan server lalu hapus folder `.wrangler`).
+Sebelum mulai: klik **Reset data demo** di footer beranda agar datanya sama dengan daftar ini.
 
 > **Penting setelah ada pembaruan kode:** tekan **Ctrl + F5** (muat ulang paksa) agar browser tidak memakai file lama.
 > Lebih aman lagi: buka DevTools (F12) → tab **Network** → centang **Disable cache**, dan biarkan DevTools terbuka selama menguji.
@@ -111,49 +111,49 @@ pengujiannya memakai **halaman pengembang** yang menampilkan hasil dalam bentuk 
 
 - [ ] **U4.4 Salah ketik.** Dunia **Lurus**, kode:
       `     majuu()
-    `
+  `
       Harapan: **GAGAL**, "Baris 1: Robot belum kenal majuu. Maksudmu maju()?"
 
 - [ ] **U4.5 Kurung hilang.** Dunia **Lurus**, kode:
       `     maju(2
-    `
+  `
       Harapan: "Baris 1: kurung tutup ) sepertinya hilang."
 
 - [ ] **U4.6 Lupa garis bawah.** Dunia **Lurus**, kode:
       `     belok kiri()
-    `
+  `
       Harapan: "Baris 1: Robot belum kenal belok. Maksudmu belok*kiri()? Pakai garis bawah * ya."
 
 - [ ] **U4.7 Perulangan tanpa akhir.** Dunia **Lurus**, kode:
       `     selama bukan ada_jurang() {
-      belok_kiri()
-    }
-    `
+    belok_kiri()
+  }
+  `
       Harapan: "Baris 1: Robot kelelahan! Sepertinya perulanganmu tidak pernah berhenti." Halaman tidak macet.
 
 - [ ] **U4.8 Perintah belum dibuka.** Dunia **Lurus**. Isi kolom _perintahTersedia_ dengan `maju, belok_kiri`, lalu kode:
       `     ulangi 5 {
-      maju()
-    }
-    `
+    maju()
+  }
+  `
       Harapan: "Baris 1: ulangi belum bisa dipakai. Perintah ini belum dibuka di pulau ini."
       Setelah itu **kosongkan lagi** kolom _perintahTersedia_.
 
 - [ ] **U4.9 Huruf besar dan spasi.** Dunia **Lurus**, kode:
       `     MAJU ( 5 )
-    `
+  `
       Harapan: **BERHASIL** (robot di dunia Lurus perlu maju 5 petak).
 
 - [ ] **U4.10 Variabel.** Dunia **Lurus**, kode:
       `     buat langkah = 2
-    langkah = langkah + 3
-    maju(langkah)
-    `
+  langkah = langkah + 3
+  maju(langkah)
+  `
       Harapan: **BERHASIL**. Tabel jejak berisi 5 baris `gerak` lalu `selesai`.
 
 - [ ] **U4.11 Menabrak batu.** Dunia **Belok & batu**, kode:
       `     maju(3)
-    `
+  `
       Harapan: **GAGAL**, "Baris 1: Robot menabrak batu!" Baris terakhir tabel jejak berjenis `tabrak`.
 
 ## Tahap 5: Halaman level
@@ -303,43 +303,6 @@ Siapkan: **Reset data demo**, **Ctrl + F5**, masuk `bu.sari` / `guru123`, buka m
 | U9.19 | DevTools → Application → blokir penyimpanan (atau mode privat ketat), muat ulang | Aplikasi tetap tampil (tidak layar putih)                                                               | [ ] |
 | U9.20 | Peta pulau: arahkan kursor ke kartu pulau, lihat tab Network                     | Background pulau mulai dimuat sebelum diklik                                                            | [ ] |
 
-## Tahap 10: Siap hosting di Cloudflare Pages
-
-| No     | Langkah | Hasil yang diharapkan | OK  |
-| ------ | ------- | --------------------- | --- |
-| U10.1  | Buka situs tanpa `?dev=1` | Tidak ada tombol **Dev**; di Console `typeof ciDev` = `"undefined"`; `#/uji-interpreter` menampilkan 404 | [ ] |
-| U10.2  | Buka dengan `?dev=1` | Tombol **Dev** muncul dan `ciDev` tersedia | [ ] |
-| U10.3  | Lihat tab browser | Ikon robot kecil (favicon 32 px) | [ ] |
-| U10.4  | Cek ukuran `image/background/*.jpeg` | Masing-masing di bawah 300 KB, nama file tidak berubah, gambar tetap tajam | [ ] |
-| U10.5  | Deploy lewat dashboard (README 3a) atau `npx wrangler pages deploy . --project-name=coding-island` | Situs terbuka di `https://coding-island.pages.dev` | [ ] |
-| U10.6  | Di situs Cloudflare: buka beranda, peta, level, dashboard guru | Semua gambar tampil (tidak ada gambar rusak karena huruf besar-kecil) | [ ] |
-| U10.7  | DevTools → Network → klik `app.css` → Headers | `cache-control: public, max-age=86400`, `x-content-type-options: nosniff`, `referrer-policy: strict-origin-when-cross-origin` | [ ] |
-| U10.8  | Kirim tautan situs di WhatsApp/Telegram | Pratinjau dengan gambar Robot Tutor, judul, dan deskripsi | [ ] |
-| U10.9  | Buka situs di HP lewat `https` lalu daftar/masuk | PIN bisa dipakai (hashing berjalan di https) | [ ] |
-| U10.10 | Simpan ke layar utama di iPhone/Android | Ikon robot berlatar mint (180 px) | [ ] |
-
-## Tahap 10B: Versi penuh dengan Cloudflare Worker + D1
-
-Persiapan: hapus folder `.wrangler` (database kosong), jalankan `npx wrangler dev`, lalu buka `http://localhost:8787`.
-
-| No      | Langkah | Hasil yang diharapkan | OK  |
-| ------- | ------- | --------------------- | --- |
-| U10B.1  | Buka beranda, peta, level, dan dashboard guru | Tampilan sama dengan versi sebelumnya (tautan Reset data demo di footer beranda sudah tidak ada); data contoh langsung tersedia walau database awalnya kosong | [ ] |
-| U10B.2  | Masuk sebagai `aisyah3` / PIN `1234` | Masuk ke peta. DevTools → Application → Cookies: ada `ci_sesi` dengan centang **HttpOnly** dan **Secure**, SameSite **Lax** | [ ] |
-| U10B.3  | Console: `document.cookie` | Tidak memuat `ci_sesi` (tidak bisa dibaca JavaScript) | [ ] |
-| U10B.4  | Masuk dengan PIN salah 5 kali untuk username yang sama | Percobaan ke-5 menahan login 60 detik; PIN benar pun ditolak selama ditahan | [ ] |
-| U10B.5  | Mainkan level, beli Clue 1, lalu selesaikan level | Teks clue tampil setelah dibeli, koin berkurang/bertambah, bintang tersimpan. Muat ulang: data tetap ada | [ ] |
-| U10B.6  | DevTools → Network → respons `/api/level/terbit` | Tidak ada `solusi`; teks clue yang belum dibeli kosong | [ ] |
-| U10B.7  | Buka browser lain (atau jendela privat), masuk sebagai `bu.sari` / `guru123` | Aktivitas dan nilai siswa dari U10B.5 langsung terlihat (data bersama, bukan per browser) | [ ] |
-| U10B.8  | Sebagai `bu.sari`, Console: `fetch('/api/siswa?kelasId=kelas_5a').then(r => r.status)` | `403` (kelas bukan ampuan) | [ ] |
-| U10B.9  | Sebagai `bu.sari`, buka `#/guru/guru` | Kembali ke Ringkasan (menu Guru khusus admin); `fetch('/api/auth/guru')` → `403` | [ ] |
-| U10B.10 | Sebagai siswa, Console: `fetch('/api/auth/konteks').then(r => r.status)` | `401` atau `403` | [ ] |
-| U10B.11 | Tambah siswa, reset PIN, timpa nilai, buat level draf lalu terbitkan | Semua berhasil; PIN baru tampil sekali; level baru terlihat siswa kelas tujuan saja | [ ] |
-| U10B.12 | Masuk sebagai `admin` → **Pengaturan** → **Reset data demo** → **Ya, reset** | Data kembali seperti contoh awal (progres dari U10B.5 hilang) dan admin diarahkan ke halaman masuk guru | [ ] |
-| U10B.13 | Buka `/schema.sql`, `/wrangler.toml`, `/worker.js`, `/server/kripto.js` | `404`, isi berkas tidak bisa dibuka | [ ] |
-| U10B.14 | Ubah `MODE_DEV` di `.dev.vars` menjadi `"0"`, jalankan ulang, buka `?dev=1` → panel Dev → Selesaikan level | Ditolak dengan toast peringatan ("Fitur ini hanya untuk guru." atau "Alat pengembang tidak aktif di server ini."); progres tidak berubah | [ ] |
-| U10B.15 | Push ke GitHub `main`, tunggu build Cloudflare selesai (README bagian 3) | Situs `https://codingisland.….workers.dev` langsung bisa masuk dengan akun demo; binding `DB` terlihat di Settings → Bindings | [ ] |
-
 ## Ringkasan hasil
 
 | Tahap   | Jumlah butir | Lulus | Gagal | Catatan |
@@ -353,7 +316,5 @@ Persiapan: hapus folder `.wrangler` (database kosong), jalankan `npx wrangler de
 | Tahap 7 | 27           |       |       |         |
 | Tahap 8 | 26           |       |       |         |
 | Tahap 9 | 20           |       |       |         |
-| Tahap 10 | 10          |       |       |         |
-| Tahap 10B | 15         |       |       |         |
 
 Diuji oleh: \***\*\_\_\_\_\*\*** Tanggal: \***\*\_\_\_\_\*\*** Browser/perangkat: \***\*\_\_\_\_\*\***

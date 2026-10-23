@@ -13,11 +13,11 @@ directory = "."
 binding = "ASSETS"
 run_worker_first = ["/api/*"]
 
-# Database D1. Tanpa database_id, `wrangler deploy` membuat database ini otomatis
-# saat deploy pertama. Tabel + data contoh diisi otomatis oleh worker saat pertama dibuka.
+# Database D1 (dibuat manual di dashboard, dihubungkan lewat database_id). Tabel + data contoh diisi otomatis oleh worker saat pertama dibuka.
 [[d1_databases]]
 binding = "DB"
 database_name = "coding-island-db"
+database_id = "9e840ba1-077f-4322-8560-d01841b7b21d"
 
 [vars]
 # "1" = halaman masuk menampilkan daftar akun contoh. Ubah ke "0" saat dipakai sungguhan.
