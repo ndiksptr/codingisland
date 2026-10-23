@@ -5,9 +5,8 @@
 //   migrations/0001_struktur_awal.sql  patokan struktur + pengaturan bawaan + 13 level bawaan.
 //                                      Hanya ditulis jika BELUM ada (migrasi yang sudah dijalankan
 //                                      tidak boleh diubah). Tambahkan --tulis-ulang untuk memaksa.
-//   schema.sql                         gabungan semua migrasi (tanpa perintah pembersihan data),
-//                                      untuk dibaca atau mengisi database kosong secara manual.
-//   server/skema.js                    perintah yang sama, dipakai worker.js mengisi database kosong.
+//   server/skema.js                    gabungan semua migrasi (tanpa perintah pembersihan data),
+//                                      dipakai worker.js mengisi database yang masih kosong.
 //
 // Semua perintah aman diulang: CREATE ... IF NOT EXISTS dan INSERT OR IGNORE.
 // Tidak ada akun, kelas, atau siswa bawaan — admin pertama dibuat lewat #/pasang.
@@ -198,7 +197,7 @@ if (!existsSync(berkas0001) || process.argv.includes('--tulis-ulang')) {
 }
 
 // ---------- Gabungkan semua migrasi ----------
-// Perintah pembersihan data (DELETE) hanya untuk database lama, jadi tidak ikut ke schema.sql/skema.js
+// Perintah pembersihan data (DELETE) hanya untuk database lama, jadi tidak ikut ke skema.js
 const daftarMigrasi = readdirSync(akar('migrations')).filter((f) => /^\d{4}_.+\.sql$/.test(f)).sort();
 const perintah = [];
 for (const f of daftarMigrasi) {
@@ -209,15 +208,6 @@ for (const f of daftarMigrasi) {
   }
 }
 
-writeFileSync(akar('schema.sql'), `-- schema.sql — struktur lengkap database Coding Island (gabungan migrations/*.sql)
--- DIBUAT OTOMATIS oleh scripts/buat-schema.mjs. Jangan diedit manual.
--- Aman dijalankan ulang: tidak menghapus data. Untuk database online pakai:
---   npx wrangler d1 migrations apply coding-island-db --remote
--- Migrasi: ${daftarMigrasi.join(', ')}
-
-${perintah.join(';\n\n')};
-`);
-
 writeFileSync(akar('server/skema.js'), `// server/skema.js — DIBUAT OTOMATIS oleh scripts/buat-schema.mjs. Jangan diedit manual.
 // Perintah SQL gabungan migrations/*.sql (tanpa pembersihan data), dipakai worker.js
 // untuk mengisi database yang masih kosong: struktur tabel, pengaturan bawaan, dan level bawaan.
@@ -226,4 +216,4 @@ writeFileSync(akar('server/skema.js'), `// server/skema.js — DIBUAT OTOMATIS o
 export const SKEMA_BUAT = ${JSON.stringify(perintah, null, 2)};
 `);
 
-console.log(`schema.sql & server/skema.js dibuat dari ${daftarMigrasi.length} migrasi (${perintah.length} perintah, ${LEVEL_AWAL.length} level bawaan).`);
+console.log(`server/skema.js dibuat dari ${daftarMigrasi.length} migrasi (${perintah.length} perintah, ${LEVEL_AWAL.length} level bawaan).`);

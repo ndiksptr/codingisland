@@ -15,8 +15,6 @@ Fitur utama:
 - **Admin:** semua fitur guru ditambah kelola akun guru dan pengaturan permainan.
 - **Teknis:** tampilan statis tanpa proses build (HTML, CSS, JavaScript ES module) dan hash router. Berjalan sebagai **Cloudflare Worker** (`worker.js`) dengan API di `functions/api` dan data di **Cloudflare D1**. Kode siswa dijalankan interpreter buatan sendiri di Web Worker (tanpa `eval`), lalu dijalankan ulang di server untuk menghitung nilai.
 
-Cara menjalankan tes otomatis ada di bagian 8.
-
 ---
 
 ## 1. Pemasangan pertama
@@ -128,7 +126,7 @@ npx wrangler d1 migrations list coding-island-db --remote
 npx wrangler d1 migrations apply coding-island-db --remote
 ```
 
-Aturan menambah migrasi: buat berkas bernomor berikutnya (`0004_...sql`), jangan pernah mengubah migrasi yang sudah dijalankan, dan jangan menghapus tabel yang berisi data sungguhan. Setelah menambah migrasi, jalankan `node scripts/buat-schema.mjs` agar `schema.sql` dan `server/skema.js` ikut diperbarui.
+Aturan menambah migrasi: buat berkas bernomor berikutnya (`0004_...sql`), jangan pernah mengubah migrasi yang sudah dijalankan, dan jangan menghapus tabel yang berisi data sungguhan. Setelah menambah migrasi, jalankan `node scripts/buat-schema.mjs` agar `server/skema.js` ikut diperbarui.
 
 ### 4c. Variabel dan rahasia
 
@@ -163,7 +161,7 @@ Rahasia tidak pernah ditulis di kode, `wrangler.toml`, atau git.
 - **Klik ganda / permintaan bersamaan:** koin, berlian, bintang, piala, dan pembelian clue dihitung di dalam satu transaksi D1 dari isi database saat itu, jadi dua permintaan yang sama tidak memberi koin dobel atau memotong koin dua kali. Tombol **Jalankan** dan **Beli Clue** juga mati selama permintaan berjalan.
 - Setiap endpoint guru memeriksa **peran** (guru/admin) dan **kelas yang diampu**.
 - Saat siswa menekan **Jalankan**, server menjalankan ulang kode dan menghitung sendiri bintang, nilai, koin, dan berlian. Kunci jawaban tidak dikirim ke siswa, dan teks clue baru dikirim setelah dibeli.
-- Perubahan data wajib berformat JSON (perlindungan CSRF ringan). Berkas khusus server (`server/`, `functions/`, `migrations/`, `worker.js`, `schema.sql`, `wrangler.toml`, dokumen `.md`) tidak ikut diunggah sebagai berkas statis (lihat `.assetsignore`).
+- Perubahan data wajib berformat JSON (perlindungan CSRF ringan). Berkas khusus server (`server/`, `functions/`, `migrations/`, `worker.js`, `wrangler.toml`, dokumen `.md`) tidak ikut diunggah sebagai berkas statis (lihat `.assetsignore`).
 
 ### 4f. Setelah deploy
 
@@ -219,7 +217,6 @@ Alat pengembang **tidak pernah dimuat di situs online**. Browser menanyakan `/ap
 |---|---|
 | Panel Dev | Tombol oranye **Dev** di pojok kiri bawah: selesaikan level, tuntaskan pulau, reset progres, validasi semua level, tautan ke Uji Interpreter (masuk sebagai siswa dulu) |
 | `ciDev` di Console | `ciDev.selesaikanLevel('pantai-4', 3)`, `ciDev.tuntaskanPulau('pantai')`, `ciDev.resetProgres()`, `ciDev.validasiLevel()`, `ciDev.bantuan()` |
-| Uji Interpreter | `#/uji-interpreter`: coba kode di dunia contoh, atau klik **Jalankan semua tes** (22 kasus). Di situs online rute ini tidak ada (404). |
 
 ---
 
@@ -236,9 +233,8 @@ coding_island/
 ├── tailwind.config.cjs Warna & font Tailwind; src/ berisi masukan build (tidak diunggah)
 ├── .dev.vars.example   Contoh variabel uji lokal; salin menjadi .dev.vars (tidak ikut git)
 ├── migrations/         Migrasi D1 bernomor: 0001_struktur_awal, 0002_hapus_data_demo, 0003_indeks
-├── schema.sql          Struktur lengkap gabungan migrasi (DIBUAT oleh scripts/buat-schema.mjs)
 ├── scripts/
-│   ├── buat-schema.mjs Membuat 0001 (bila belum ada), schema.sql, dan server/skema.js
+│   ├── buat-schema.mjs Membuat 0001 (bila belum ada) dan server/skema.js
 │   └── build-vendor.mjs Bundel CodeMirror & confetti (esbuild) dan salin font
 ├── functions/api/      API, satu file per sumber daya:
 │   ├── auth/           sesi, pemasangan pertama, masuk/keluar, daftar, batas login, akun sendiri,
@@ -249,8 +245,6 @@ coding_island/
 │   ├── progres/        progres, jalankan (dinilai ulang di server), beli clue, juara
 │   ├── nilai/          matriks nilai, timpa nilai
 │   └── aktivitas/      log aktivitas, data Ringkasan dashboard
-├── tests/              Tes otomatis: helper.mjs, unit/, api/, e2e/ (Playwright), beban/, jalankan-lokal.mjs
-├── playwright.config.mjs Konfigurasi tes end-to-end (Chromium)
 ├── server/             Modul bersama API: http (router, galat), kripto (PBKDF2, token, perbandingan
 │                       waktu-konstan), sesi (cookie, peran, kelas yang diampu), data (kueri D1),
 │                       batas (batas percobaan berjendela), statistik, siapkan-db (isi database kosong),
@@ -265,14 +259,14 @@ coding_island/
     ├── router.js       Hash router dengan parameter (#/level/:id) dan penjaga rute
     ├── ui.js           Tombol, kartu, modal, toast, loader, form modal, PIN, unduh berkas
     ├── store.js        SATU-SATUNYA pintu data: fetch() ke /api
-    ├── dev.js          Panel Dev, ciDev, rute #/uji-interpreter (hanya dimuat bila MODE_DEV=1)
+    ├── dev.js          Panel Dev & ciDev (hanya dimuat bila MODE_DEV=1)
     ├── vendor/         codemirror.js & confetti.js hasil bundel (npm run build:vendor)
     ├── data/           zona.js (4 pulau), levels.js (13 level bawaan)
     ├── game/           interpreter, worker, runner, editor (CodeMirror), panggung, kemajuan,
     │                   jalur peta, skor, validasi level, aturan isian siswa, ikon SVG, efek
     ├── pages/          Halaman siswa & umum (beranda, daftar, masuk, pasang, peta, level, profil, juara, bantuan)
     └── guru/           Dashboard guru (ringkasan, kelas, siswa, level & soal, nilai, aktivitas, guru, pengaturan);
-                        csv.js = pembuat CSV nilai (fungsi murni, diuji di tests/unit)
+                        csv.js = pembuat CSV nilai
 ```
 
 Aturan teknis yang dipegang:
@@ -287,34 +281,6 @@ Aturan teknis yang dipegang:
 
 ---
 
-## 8. Pengujian otomatis
-
-Semua tes ada di folder `tests/`: unit (`node:test`), API (`node:test`), end-to-end (Playwright, Chromium), dan beban.
-
-```bash
-npm install
-npx playwright install chromium   # sekali saja
-npm run test:lokal                # server uji sendiri + database kosong + semua tes
-```
-
-`test:lokal` menyalakan `wrangler dev` sendiri (port 8788 dan 8789, database kosong di `.wrangler/`), menjalankan unit, API, dan end-to-end, lalu menguji ulang sisi "mode pengembang mati". Hasil yang diharapkan: empat baris `LULUS`.
-
-Ke server yang sudah berjalan (`npx wrangler dev`, sebaiknya database kosong):
-
-| Perintah | Isi |
-|---|---|
-| `npm run test:unit` | interpreter, 13 level bawaan, bintang/nilai/koin, Nilai Akhir, CSV (tanpa server) |
-| `npm run test:api` | pemasangan, akun & batas login, matriks hak akses, jalankan & level terkunci, clue paralel, nilai, keamanan umum |
-| `npm run test:e2e` | alur siswa & guru di browser, error console, HP 375 px, keyboard di modal |
-| `npm test` | unit, API, lalu end-to-end |
-
-- `KODE_PASANG` diambil dari `.dev.vars`; tes memasang admin uji `admin.uji` bila database masih kosong. Setiap tes membuat kelas, guru, dan siswanya sendiri.
-- Ke staging: atur `BASE_URL`, `KODE_PASANG`, dan `ADMIN_PASSWORD`, lalu `npm test`.
-- Tes beban (hanya staging): `BASE_URL=https://codingisland-staging.<akun>.workers.dev npm run test:beban -- --siswa 90`. Mencoba skripnya di komputer sendiri: `npm run test:beban -- --izinkan-lokal`.
-- Tes **menolak** berjalan ke domain produksi (`codingisland.ndiksptr159.workers.dev`).
-
----
-
-## 9. Langkah berikutnya
+## 8. Langkah berikutnya
 
 - **Cadangan data:** ekspor database secara berkala (bagian 4d).

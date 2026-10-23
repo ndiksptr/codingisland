@@ -1,4 +1,4 @@
-// js/dev.js — alat bantu pengembang (panel Dev, ciDev, rute #/uji-interpreter)
+// js/dev.js — alat bantu pengembang (panel Dev, ciDev)
 // File ini HANYA diimpor oleh main.js bila server melaporkan modeDev (MODE_DEV=1 di .dev.vars),
 // jadi tidak pernah dimuat di situs online. Cara pakai saat uji lokal (http://localhost:8787):
 // 1. Panel di layar: klik tombol "Dev" di pojok kiri bawah.
@@ -6,7 +6,7 @@
 //    (Chrome meminta mengetik "allow pasting" dulu jika perintah ditempel, bukan diketik.)
 
 import { sesiAktif, daftarLevel, getLevel, getProgres, simpanProgres, hapusProgres, aturZonaTerlihat } from './store.js';
-import { muatUlang, rute } from './router.js';
+import { muatUlang } from './router.js';
 import { ZONA } from './data/zona.js';
 import { NILAI_BINTANG } from './game/skor.js';
 import { esc, toast } from './ui.js';
@@ -146,7 +146,6 @@ async function isiPanel(panel) {
 
     <div class="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm font-bold">
       <a class="tautan" href="#/peta">Peta</a>
-      <a class="tautan" href="#/uji-interpreter">Uji Interpreter</a>
       <a class="tautan" href="#/masuk">Masuk siswa</a>
     </div>`;
 }
@@ -192,11 +191,6 @@ function pasangPanel() {
 
 /** Pasang semua alat pengembang. Dipanggil main.js sebelum router mulai. */
 export function pasangAlatDev() {
-  // Halaman uji interpreter baru dimuat saat dibuka
-  rute('/uji-interpreter', async (halaman, konteks) => {
-    const { renderUjiInterpreter } = await import('./pages/uji-interpreter.js');
-    return renderUjiInterpreter(halaman, konteks);
-  }, 'Uji Interpreter');
   window.ciDev = perintahDev;
   console.info('[ciDev] Mode pengembang aktif. Ketik ciDev.bantuan() untuk melihat perintah.');
   pasangPanel();
