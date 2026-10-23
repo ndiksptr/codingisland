@@ -13,7 +13,7 @@ import { pindah } from '../router.js';
 const LANGKAH = [
   { nomor: 1, label: 'Nama' },
   { nomor: 2, label: 'Kelas' },
-  { nomor: 3, label: 'Akun' }
+  { nomor: 3, label: 'Username & PIN' }
 ];
 
 function indikatorHTML() {
@@ -53,6 +53,7 @@ function langkah1() {
   return `
     <div data-langkah="1" class="flex flex-col gap-2">
       <h2 class="font-judul text-3xl font-extrabold text-teal-tua mb-2">Siapa namamu?</h2>
+      <p class="rounded-2xl bg-mint p-3 font-bold">Nama dipakai gurumu untuk mengenalimu. Untuk masuk nanti, kamu membuat <strong>username</strong> dan <strong>PIN 4 angka</strong> di langkah 3.</p>
       ${kolom({ id: 'd-nama', nama: 'namaLengkap', label: 'Nama lengkap', placeholder: 'Contoh: Andi Pratama', maks: 50, ekstra: 'autocomplete="name"' })}
       ${kolom({ id: 'd-panggilan', nama: 'namaPanggilan', label: 'Nama panggilan', placeholder: 'Contoh: Andi', maks: 12, ekstra: 'autocomplete="nickname"' })}
       <fieldset aria-describedby="pesan-avatar">

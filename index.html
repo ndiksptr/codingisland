@@ -48,6 +48,25 @@
     </div>
   </noscript>
 
+  <script>
+    // Sekali per perangkat: buang cache berkas versi lama & sisa data demo di penyimpanan browser,
+    // lalu muat ulang. Naikkan VERSI_BERSIH bila suatu saat perlu membersihkan lagi.
+    (function () {
+      var VERSI_BERSIH = '2026-10-23';
+      try {
+        if (localStorage.getItem('ci_versi_bersih') === VERSI_BERSIH) return;
+        var simpan = { ci_draf: 1, ci_preferensi: 1 };
+        for (var i = localStorage.length - 1; i >= 0; i--) {
+          var k = localStorage.key(i);
+          if (k && k.indexOf('ci_') === 0 && !simpan[k]) localStorage.removeItem(k);
+        }
+        fetch('/api/bersihkan-cache', { cache: 'no-store' }).catch(function () {}).then(function () {
+          localStorage.setItem('ci_versi_bersih', VERSI_BERSIH);
+          location.reload();
+        });
+      } catch (e) { /* penyimpanan diblokir: lewati */ }
+    })();
+  </script>
   <script type="module" src="js/main.js"></script>
 </body>
 </html>

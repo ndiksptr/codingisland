@@ -19,6 +19,12 @@ export default {
     const url = new URL(request.url);
     if (!url.pathname.startsWith('/api/')) return env.ASSETS.fetch(request);
 
+    // Dipanggil sekali per perangkat oleh index.html: minta browser membuang cache berkas lama
+    // (versi lama sempat disimpan sampai 1 hari dan masih berisi akun demo)
+    if (url.pathname === '/api/bersihkan-cache') {
+      return new Response(null, { status: 204, headers: { 'Clear-Site-Data': '"cache"', 'Cache-Control': 'no-store' } });
+    }
+
     const [sumber, ...rute] = url.pathname.slice('/api/'.length).split('/');
     const penangan = API[sumber];
     if (!penangan) return json({ galat: 'Alamat API tidak ditemukan.' }, 404);

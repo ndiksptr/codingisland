@@ -21,7 +21,7 @@ async function salinTeks(teks) {
   }
 }
 
-function formKelasHTML(kelas, daftarGuru) {
+function formKelasHTML(kelas, daftarGuru, idSaya) {
   return `
     <div class="dg-form-grid">
       <label class="dg-label">Nama kelas
@@ -37,9 +37,10 @@ function formKelasHTML(kelas, daftarGuru) {
       <fieldset class="mt-3">
         <legend class="dg-label">Guru pengampu</legend>
         <div class="dg-pilihan-grid">
-          ${daftarGuru.filter((g) => g.peran === 'guru').map((g) => `
-            <label class="dg-centang"><input type="checkbox" name="guruIds" value="${esc(g.id)}" ${kelas?.guru?.some((x) => x.id === g.id) ? 'checked' : ''}> ${esc(g.nama)}</label>`).join('') || '<p class="text-sm">Belum ada guru.</p>'}
+          ${daftarGuru.map((g) => `
+            <label class="dg-centang"><input type="checkbox" name="guruIds" value="${esc(g.id)}" ${kelas?.guru?.some((x) => x.id === g.id) ? 'checked' : ''}> ${esc(g.nama)}${g.id === idSaya ? ' (Anda)' : g.peran === 'admin' ? ' (admin)' : ''}</label>`).join('')}
         </div>
+        ${daftarGuru.some((g) => g.peran === 'guru') ? '' : '<p class="mt-2 text-sm">Belum ada akun guru lain. Buat akun guru di menu <strong>Guru</strong>, lalu pilih di sini.</p>'}
       </fieldset>` : '<p class="mt-3 text-sm text-teal-tua">Kelas baru otomatis Anda ampu. Kode kelas dibuat otomatis.</p>'}`;
 }
 
@@ -101,7 +102,7 @@ export async function renderKelas(wadah, { konteks, kelasId }) {
     const daftarGuru = admin ? await adminDaftarGuru() : null;
     const hasil = await bukaFormModal({
       judul: kelas ? `Edit ${kelas.nama}` : 'Tambah kelas',
-      isi: formKelasHTML(kelas, daftarGuru),
+      isi: formKelasHTML(kelas, daftarGuru, konteks.guru.id),
       saatSimpan: async (fd) => {
         const nama = String(fd.get('nama') || '').trim();
         if (nama.length < 2) return { galat: 'Nama kelas belum diisi.' };
