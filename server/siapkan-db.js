@@ -1,11 +1,13 @@
-// server/siapkan-db.js — isi database D1 otomatis saat masih kosong, dan reset data demo
-// Dengan begitu setelah deploy aplikasi langsung bisa dipakai tanpa menjalankan schema.sql manual.
+// server/siapkan-db.js — isi database D1 otomatis saat masih kosong
+// Yang dibuat hanya struktur tabel, pengaturan bawaan (harga clue, koin awal), dan 13 level bawaan.
+// Tidak ada akun, kelas, atau siswa bawaan: admin pertama dibuat lewat halaman #/pasang.
+// Perintah berasal dari migrations/*.sql (lewat server/skema.js), semuanya aman diulang.
 
-import { SKEMA_BUAT, SKEMA_HAPUS } from './skema.js';
+import { SKEMA_BUAT } from './skema.js';
 
 let janjiSiap = null; // cukup diperiksa sekali per instance Worker
 
-/** Buat tabel + data contoh jika database belum pernah diisi. */
+/** Buat tabel + data bawaan jika database belum pernah diisi. */
 export function siapkanDb(db) {
   janjiSiap ||= (async () => {
     const ada = await db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'pengaturan'").first();
@@ -15,9 +17,4 @@ export function siapkanDb(db) {
     throw err;
   });
   return janjiSiap;
-}
-
-/** Hapus semua tabel lalu isi ulang data contoh (satu transaksi). */
-export async function resetDb(db) {
-  await db.batch([...SKEMA_HAPUS, ...SKEMA_BUAT].map((sql) => db.prepare(sql)));
 }

@@ -149,7 +149,8 @@ async function tampilkan() {
     console.error(err);
     if (nomor === nomorNavigasi) {
       wadah.innerHTML = halamanError();
-      toast('Ups, halaman ini gagal dibuka. Coba lagi ya.', 'galat', 4500);
+      // Galat jaringan dari store.js membawa pesan ramah sendiri ("Internet sedang lambat, coba lagi ya.")
+      toast(err?.jaringan ? err.message : 'Ups, halaman ini gagal dibuka. Coba lagi ya.', 'galat', 4500);
     }
   }
 

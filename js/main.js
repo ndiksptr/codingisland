@@ -2,17 +2,16 @@
 
 import { rute, mulaiRouter, aturPenjaga, pindah, halamanError } from './router.js';
 import { toast } from './ui.js';
-import { sesiAktif } from './store.js';
+import { sesiAktif, modeDevAktif } from './store.js';
 import { renderBeranda } from './pages/beranda.js';
 import { renderTidakDitemukan } from './pages/tidak-ditemukan.js';
 import { renderPeta, renderPetaZona } from './pages/peta.js';
 import { renderLevel } from './pages/level.js';
 import { renderJuara } from './pages/juara.js';
-import { pasangCiDev } from './dev.js';
-import { renderUjiInterpreter } from './pages/uji-interpreter.js';
 import { renderDaftar } from './pages/daftar.js';
 import { renderMasuk } from './pages/masuk.js';
 import { renderGuruMasuk } from './pages/guru-masuk.js';
+import { renderPasang } from './pages/pasang.js';
 import { buatHeaderSiswa } from './pages/header-siswa.js';
 import { denganKerangkaGuru } from './guru/kerangka.js';
 import { renderRingkasan } from './guru/ringkasan.js';
@@ -54,8 +53,7 @@ rute('/juara', denganHeaderSiswa(renderJuara), 'Sertifikat Juara');
 rute('/profil', denganHeaderSiswa(renderProfil), 'Profilku');
 rute('/bantuan', renderBantuan, 'Bantuan');
 
-// ---------- Rute pengembang (hanya tampil dengan ?dev=1) ----------
-rute('/uji-interpreter', renderUjiInterpreter, 'Uji Interpreter');
+rute('/pasang', renderPasang, 'Pemasangan');
 
 // ---------- Rute guru ----------
 rute('/guru/masuk', renderGuruMasuk, 'Masuk Guru');
@@ -118,12 +116,19 @@ function tanganiGalat(err) {
   console.error(err);
   if (Date.now() - waktuGalatTerakhir < 2000) return; // jangan menumpuk toast
   waktuGalatTerakhir = Date.now();
-  toast('Ups, ada yang tidak beres. Coba lagi ya.', 'galat', 4500);
+  toast(err?.jaringan ? err.message : 'Ups, ada yang tidak beres. Coba lagi ya.', 'galat', 4500);
   const app = document.getElementById('app');
   if (app && !app.textContent.trim()) app.innerHTML = halamanError();
 }
 window.addEventListener('error', (e) => tanganiGalat(e.error || e.message));
 window.addEventListener('unhandledrejection', (e) => tanganiGalat(e.reason));
 
-pasangCiDev();
+// ---------- Alat pengembang ----------
+// js/dev.js hanya diimpor bila server dalam mode pengembang (MODE_DEV=1 di .dev.vars, uji lokal).
+try {
+  if (await modeDevAktif()) (await import('./dev.js')).pasangAlatDev();
+} catch {
+  /* server belum terjangkau: lanjut tanpa alat pengembang */
+}
+
 mulaiRouter(document.getElementById('app'), renderTidakDitemukan);

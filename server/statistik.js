@@ -1,4 +1,4 @@
-// server/statistik.js — statistik per siswa untuk dashboard guru (port dari store-lokal.js)
+// server/statistik.js — statistik per siswa untuk dashboard guru
 // Nilai siswa = rata-rata nilai level yang sudah selesai.
 // Terakhir aktif = waktu terbaru dari aktivitas, progres, atau tanggal daftar.
 

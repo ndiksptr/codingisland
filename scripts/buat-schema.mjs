@@ -1,38 +1,25 @@
-// scripts/buat-schema.mjs — membuat schema.sql (tabel + data awal) untuk D1
-// Data contoh diambil dari versi demo (js/store-lokal.js) agar isinya sama persis,
-// lalu PIN/password di-hash ulang dengan PBKDF2 (server/kripto.js).
+// scripts/buat-schema.mjs — membuat berkas database Coding Island dari satu sumber
 // Jalankan dari folder proyek:  node scripts/buat-schema.mjs
-// Hasil: schema.sql (untuk wrangler d1 execute) dan server/skema.js (isi otomatis oleh worker.js).
-// (Hanya perlu dijalankan ulang jika data contoh atau struktur tabel diubah.)
+//
+// Hasil:
+//   migrations/0001_struktur_awal.sql  patokan struktur + pengaturan bawaan + 13 level bawaan.
+//                                      Hanya ditulis jika BELUM ada (migrasi yang sudah dijalankan
+//                                      tidak boleh diubah). Tambahkan --tulis-ulang untuk memaksa.
+//   schema.sql                         gabungan semua migrasi (tanpa perintah pembersihan data),
+//                                      untuk dibaca atau mengisi database kosong secara manual.
+//   server/skema.js                    perintah yang sama, dipakai worker.js mengisi database kosong.
+//
+// Semua perintah aman diulang: CREATE ... IF NOT EXISTS dan INSERT OR IGNORE.
+// Tidak ada akun, kelas, atau siswa bawaan — admin pertama dibuat lewat #/pasang.
 
-import { writeFileSync } from 'node:fs';
+import { readFileSync, readdirSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { hashRahasia } from '../server/kripto.js';
+import { LEVEL_AWAL } from '../js/data/levels.js';
+import { CLUE } from '../js/game/skor.js';
+import { KOIN_AWAL } from '../server/data.js';
 
-// ---------- localStorage palsu agar store-lokal.js bisa berjalan di Node ----------
-const isi = new Map();
-globalThis.localStorage = {
-  get length() { return isi.size; },
-  key: (i) => [...isi.keys()][i] ?? null,
-  getItem: (k) => (isi.has(k) ? isi.get(k) : null),
-  setItem: (k, v) => isi.set(k, String(v)),
-  removeItem: (k) => isi.delete(k),
-  clear: () => isi.clear()
-};
-
-const store = await import('../js/store-lokal.js');
-await store.getSemuaKelas(); // memicu pengisian data contoh
-const ambil = (k) => JSON.parse(isi.get(`ci_${k}`) || '[]');
-const guru = ambil('guru');
-const kelas = ambil('kelas');
-const siswa = ambil('siswa');
-const level = ambil('level');
-const progres = ambil('progres');
-const aktivitas = ambil('aktivitas');
-
-// Password/PIN contoh (sama dengan versi demo)
-const PASSWORD = { guru_admin: 'admin123', guru_sari: 'guru123', guru_budi: 'guru123' };
-const PIN = '1234';
+const akar = (p) => fileURLToPath(new URL(`../${p}`, import.meta.url));
+const DIBUAT = '2026-09-01T00:30:00.000Z';
 
 // ---------- Helper SQL ----------
 const q = (v) => {
@@ -41,37 +28,13 @@ const q = (v) => {
   if (typeof v === 'boolean') return v ? '1' : '0';
   return `'${String(v).replace(/'/g, "''")}'`;
 };
-const baris = (tabel, kolom, data) => data.length
-  ? `INSERT INTO ${tabel} (${kolom.join(', ')}) VALUES\n${data.map((d) => `  (${d.map(q).join(', ')})`).join(',\n')};\n`
-  : '';
-
-const DIBUAT = '2026-09-01T00:30:00.000Z';
+const sisip = (tabel, kolom, data) =>
+  `INSERT OR IGNORE INTO ${tabel} (${kolom.join(', ')}) VALUES\n${data.map((d) => `  (${d.map(q).join(', ')})`).join(',\n')};\n`;
 
 // ---------- Struktur tabel ----------
-const STRUKTUR = `-- schema.sql — struktur database D1 Coding Island + data awal
--- DIBUAT OTOMATIS oleh scripts/buat-schema.mjs. Jangan diedit manual.
--- PERINGATAN: menjalankan file ini MENGHAPUS semua data lama lalu mengisi data contoh.
---   npx wrangler d1 execute coding-island-db --local  --file=schema.sql   (lokal)
---   npx wrangler d1 execute coding-island-db --remote --file=schema.sql   (Cloudflare)
--- Akun contoh: admin / admin123, bu.sari / guru123, pak.budi / guru123, siswa PIN 1234.
-
-PRAGMA defer_foreign_keys = true;
-
-DROP TABLE IF EXISTS nilai_timpa;
-DROP TABLE IF EXISTS catatan_guru;
-DROP TABLE IF EXISTS aktivitas;
-DROP TABLE IF EXISTS progres;
-DROP TABLE IF EXISTS sesi;
-DROP TABLE IF EXISTS percobaan_login;
-DROP TABLE IF EXISTS pengaturan;
-DROP TABLE IF EXISTS level;
-DROP TABLE IF EXISTS siswa;
-DROP TABLE IF EXISTS guru_kelas;
-DROP TABLE IF EXISTS kelas;
-DROP TABLE IF EXISTS guru;
-
+const STRUKTUR = `
 -- Guru dan admin (peran: 'guru' | 'admin'). password_hash berformat pbkdf2$sha256$iterasi$salt$hash
-CREATE TABLE guru (
+CREATE TABLE IF NOT EXISTS guru (
   id            TEXT PRIMARY KEY,
   nama          TEXT NOT NULL,
   username      TEXT NOT NULL UNIQUE,
@@ -80,7 +43,7 @@ CREATE TABLE guru (
   dibuat_pada   TEXT NOT NULL
 );
 
-CREATE TABLE kelas (
+CREATE TABLE IF NOT EXISTS kelas (
   id         TEXT PRIMARY KEY,
   nama       TEXT NOT NULL,
   tingkat    INTEGER NOT NULL CHECK (tingkat BETWEEN 1 AND 6),
@@ -88,15 +51,15 @@ CREATE TABLE kelas (
 );
 
 -- Kelas yang diampu setiap guru
-CREATE TABLE guru_kelas (
+CREATE TABLE IF NOT EXISTS guru_kelas (
   guru_id  TEXT NOT NULL REFERENCES guru(id) ON DELETE CASCADE,
   kelas_id TEXT NOT NULL REFERENCES kelas(id) ON DELETE CASCADE,
   PRIMARY KEY (guru_id, kelas_id)
 );
-CREATE INDEX idx_guru_kelas_kelas ON guru_kelas(kelas_id);
+CREATE INDEX IF NOT EXISTS idx_guru_kelas_kelas ON guru_kelas(kelas_id);
 
 -- Siswa. zona_terlihat: JSON array id zona yang animasi pembukaannya sudah dilihat
-CREATE TABLE siswa (
+CREATE TABLE IF NOT EXISTS siswa (
   id             TEXT PRIMARY KEY,
   nama_lengkap   TEXT NOT NULL,
   nama_panggilan TEXT NOT NULL,
@@ -110,11 +73,11 @@ CREATE TABLE siswa (
   zona_terlihat  TEXT NOT NULL DEFAULT '["pantai"]',
   dibuat_pada    TEXT NOT NULL
 );
-CREATE INDEX idx_siswa_kelas ON siswa(kelas_id);
+CREATE INDEX IF NOT EXISTS idx_siswa_kelas ON siswa(kelas_id);
 
 -- Level. Kolom yang sering disaring dipisah; isi lain (instruksi, dunia, tujuan, solusi, clue, ...) di kolom JSON data.
 -- kelas_ids NULL = untuk semua kelas; kelas_nonaktif = JSON array kelas yang menonaktifkan level ini.
-CREATE TABLE level (
+CREATE TABLE IF NOT EXISTS level (
   id             TEXT PRIMARY KEY,
   zona           TEXT NOT NULL,
   urutan         REAL NOT NULL DEFAULT 0,
@@ -130,10 +93,10 @@ CREATE TABLE level (
   dibuat_pada    TEXT NOT NULL,
   diperbarui     TEXT NOT NULL
 );
-CREATE INDEX idx_level_zona ON level(zona, urutan);
+CREATE INDEX IF NOT EXISTS idx_level_zona ON level(zona, urutan);
 
 -- Progres satu siswa di satu level
-CREATE TABLE progres (
+CREATE TABLE IF NOT EXISTS progres (
   siswa_id      TEXT NOT NULL REFERENCES siswa(id) ON DELETE CASCADE,
   level_id      TEXT NOT NULL REFERENCES level(id) ON DELETE CASCADE,
   selesai       INTEGER NOT NULL DEFAULT 0,
@@ -147,31 +110,31 @@ CREATE TABLE progres (
   diperbarui    TEXT NOT NULL,
   PRIMARY KEY (siswa_id, level_id)
 );
-CREATE INDEX idx_progres_level ON progres(level_id);
+CREATE INDEX IF NOT EXISTS idx_progres_level ON progres(level_id);
 
 -- Log aktivitas siswa (jenis: daftar, masuk, coba, selesai, clue, piala, juara)
-CREATE TABLE aktivitas (
+CREATE TABLE IF NOT EXISTS aktivitas (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
   waktu      TEXT NOT NULL,
   siswa_id   TEXT NOT NULL REFERENCES siswa(id) ON DELETE CASCADE,
   jenis      TEXT NOT NULL,
   keterangan TEXT NOT NULL DEFAULT ''
 );
-CREATE INDEX idx_aktivitas_siswa ON aktivitas(siswa_id, waktu);
-CREATE INDEX idx_aktivitas_waktu ON aktivitas(waktu);
+CREATE INDEX IF NOT EXISTS idx_aktivitas_siswa ON aktivitas(siswa_id, waktu);
+CREATE INDEX IF NOT EXISTS idx_aktivitas_waktu ON aktivitas(waktu);
 
 -- ===== Tabel pendukung =====
 -- Sesi login: hanya hash SHA-256 token yang disimpan; kadaluarsa dalam milidetik epoch
-CREATE TABLE sesi (
+CREATE TABLE IF NOT EXISTS sesi (
   token_hash  TEXT PRIMARY KEY,
   jenis       TEXT NOT NULL CHECK (jenis IN ('siswa', 'guru')),
   pengguna_id TEXT NOT NULL,
   kadaluarsa  INTEGER NOT NULL
 );
-CREATE INDEX idx_sesi_pengguna ON sesi(jenis, pengguna_id);
+CREATE INDEX IF NOT EXISTS idx_sesi_pengguna ON sesi(jenis, pengguna_id);
 
--- Batas percobaan login (kunci: 'siswa:<username>', 'guru:<username>', 'ip:<alamat>')
-CREATE TABLE percobaan_login (
+-- Batas percobaan (kunci mis. 'siswa:u:<username>', 'guru:ip:<alamat>', 'pasang:ip:<alamat>')
+CREATE TABLE IF NOT EXISTS percobaan_login (
   kunci        TEXT PRIMARY KEY,
   gagal        INTEGER NOT NULL DEFAULT 0,
   tahan_sampai INTEGER NOT NULL DEFAULT 0,
@@ -179,7 +142,7 @@ CREATE TABLE percobaan_login (
 );
 
 -- Catatan guru untuk seorang siswa
-CREATE TABLE catatan_guru (
+CREATE TABLE IF NOT EXISTS catatan_guru (
   siswa_id   TEXT PRIMARY KEY REFERENCES siswa(id) ON DELETE CASCADE,
   teks       TEXT NOT NULL,
   guru_id    TEXT,
@@ -188,7 +151,7 @@ CREATE TABLE catatan_guru (
 );
 
 -- Nilai akhir yang ditimpa guru (1–100) beserta alasannya
-CREATE TABLE nilai_timpa (
+CREATE TABLE IF NOT EXISTS nilai_timpa (
   siswa_id  TEXT NOT NULL REFERENCES siswa(id) ON DELETE CASCADE,
   kelas_id  TEXT NOT NULL REFERENCES kelas(id) ON DELETE CASCADE,
   nilai     INTEGER NOT NULL CHECK (nilai BETWEEN 1 AND 100),
@@ -200,73 +163,67 @@ CREATE TABLE nilai_timpa (
 );
 
 -- Pengaturan umum (kunci: harga_clue, koin_awal); nilai berupa JSON
-CREATE TABLE pengaturan (
+CREATE TABLE IF NOT EXISTS pengaturan (
   kunci TEXT PRIMARY KEY,
   nilai TEXT NOT NULL
 );
 `;
 
-// ---------- Data awal ----------
-const guruBaris = [];
-for (const g of guru) guruBaris.push([g.id, g.nama, g.username, await hashRahasia(PASSWORD[g.id] || 'guru123'), g.peran, DIBUAT]);
-
-const siswaBaris = [];
-for (const s of siswa) {
-  siswaBaris.push([s.id, s.namaLengkap, s.namaPanggilan, s.jenisKelamin, s.avatar, s.kelasId, s.username,
-    await hashRahasia(PIN), s.koin, s.berlian, JSON.stringify(s.zonaTerlihat || ['pantai']), s.dibuatPada]);
-}
-
-// Pisahkan objek level menjadi kolom + JSON data (sama dengan perintahSimpanLevel di server/data.js)
-const levelBaris = level.map((l) => {
+// ---------- Data bawaan: pengaturan + 13 level ----------
+// Objek level dipisah menjadi kolom + JSON data (sama dengan perintahSimpanLevel di server/data.js)
+const levelBaris = LEVEL_AWAL.map((l) => {
   const { id, zona, urutan, jenis, judul, bawaan, terbit, pembuat, kelasIds, kelasNonaktif, dibuatPada, diperbarui, ...data } = l;
   return [id, zona, urutan ?? 0, jenis, judul, bawaan ? 1 : 0, terbit === false ? 0 : 1, pembuat?.id || null, pembuat?.nama || null,
     kelasIds ? JSON.stringify(kelasIds) : null, JSON.stringify(kelasNonaktif || []), JSON.stringify(data), dibuatPada || DIBUAT, diperbarui || DIBUAT];
 });
 
-const progresBaris = progres.map((p) => [p.siswaId, p.levelId, p.selesai ? 1 : 0, p.bintang || 0, p.nilai || 0, p.percobaan || 0,
-  p.clueDibeli || 0, p.kodeTerakhir || '', p.detik || 0, p.selesai ? p.diperbarui : null, p.diperbarui]);
+const MIGRASI_0001 = `-- migrations/0001_struktur_awal.sql — patokan struktur database Coding Island
+-- DIBUAT oleh scripts/buat-schema.mjs. Jangan diubah setelah dijalankan; perubahan berikutnya
+-- ditulis sebagai migrasi bernomor baru (0002, 0003, ...).
+-- Aman untuk database yang sudah berisi data: tabel/indeks hanya dibuat bila belum ada,
+-- pengaturan dan level bawaan hanya ditambahkan bila belum ada (yang sudah diubah guru tetap).
+${STRUKTUR}
+-- ===== Pengaturan bawaan =====
+${sisip('pengaturan', ['kunci', 'nilai'], [['harga_clue', JSON.stringify(CLUE.map((c) => c.harga))], ['koin_awal', String(KOIN_AWAL)]])}
+-- ===== 13 level bawaan =====
+${sisip('level', ['id', 'zona', 'urutan', 'jenis', 'judul', 'bawaan', 'terbit', 'pembuat_id', 'pembuat_nama', 'kelas_ids', 'kelas_nonaktif', 'data', 'dibuat_pada', 'diperbarui'], levelBaris)}`;
 
-// Urut dari yang terlama agar id AUTOINCREMENT mengikuti waktu
-const aktivitasBaris = [...aktivitas].sort((a, b) => a.waktu.localeCompare(b.waktu))
-  .map((a) => [a.waktu, a.siswaId, a.jenis, a.keterangan || '']);
+if (!existsSync(akar('migrations'))) mkdirSync(akar('migrations'));
+const berkas0001 = akar('migrations/0001_struktur_awal.sql');
+if (!existsSync(berkas0001) || process.argv.includes('--tulis-ulang')) {
+  writeFileSync(berkas0001, MIGRASI_0001);
+  console.log('migrations/0001_struktur_awal.sql ditulis.');
+} else {
+  console.log('migrations/0001_struktur_awal.sql sudah ada, tidak diubah.');
+}
 
-// Urut dari yang terlama; id aktivitas ditulis eksplisit agar INSERT OR IGNORE aman diulang
-const aktivitasBerId = aktivitasBaris.map((r, i) => [i + 1, ...r]);
+// ---------- Gabungkan semua migrasi ----------
+// Perintah pembersihan data (DELETE) hanya untuk database lama, jadi tidak ikut ke schema.sql/skema.js
+const daftarMigrasi = readdirSync(akar('migrations')).filter((f) => /^\d{4}_.+\.sql$/.test(f)).sort();
+const perintah = [];
+for (const f of daftarMigrasi) {
+  const isi = readFileSync(akar(`migrations/${f}`), 'utf8')
+    .split('\n').filter((b) => !b.trim().startsWith('--')).join('\n');
+  for (const p of isi.split(/;\s*(?:\n|$)/).map((x) => x.trim()).filter(Boolean)) {
+    if (!/^DELETE\b/i.test(p)) perintah.push(p);
+  }
+}
 
-const DATA = [
-  baris('guru', ['id', 'nama', 'username', 'password_hash', 'peran', 'dibuat_pada'], guruBaris),
-  baris('kelas', ['id', 'nama', 'tingkat', 'kode_kelas'], kelas.map((k) => [k.id, k.nama, k.tingkat, k.kodeKelas])),
-  baris('guru_kelas', ['guru_id', 'kelas_id'], kelas.flatMap((k) => (k.guruIds || []).map((g) => [g, k.id]))),
-  baris('siswa', ['id', 'nama_lengkap', 'nama_panggilan', 'jenis_kelamin', 'avatar', 'kelas_id', 'username', 'pin_hash', 'koin', 'berlian', 'zona_terlihat', 'dibuat_pada'], siswaBaris),
-  baris('level', ['id', 'zona', 'urutan', 'jenis', 'judul', 'bawaan', 'terbit', 'pembuat_id', 'pembuat_nama', 'kelas_ids', 'kelas_nonaktif', 'data', 'dibuat_pada', 'diperbarui'], levelBaris),
-  baris('progres', ['siswa_id', 'level_id', 'selesai', 'bintang', 'nilai', 'percobaan', 'clue_dibeli', 'kode_terakhir', 'detik', 'selesai_pada', 'diperbarui'], progresBaris),
-  baris('aktivitas', ['id', 'waktu', 'siswa_id', 'jenis', 'keterangan'], aktivitasBerId),
-  baris('pengaturan', ['kunci', 'nilai'], [['harga_clue', '[5,10,20]'], ['koin_awal', '20']])
-].filter(Boolean);
+writeFileSync(akar('schema.sql'), `-- schema.sql — struktur lengkap database Coding Island (gabungan migrations/*.sql)
+-- DIBUAT OTOMATIS oleh scripts/buat-schema.mjs. Jangan diedit manual.
+-- Aman dijalankan ulang: tidak menghapus data. Untuk database online pakai:
+--   npx wrangler d1 migrations apply coding-island-db --remote
+-- Migrasi: ${daftarMigrasi.join(', ')}
 
-const sql = [STRUKTUR, '-- ===== Data awal =====', ...DATA].join('\n');
-writeFileSync(fileURLToPath(new URL('../schema.sql', import.meta.url)), sql);
+${perintah.join(';\n\n')};
+`);
 
-// ---------- server/skema.js: dipakai Worker untuk mengisi database otomatis ----------
-// Pecah STRUKTUR menjadi perintah tunggal (baris komentar dibuang)
-const perintahStruktur = STRUKTUR.split('\n').filter((b) => !b.trim().startsWith('--')).join('\n')
-  .split(/;\s*\n/).map((x) => x.trim()).filter(Boolean);
-const hapus = perintahStruktur.filter((x) => /^(DROP|PRAGMA)/.test(x));
-const buat = [
-  ...perintahStruktur.filter((x) => /^CREATE/.test(x))
-    .map((x) => x.replace(/^CREATE TABLE /, 'CREATE TABLE IF NOT EXISTS ').replace(/^CREATE INDEX /, 'CREATE INDEX IF NOT EXISTS ')),
-  ...DATA.map((x) => x.trim().replace(/;$/, '').replace(/^INSERT INTO /, 'INSERT OR IGNORE INTO '))
-];
-const js = `// server/skema.js — DIBUAT OTOMATIS oleh scripts/buat-schema.mjs. Jangan diedit manual.
-// Perintah SQL untuk membuat tabel + data contoh (sama dengan schema.sql).
-// Dipakai worker.js: database kosong langsung terisi saat aplikasi pertama kali dibuka.
+writeFileSync(akar('server/skema.js'), `// server/skema.js — DIBUAT OTOMATIS oleh scripts/buat-schema.mjs. Jangan diedit manual.
+// Perintah SQL gabungan migrations/*.sql (tanpa pembersihan data), dipakai worker.js
+// untuk mengisi database yang masih kosong: struktur tabel, pengaturan bawaan, dan level bawaan.
+// Migrasi: ${daftarMigrasi.join(', ')}
 
-/** Hapus semua tabel (dipakai Reset data demo oleh admin). */
-export const SKEMA_HAPUS = ${JSON.stringify(hapus, null, 2)};
+export const SKEMA_BUAT = ${JSON.stringify(perintah, null, 2)};
+`);
 
-/** Buat tabel bila belum ada + isi data contoh bila belum ada. */
-export const SKEMA_BUAT = ${JSON.stringify(buat, null, 2)};
-`;
-writeFileSync(fileURLToPath(new URL('../server/skema.js', import.meta.url)), js);
-
-console.log(`schema.sql & server/skema.js dibuat: ${guru.length} guru, ${kelas.length} kelas, ${siswa.length} siswa, ${level.length} level, ${progres.length} progres, ${aktivitas.length} aktivitas.`);
+console.log(`schema.sql & server/skema.js dibuat dari ${daftarMigrasi.length} migrasi (${perintah.length} perintah, ${LEVEL_AWAL.length} level bawaan).`);

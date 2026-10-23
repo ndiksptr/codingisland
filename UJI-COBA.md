@@ -1,12 +1,15 @@
-# Daftar Uji Coba: Tahap 1–9
+# Daftar Uji Coba: Tahap 1–12
 
-Cara pakai: jalankan server lokal (lihat [README.md](README.md)), lalu centang `[x]` setiap butir yang sudah sesuai.
+Cara pakai: jalankan `npx wrangler dev` lalu buka `http://localhost:8787` (lihat [README.md](README.md) bagian 3), lalu centang `[x]` setiap butir yang sudah sesuai.
 Jika ada yang tidak sesuai, catat nomornya (misalnya **U2.7**) di [REVISI.md](REVISI.md).
 
-Sebelum mulai: klik **Reset data demo** di footer beranda agar datanya sama dengan daftar ini.
+Sejak Tahap 11 tidak ada lagi data contoh. Sebelum menguji Tahap 1–9, siapkan data uji sendiri di database lokal:
+pasang admin di `#/pasang`, buat **Kelas 3A**, buat satu akun guru, lalu daftarkan beberapa siswa (misalnya `andi3`, `aisyah3`) lewat `#/daftar`.
+Nama akun seperti `andi3`, `bu.sari`, atau kode `PULAU3` di butir lama hanyalah contoh; ganti dengan akun uji Anda.
+Untuk mengulang dari database kosong: hentikan server, hapus folder `.wrangler`, lalu jalankan `npx wrangler d1 migrations apply coding-island-db --local`.
 
-> **Penting setelah ada pembaruan kode:** tekan **Ctrl + F5** (muat ulang paksa) agar browser tidak memakai file lama.
-> Lebih aman lagi: buka DevTools (F12) → tab **Network** → centang **Disable cache**, dan biarkan DevTools terbuka selama menguji.
+> Sejak Tahap 12, JS dan CSS dikirim dengan `Cache-Control: no-cache`, jadi muat ulang biasa sudah cukup setelah ada pembaruan kode.
+> Uji di lingkungan **staging** (README bagian 4g) atau lokal, **jangan** dengan akun siswa sungguhan.
 
 Perangkat uji yang disarankan:
 
@@ -303,6 +306,51 @@ Siapkan: **Reset data demo**, **Ctrl + F5**, masuk `bu.sari` / `guru123`, buka m
 | U9.19 | DevTools → Application → blokir penyimpanan (atau mode privat ketat), muat ulang | Aplikasi tetap tampil (tidak layar putih)                                                               | [ ] |
 | U9.20 | Peta pulau: arahkan kursor ke kartu pulau, lihat tab Network                     | Background pulau mulai dimuat sebelum diklik                                                            | [ ] |
 
+## Tahap 11: Siap dipakai sungguhan
+
+Persiapan: `cp .dev.vars.example .dev.vars` lalu isi `KODE_PASANG`, hapus folder `.wrangler`, jalankan `npx wrangler d1 migrations apply coding-island-db --local`, lalu `npx wrangler dev`.
+
+| No     | Langkah | Hasil yang diharapkan | OK  |
+| ------ | ------- | --------------------- | --- |
+| U11.1  | Buka `#/masuk` dan `#/guru/masuk` | Tidak ada kotak akun contoh atau tombol **Pakai**; kata "demo" tidak muncul di halaman mana pun | [ ] |
+| U11.2  | Masuk guru dengan `admin` / `admin123` | Ditolak ("Username atau password salah.") karena akun bawaan sudah tidak ada | [ ] |
+| U11.3  | Buka `#/daftar` | Daftar kelas kosong (belum ada kelas) | [ ] |
+| U11.4  | Buka `#/guru/masuk` saat belum ada akun guru | Muncul kotak kuning "Coding Island belum dipasang. **Pasang sekarang**" | [ ] |
+| U11.5  | Di `#/pasang`, isi password 6 karakter | Pesan "Password minimal 8 karakter." | [ ] |
+| U11.6  | Isi kode pemasangan salah 30 kali (batas Tahap 12) | Muncul "Sisa N kesempatan", lalu pada kali ke-30 "Coba lagi dalam 15 menit"; kode benar pun ditolak sampai 15 menit berlalu | [ ] |
+| U11.7  | Hapus folder `.wrangler`, jalankan ulang, isi `#/pasang` dengan kode dari `.dev.vars` | Toast "Coding Island terpasang…", langsung masuk dashboard sebagai Admin | [ ] |
+| U11.8  | Buka lagi `#/pasang` | Kartu "Coding Island sudah terpasang"; tautan di `#/guru/masuk` hilang. Console: `fetch('/api/auth/pasang',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).then(r=>r.json())` → `{galat: "Coding Island sudah terpasang."}` | [ ] |
+| U11.9  | Admin: buat kelas, buat akun guru, salin kode kelas; siswa mendaftar dengan kode itu | Semua berhasil; guru baru bisa masuk dan melihat siswa kelasnya | [ ] |
+| U11.10 | Menu **Pengaturan** (admin) | Tidak ada bagian **Reset data demo** | [ ] |
+| U11.11 | Saat uji lokal (`MODE_DEV = "1"`) | Tombol **Dev** muncul, `typeof ciDev` = `"object"`, `#/uji-interpreter` terbuka | [ ] |
+| U11.12 | Ubah `MODE_DEV` di `.dev.vars` menjadi `"0"`, jalankan ulang, muat ulang dengan DevTools → Network | Tidak ada permintaan ke `js/dev.js`; tidak ada tombol Dev; `typeof ciDev` = `"undefined"`; `#/uji-interpreter` menampilkan 404 | [ ] |
+| U11.13 | Buka `/migrations/0001_struktur_awal.sql`, `/.dev.vars`, `/js/store-lokal.js` | `404` | [ ] |
+| U11.14 | **Database online** (setelah cadangan): `npx wrangler d1 migrations apply coding-island-db --remote` | 0001 dan 0002 tercatat ✅; akun/kelas/siswa contoh hilang; 13 level dan pengaturan tetap; `#/guru/masuk` online menampilkan tautan pemasangan | [ ] |
+| U11.15 | Di situs online: `npx wrangler secret put KODE_PASANG`, lalu pasang admin di `#/pasang` | Admin sungguhan terbuat; `#/pasang` menolak permanen sesudahnya | [ ] |
+
+## Tahap 12: Stabil untuk 30–90 siswa bersamaan dari satu Wi-Fi
+
+Persiapan: `npm install`, lalu `npx wrangler d1 migrations apply coding-island-db --local` dan `npx wrangler dev`. Buat akun uji sendiri (admin, 1 kelas, beberapa siswa).
+
+| No     | Langkah | Hasil yang diharapkan | OK  |
+| ------ | ------- | --------------------- | --- |
+| U12.1  | Satu username: ketik PIN salah 5 kali | Kali ke-4 "Sisa 1 kesempatan"; kali ke-5 ditahan 60 detik | [ ] |
+| U12.2  | Saat U12.1 ditahan, siswa lain di komputer/Wi-Fi yang sama masuk | Berhasil masuk (yang ditahan hanya username itu) | [ ] |
+| U12.3  | Guru: salah password 30 kali (username apa saja) dari satu jaringan | Ditahan sampai 15 menit; login guru dari jaringan lain dan login siswa tetap bisa | [ ] |
+| U12.4  | Angka batas | Semua ada di objek `BATAS` di `server/batas.js` | [ ] |
+| U12.5  | `npx wrangler d1 migrations list coding-island-db --local` | `0003_indeks.sql` sudah ✅ | [ ] |
+| U12.6  | Siswa dengan hash PIN lama (100000 iterasi) masuk | Berhasil; setelahnya kolom `pin_hash` diawali `pbkdf2$sha256$10000$` | [ ] |
+| U12.7  | Di level, klik **Jalankan** berkali-kali dengan cepat | Robot jalan sekali; DevTools → Network hanya satu permintaan `/percobaan`; koin bertambah sekali | [ ] |
+| U12.8  | Selesaikan level, lalu klik **Ulang** dan langsung **Jalankan** | Tombol Jalankan tetap mati sampai hasil sebelumnya tersimpan | [ ] |
+| U12.9  | Toko Clue: klik **Beli** Clue 1 berkali-kali dengan cepat | Koin terpotong sekali; aktivitas "Membeli Clue 1" tercatat sekali | [ ] |
+| U12.10 | DevTools → Network → blokir `cdn.tailwindcss.com`, `esm.sh`, `fonts.googleapis.com`, `fonts.gstatic.com`, lalu buka beranda, level, dashboard | Tampilan sama persis; editor berwarna (CodeMirror, bukan kotak teks polos); font judul Baloo 2; tidak ada permintaan ke domain luar | [ ] |
+| U12.11 | Network → klik `app.css`, `tailwind.css`, satu gambar, satu font | JS/CSS: `cache-control: no-cache`; gambar & font: `max-age=604800` | [ ] |
+| U12.12 | Network → **Offline**, lalu buka halaman Profil | Toast "Internet sedang lambat, coba lagi ya." (bukan layar putih atau pesan teknis) | [ ] |
+| U12.13 | Guru: impor CSV berisi 12 siswa | Semua akun terbuat (dikirim per 4 baris); PIN tampil untuk semua | [ ] |
+| U12.14 | Buka `/package.json`, `/node_modules/`, `/src/tailwind.css`, `/migrations/0003_indeks.sql` | `404` | [ ] |
+| U12.15 | Staging: `npx wrangler deploy --env staging` (README 4g) | Situs `codingisland-staging…workers.dev` terbuka dengan database kosong terpisah | [ ] |
+| U12.16 | Dashboard Cloudflare → Worker **codingisland** → **Observability** saat kelas memakai | Waktu CPU per permintaan terlihat; tidak ada error 1102 | [ ] |
+
 ## Ringkasan hasil
 
 | Tahap   | Jumlah butir | Lulus | Gagal | Catatan |
@@ -316,5 +364,7 @@ Siapkan: **Reset data demo**, **Ctrl + F5**, masuk `bu.sari` / `guru123`, buka m
 | Tahap 7 | 27           |       |       |         |
 | Tahap 8 | 26           |       |       |         |
 | Tahap 9 | 20           |       |       |         |
+| Tahap 11 | 15          |       |       |         |
+| Tahap 12 | 16          |       |       |         |
 
 Diuji oleh: \***\*\_\_\_\_\*\*** Tanggal: \***\*\_\_\_\_\*\*** Browser/perangkat: \***\*\_\_\_\_\*\***

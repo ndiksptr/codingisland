@@ -1,5 +1,5 @@
 // server/data.js — akses D1: kueri ringkas, ubah baris tabel menjadi objek yang sama
-// bentuknya dengan versi localStorage (js/store-lokal.js), dan aturan bersama.
+// bentuknya dengan hasil yang dipakai halaman (js/store.js), dan aturan bersama.
 
 import { ZONA } from '../js/data/zona.js';
 import { CLUE } from '../js/game/skor.js';
@@ -69,15 +69,18 @@ export function progresKeObjek(r) {
 }
 
 // ---------- Muat data ----------
+/** Baris tabel kelas + guru_kelas -> objek kelas dengan guruIds. */
+export const kelasDariBaris = (kelas, relasi) => kelas.map((k) => ({
+  id: k.id, nama: k.nama, tingkat: k.tingkat, kodeKelas: k.kode_kelas,
+  guruIds: relasi.filter((x) => x.kelas_id === k.id).map((x) => x.guru_id)
+}));
+
 export async function semuaKelas(db) {
-  const [kelas, relasi] = await Promise.all([
-    semua(db, 'SELECT * FROM kelas ORDER BY tingkat, nama'),
-    semua(db, 'SELECT guru_id, kelas_id FROM guru_kelas')
+  const [rk, rr] = await db.batch([
+    perintah(db, 'SELECT * FROM kelas ORDER BY tingkat, nama'),
+    perintah(db, 'SELECT guru_id, kelas_id FROM guru_kelas')
   ]);
-  return kelas.map((k) => ({
-    id: k.id, nama: k.nama, tingkat: k.tingkat, kodeKelas: k.kode_kelas,
-    guruIds: relasi.filter((x) => x.kelas_id === k.id).map((x) => x.guru_id)
-  }));
+  return kelasDariBaris(rk.results || [], rr.results || []);
 }
 
 export async function semuaLevel(db) {
@@ -125,16 +128,25 @@ export function rapikanUrutan(levels, zona) {
   return berubah;
 }
 
-/** Saran username: nama panggilan + angka, belum dipakai. */
-export async function sarankanUsernameDb(db, namaPanggilan) {
-  let dasar = String(namaPanggilan || '').toLowerCase().normalize('NFD').replace(/[^a-z]/g, '').slice(0, 12);
-  if (!dasar) dasar = 'robot';
-  if (dasar.length < 2) dasar = `${dasar}${dasar}`;
-  const dipakai = new Set((await semua(db, 'SELECT username FROM siswa WHERE username LIKE ?', `${dasar}%`)).map((r) => r.username));
+const dasarUsername = (namaPanggilan) => {
+  const d = String(namaPanggilan || '').toLowerCase().normalize('NFD').replace(/[^a-z]/g, '').slice(0, 12) || 'robot';
+  return d.length < 2 ? `${d}${d}` : d;
+};
+
+/** Saran username dari himpunan username yang sudah dipakai (tanpa kueri; dipakai impor massal). */
+export function sarankanDariSet(dipakai, namaPanggilan) {
+  const dasar = dasarUsername(namaPanggilan);
   for (let i = 0; i < 50; i++) {
     const angka = i < 30 ? 10 + Math.floor(Math.random() * 90) : 100 + Math.floor(Math.random() * 900);
     if (!dipakai.has(`${dasar}${angka}`)) return `${dasar}${angka}`;
   }
   return `${dasar}${Date.now() % 10000}`;
+}
+
+/** Saran username: nama panggilan + angka, belum dipakai. */
+export async function sarankanUsernameDb(db, namaPanggilan) {
+  const dasar = dasarUsername(namaPanggilan);
+  const dipakai = new Set((await semua(db, 'SELECT username FROM siswa WHERE username LIKE ?', `${dasar}%`)).map((r) => r.username));
+  return sarankanDariSet(dipakai, namaPanggilan);
 }
 

@@ -1,5 +1,5 @@
 // js/game/uji-interpreter-kasus.js — kasus uji otomatis untuk interpreter
-// Dipakai halaman #/uji-interpreter?dev=1 dan bisa juga dijalankan di Node.
+// Dipakai halaman #/uji-interpreter (mode pengembang) dan bisa juga dijalankan di Node.
 // Setiap kasus: { nama, peta, kode, opsi?, perluWorker?, cek(hasil) -> true | 'alasan gagal' }
 
 import { duniaDariTeks } from './dunia.js';

@@ -19,7 +19,7 @@ import { muatPeta } from './peta.js';
 import { bukaBantuan } from './bantuan.js';
 
 const KECEPATAN = { pelan: 700, normal: 400, cepat: 160 };
-const URL_CONFETTI = 'https://esm.sh/canvas-confetti@1.9.3';
+const URL_CONFETTI = '../vendor/confetti.js'; // canvas-confetti dibundel lokal (npm run build:vendor)
 const BATAS_DETIK_SEGMEN = 600; // jeda lama tanpa aktivitas tidak dihitung lebih dari 10 menit
 
 // Teks yang disisipkan chip perintah ('|' = posisi kursor)
@@ -392,8 +392,18 @@ export async function renderLevel(halaman, { params }) {
             btn.textContent = 'Yakin? Bintang maksimal jadi 1';
             return;
           }
-          btn.disabled = true;
-          const hasil = await beliClue(siswa.id, level.id, nomor);
+          if (btn.disabled) return;
+          btn.disabled = true; // tetap mati selama permintaan berjalan (cegah klik ganda)
+          let hasil;
+          try {
+            hasil = await beliClue(siswa.id, level.id, nomor);
+          } catch (err) {
+            // Internet lambat/putus: koin tidak terpotong, tombol bisa ditekan lagi
+            btn.disabled = false;
+            pesan.textContent = err.message;
+            pesan.hidden = false;
+            return;
+          }
           if (!hasil.ok) {
             btn.disabled = false;
             if (gambar) gambar.src = gambarRobot('sedih');
@@ -543,20 +553,35 @@ export async function renderLevel(halaman, { params }) {
   let sedangJalan = false;
   let tokenJalan = null;
   let catatTertunda = null; // dicatat setelah animasi (atau saat batal/keluar halaman)
+  let catatBerjalan = null; // permintaan catat ke server yang belum selesai
   const jalankanCatat = async () => {
     const f = catatTertunda;
     catatTertunda = null;
-    return f ? f() : null;
+    if (!f) return null;
+    const janji = f();
+    catatBerjalan = janji;
+    perbaruiTombolJalan();
+    try {
+      return await janji;
+    } finally {
+      if (catatBerjalan === janji) catatBerjalan = null;
+      perbaruiTombolJalan();
+    }
   };
+
+  // Tombol Jalankan mati selama robot berjalan ATAU hasil sebelumnya masih dikirim ke server
+  function perbaruiTombolJalan() {
+    tombolJalankan.disabled = sedangJalan || !!catatBerjalan;
+  }
 
   function aturTombolJalan(jalan) {
     sedangJalan = jalan;
-    tombolJalankan.disabled = jalan;
+    perbaruiTombolJalan();
     tombolJalankan.querySelector('span').textContent = jalan ? 'Berjalan...' : 'Jalankan';
   }
 
   async function jalankan() {
-    if (sedangJalan) return;
+    if (sedangJalan || catatBerjalan) return;
     aturTombolJalan(true);
     const token = { batal: false };
     tokenJalan = token;
@@ -642,7 +667,7 @@ export async function renderLevel(halaman, { params }) {
   tombolJalankan.addEventListener('click', jalankan);
   $('[data-ulang]').addEventListener('click', () => {
     if (tokenJalan) tokenJalan.batal = true;
-    jalankanCatat();
+    jalankanCatat().catch((err) => toast(err.message, 'peringatan')); // tombol Jalankan tetap mati sampai selesai
     aturTombolJalan(false);
     panggung.reset();
     resetTujuan();
@@ -665,8 +690,8 @@ export async function renderLevel(halaman, { params }) {
     document.removeEventListener('keydown', pintasan);
     clearTimeout(timerDraf);
     simpanDraf();
-    jalankanCatat();
-    tambahLamaBermain(siswa.id, level.id, ambilDetik());
+    jalankanCatat().catch(() => {}); // halaman sudah ditinggal: cukup dicoba kirim
+    tambahLamaBermain(siswa.id, level.id, ambilDetik()).catch(() => {});
     panggung.hancurkan();
     editor.hancurkan();
   };

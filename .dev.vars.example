@@ -1,0 +1,9 @@
+# .dev.vars.example — contoh variabel KHUSUS uji lokal (npx wrangler dev).
+# Salin menjadi .dev.vars lalu isi. .dev.vars tidak ikut git dan tidak ikut deploy.
+#   cp .dev.vars.example .dev.vars
+
+# Aktifkan alat pengembang (panel Dev, ciDev, #/uji-interpreter, endpoint pengubah progres)
+MODE_DEV = "1"
+
+# Kode pemasangan untuk mencoba halaman #/pasang di lokal (bebas, jangan sama dengan kode online)
+KODE_PASANG = "ganti-dengan-kode-lokal"

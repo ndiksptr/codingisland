@@ -1,9 +1,8 @@
 // js/pages/guru-masuk.js — halaman masuk guru & admin (#/guru/masuk)
 
 import { robot, tombol, toast, aturPesan, goyangkan } from '../ui.js';
-import { masukGuru, statusTahan } from '../store.js';
+import { masukGuru, statusTahan, statusPasang } from '../store.js';
 import { pindah } from '../router.js';
-import { kotakAkunDemo, pasangKotakAkunDemo } from './akun-demo.js';
 
 /** Tujuan setelah masuk: hanya rute guru. */
 function tujuanAman(ke) {
@@ -11,7 +10,8 @@ function tujuanAman(ke) {
 }
 
 export async function renderGuruMasuk(halaman, { query }) {
-  const kotakDemo = await kotakAkunDemo('guru');
+  // Tautan pemasangan hanya muncul selama belum ada akun guru sama sekali
+  const { perluPasang } = await statusPasang().catch(() => ({ perluPasang: false }));
 
   halaman.innerHTML = `
     <section class="min-h-screen py-8 sm:py-12 px-4 bg-teal-tua">
@@ -50,7 +50,10 @@ export async function renderGuruMasuk(halaman, { query }) {
           <p class="mt-2 text-center text-sm">Lupa password? Hubungi admin sekolah.</p>
         </form>
 
-        <div class="mt-6" data-demo>${kotakDemo}</div>
+        ${perluPasang ? `
+        <p class="mt-6 rounded-2xl bg-kuning p-4 text-center font-bold">
+          Coding Island belum dipasang. <a href="#/pasang" class="tautan">Pasang sekarang</a>
+        </p>` : ''}
 
         <p class="mt-6 text-center"><a href="#/masuk" class="font-bold text-white underline underline-offset-4 hover:text-kuning">Masuk sebagai Siswa</a></p>
       </div>
@@ -139,15 +142,6 @@ export async function renderGuruMasuk(halaman, { query }) {
       sedangKirim = false;
       tombolKirim.disabled = inputUsername.disabled;
     }
-  });
-
-  pasangKotakAkunDemo(halaman.querySelector('[data-demo]'), (username, password) => {
-    if (inputUsername.disabled) return;
-    inputUsername.value = username;
-    inputPassword.value = password;
-    aturPesan(form, 'username');
-    aturPesan(form, 'password');
-    tombolKirim.focus();
   });
 
   const tahan = await statusTahan('guru');

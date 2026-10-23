@@ -1,3 +1,11 @@
 # Data lokal wrangler (database D1 lokal, cache)
 .wrangler/
+
+# Paket npm untuk build (hasil build di css/tailwind.css, js/vendor/, fonts/ TETAP di-commit)
 node_modules/
+
+# Variabel & rahasia uji lokal (contohnya di .dev.vars.example)
+.dev.vars
+
+# Cadangan database dari wrangler d1 export
+cadangan*.sql

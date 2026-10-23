@@ -1,9 +1,22 @@
 // server/kripto.js — hash PIN/password dengan PBKDF2 (Web Crypto) dan token sesi
 // Format hash: pbkdf2$sha256$<iterasi>$<salt base64>$<hash base64>
-// Dipakai juga oleh scripts/buat-schema.mjs (Node 18+ punya crypto.subtle yang sama).
+// Jumlah iterasi ikut tersimpan di hash, jadi hash lama (mis. 100000) tetap bisa diverifikasi
+// dan otomatis di-hash ulang dengan iterasi baru saat login berhasil (lihat perluHashUlang).
 
 const enc = new TextEncoder();
-export const ITERASI_BAWAAN = 100000; // batas atas PBKDF2 di Cloudflare Workers
+// Paket Workers Free membatasi CPU ±10 ms per permintaan. Terukur: 100000 iterasi ±14 ms,
+// 10000 iterasi ±1,5 ms per verifikasi. Bawaan 10000; bisa diubah lewat variabel ITERASI_PBKDF2.
+export const ITERASI_BAWAAN = 10000;
+export const ITERASI_MAKS = 100000; // batas atas PBKDF2 di Cloudflare Workers
+
+/** Iterasi untuk hash baru: env.ITERASI_PBKDF2 (dibatasi 1000–100000) atau bawaan. */
+export const iterasiDari = (env) => Math.min(ITERASI_MAKS, Math.max(1000, Number(env?.ITERASI_PBKDF2) || ITERASI_BAWAAN));
+
+/** true jika hash tersimpan memakai jumlah iterasi yang berbeda dari iterasi sekarang. */
+export function perluHashUlang(tersimpan, iterasi) {
+  const iter = Number(String(tersimpan || '').split('$')[2]);
+  return iter !== iterasi;
+}
 
 const keBase64 = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf)));
 const dariBase64 = (teks) => Uint8Array.from(atob(teks), (c) => c.charCodeAt(0));
@@ -33,10 +46,10 @@ export async function cocokRahasia(rahasia, tersimpan) {
 }
 
 // Hash palsu untuk menyamakan waktu jawaban saat username tidak ada
-let hashPalsu = null;
-export async function samarkanWaktu(rahasia) {
-  hashPalsu ||= await hashRahasia('tidak-ada-pengguna', ITERASI_BAWAAN);
-  await cocokRahasia(rahasia, hashPalsu);
+const hashPalsu = new Map(); // per jumlah iterasi, dibuat sekali per instance
+export async function samarkanWaktu(rahasia, iterasi = ITERASI_BAWAAN) {
+  if (!hashPalsu.has(iterasi)) hashPalsu.set(iterasi, await hashRahasia('tidak-ada-pengguna', iterasi));
+  await cocokRahasia(rahasia, hashPalsu.get(iterasi));
   return false;
 }
 
@@ -59,3 +72,11 @@ export const acakPin = () => String(crypto.getRandomValues(new Uint32Array(1))[0
 export const acakPassword = () => teksAcak(8, 'abcdefghjkmnpqrstuvwxyz23456789');
 export const acakKodeKelas = () => teksAcak(6, 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789');
 export const idBaru = (awalan) => `${awalan}_${Date.now().toString(36)}${tokenAcak(3)}`;
+
+/** Bandingkan dua teks dengan waktu konstan (panjang berbeda pun tidak membocorkan isi). */
+export async function samaKonstan(a, b) {
+  const [ha, hb] = await Promise.all([a, b].map(async (x) => new Uint8Array(await crypto.subtle.digest('SHA-256', enc.encode(String(x))))));
+  let beda = 0;
+  for (let i = 0; i < ha.length; i++) beda |= ha[i] ^ hb[i];
+  return beda === 0;
+}

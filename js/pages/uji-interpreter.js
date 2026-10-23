@@ -1,13 +1,11 @@
 // js/pages/uji-interpreter.js — halaman pengembang untuk menguji interpreter
-// Hanya tampil jika alamat mengandung ?dev=1, contoh:
-//   http://localhost:8000/?dev=1#/uji-interpreter   atau   #/uji-interpreter?dev=1
+// Hanya didaftarkan oleh js/dev.js saat mode pengembang aktif (MODE_DEV=1, uji lokal).
 
 import { esc, tombol, toast } from '../ui.js';
 import { jalankanKodeSiswa } from '../game/runner.js';
 import { SEMUA_PERINTAH } from '../game/interpreter.js';
 import { duniaDariTeks, duniaKeTeks } from '../game/dunia.js';
 import { KASUS_UJI, jalankanSemuaUji } from '../game/uji-interpreter-kasus.js';
-import { renderTidakDitemukan } from './tidak-ditemukan.js';
 
 const CONTOH = [
   {
@@ -32,9 +30,6 @@ const CONTOH = [
   }
 ];
 
-const modeDev = (query) =>
-  new URLSearchParams(location.search).get('dev') === '1' || query?.dev === '1';
-
 function barisJejak(e, i) {
   const item = e.item ? `${e.item.jenis} (${e.item.x},${e.item.y})` : e.rintangan || '';
   return `
@@ -49,8 +44,7 @@ function barisJejak(e, i) {
     </tr>`;
 }
 
-export function renderUjiInterpreter(halaman, { query }) {
-  if (!modeDev(query)) return renderTidakDitemukan(halaman);
+export function renderUjiInterpreter(halaman) {
 
   halaman.innerHTML = `
     <section class="mx-auto max-w-6xl px-4 sm:px-6 py-8">

@@ -1,5 +1,5 @@
 // functions/api/auth/[[rute]].js — akun & sesi
-//   GET  /api/auth/sesi                 sesi aktif (siswa/guru) atau null
+//   GET  /api/auth/sesi                 { sesi, modeDev } — sesi aktif (siswa/guru) atau null
 //   GET  /api/auth/tahan?jenis=         sisa detik tahanan login untuk alamat IP ini
 //   POST /api/auth/masuk-siswa          { username, pin }
 //   POST /api/auth/masuk-guru           { username, password }
@@ -7,15 +7,15 @@
 //   POST /api/auth/daftar               pendaftaran siswa dengan kode kelas
 //   GET  /api/auth/cek-username?u=&kecuali=
 //   GET  /api/auth/saran-username?panggilan=
-//   GET  /api/auth/akun-demo            hanya jika env.TAMPILKAN_AKUN_DEMO = "1"
-//   POST /api/auth/reset-demo           admin: kembalikan seluruh database ke data contoh
+//   GET  /api/auth/pasang               { perluPasang } — true jika belum ada akun guru
+//   POST /api/auth/pasang               { kode, nama, username, password, konfirmasi } admin pertama (sekali pakai)
 //   GET  /api/auth/konteks              konteks dashboard guru
 //   PATCH /api/auth/nama, POST /api/auth/password            akun guru sendiri
 //   GET/PUT /api/auth/pengaturan        pengaturan permainan (PUT: admin)
 //   GET/POST /api/auth/guru, PATCH/DELETE /api/auth/guru/:id, POST /api/auth/guru/:id/reset-password (admin)
 
 import { buatRouter, json, bacaJson, kueri, GalatApi } from '../../../server/http.js';
-import { hashRahasia, cocokRahasia, samarkanWaktu, acakPassword, idBaru, ITERASI_BAWAAN } from '../../../server/kripto.js';
+import { hashRahasia, cocokRahasia, samarkanWaktu, acakPassword, idBaru, samaKonstan, iterasiDari, perluHashUlang } from '../../../server/kripto.js';
 import { buatSesi, hapusSesi, sesiUntukKlien, aksesGuru, wajibAdmin } from '../../../server/sesi.js';
 import {
   semua, satu, jalankan, perintah, sekarang, siswaKeObjek, guruKeObjek, semuaKelas, bacaPengaturan,
@@ -23,51 +23,46 @@ import {
 } from '../../../server/data.js';
 import { periksaKolomSiswa } from '../../../js/game/aturan-siswa.js';
 import { ZONA } from '../../../js/data/zona.js';
-import { resetDb } from '../../../server/siapkan-db.js';
+import { BATAS, sisaTahanLogin, sisaTahanJendela, catatGagalLogin, catatGagalJendela, hapusBatas, bersihkanKedaluwarsa } from '../../../server/batas.js';
 
-// ---------- Batas percobaan login (per username dan per alamat IP) ----------
-const BATAS_USERNAME = 5;        // 5 kali salah ...
-const LAMA_TAHAN_MS = 60 * 1000; // ... ditahan 1 menit
-const BATAS_IP = 50;             // satu sekolah bisa berbagi IP, jadi batas per IP lebih longgar
+// ---------- Batas percobaan login: semua angka ada di BATAS (server/batas.js) ----------
+const PESAN_TERPASANG = 'Coding Island sudah terpasang.';
+const batasIp = (jenis) => (jenis === 'guru' ? BATAS.ipGuru : BATAS.ipSiswa);
 
-const iterasi = (env) => Math.min(ITERASI_BAWAAN, Number(env.ITERASI_PBKDF2) || ITERASI_BAWAAN);
+const iterasi = iterasiDari;
 const alamatIp = (request) => request.headers.get('CF-Connecting-IP') || 'lokal';
 
-async function sisaTahan(db, kunci) {
-  const r = await satu(db, 'SELECT tahan_sampai FROM percobaan_login WHERE kunci = ?', kunci);
-  return r ? Math.max(0, Math.ceil((r.tahan_sampai - Date.now()) / 1000)) : 0;
-}
+// Kerja tambahan setelah jawaban dikirim (tetap jalan sampai selesai lewat waitUntil)
+const nanti = (context, janji) => (context.waitUntil ? context.waitUntil(janji.catch((e) => console.error(e))) : janji);
 
-async function catatGagal(db, kunci, batas) {
-  const r = await satu(db, 'SELECT gagal FROM percobaan_login WHERE kunci = ?', kunci);
-  let gagal = (r?.gagal || 0) + 1;
-  let tahanSampai = 0;
-  if (gagal >= batas) { gagal = 0; tahanSampai = Date.now() + LAMA_TAHAN_MS; }
-  await jalankan(db, `INSERT INTO percobaan_login (kunci, gagal, tahan_sampai, diperbarui) VALUES (?,?,?,?)
-    ON CONFLICT(kunci) DO UPDATE SET gagal = excluded.gagal, tahan_sampai = excluded.tahan_sampai, diperbarui = excluded.diperbarui`,
-  kunci, gagal, tahanSampai, Date.now());
-  return { sisa: tahanSampai ? 0 : batas - gagal, tahanDetik: tahanSampai ? LAMA_TAHAN_MS / 1000 : 0 };
-}
-
-const hapusGagal = (db, kunci) => jalankan(db, 'DELETE FROM percobaan_login WHERE kunci = ?', kunci);
-
-/** Pemeriksaan login bersama untuk siswa & guru. */
-async function prosesMasuk(context, jenis, username, rahasia, ambilAkun, kolomHash, pesanSalah) {
+/**
+ * Pemeriksaan login bersama untuk siswa & guru.
+ * tabel/kolomHash dipakai untuk hash ulang otomatis bila iterasi PBKDF2 berubah.
+ */
+async function prosesMasuk(context, jenis, username, rahasia, ambilAkun, tabel, kolomHash, pesanSalah) {
   const db = context.env.DB;
   const u = String(username || '').trim().toLowerCase();
   const kunciU = `${jenis}:u:${u}`;
   const kunciIp = `${jenis}:ip:${alamatIp(context.request)}`;
-  const tahan = Math.max(await sisaTahan(db, kunciU), await sisaTahan(db, kunciIp));
+  // Bersihkan baris batas & sesi kedaluwarsa secara oportunistis (tidak menunda jawaban)
+  nanti(context, bersihkanKedaluwarsa(db));
+
+  const tahan = await sisaTahanLogin(db, kunciU, kunciIp, batasIp(jenis));
   if (tahan) return { hasil: { ok: false, pesan: 'Terlalu banyak percobaan. Istirahat sebentar dulu ya.', sisa: 0, tahanDetik: tahan } };
 
+  const iter = iterasi(context.env);
   const akun = u ? await ambilAkun(u) : null;
-  const benar = akun ? await cocokRahasia(rahasia, akun[kolomHash]) : await samarkanWaktu(rahasia);
+  const benar = akun ? await cocokRahasia(rahasia, akun[kolomHash]) : await samarkanWaktu(rahasia, iter);
   if (!benar) {
-    const hasilU = await catatGagal(db, kunciU, BATAS_USERNAME);
-    const hasilIp = await catatGagal(db, kunciIp, BATAS_IP);
-    return { hasil: { ok: false, pesan: pesanSalah, sisa: hasilU.sisa, tahanDetik: Math.max(hasilU.tahanDetik, hasilIp.tahanDetik) } };
+    const { sisa, tahanDetik } = await catatGagalLogin(db, kunciU, kunciIp, batasIp(jenis));
+    return { hasil: { ok: false, pesan: pesanSalah, sisa, tahanDetik } };
   }
-  await hapusGagal(db, kunciU);
+  nanti(context, hapusBatas(db, kunciU));
+  // Hash lama (iterasi berbeda) diganti dengan iterasi sekarang; hanya jika hash belum diubah orang lain
+  if (perluHashUlang(akun[kolomHash], iter)) {
+    nanti(context, (async () => jalankan(db, `UPDATE ${tabel} SET ${kolomHash} = ? WHERE id = ? AND ${kolomHash} = ?`,
+      await hashRahasia(rahasia, iter), akun.id, akun[kolomHash]))());
+  }
   return { akun };
 }
 
@@ -76,6 +71,10 @@ function periksaGuru(d) {
   if (!d.nama || d.nama.trim().length < 2) throw new GalatApi(400, 'Nama guru minimal 2 huruf.');
   if (!/^[a-z][a-z0-9._]{2,23}$/.test(d.username || '')) throw new GalatApi(400, 'Username guru 3–24 huruf kecil, angka, titik, atau garis bawah.');
   if (!['admin', 'guru'].includes(d.peran)) throw new GalatApi(400, 'Peran harus admin atau guru.');
+}
+
+async function jumlahGuru(db) {
+  return (await satu(db, 'SELECT COUNT(*) AS n FROM guru')).n;
 }
 
 async function jumlahAdmin(db) {
@@ -104,17 +103,18 @@ async function daftarGuruAdmin(db) {
 
 export const onRequest = buatRouter([
   // ================= Sesi & masuk =================
-  ['GET', 'sesi', async (ctx) => ({ sesi: await sesiUntukKlien(ctx) })],
+  // modeDev memberi tahu browser apakah alat pengembang boleh dimuat (MODE_DEV=1 hanya di .dev.vars)
+  ['GET', 'sesi', async (ctx) => ({ sesi: await sesiUntukKlien(ctx), modeDev: ctx.env.MODE_DEV === '1' })],
 
   ['GET', 'tahan', async (ctx) => {
     const jenis = kueri(ctx.request).jenis === 'guru' ? 'guru' : 'siswa';
-    return { detik: await sisaTahan(ctx.env.DB, `${jenis}:ip:${alamatIp(ctx.request)}`) };
+    return { detik: await sisaTahanJendela(ctx.env.DB, `${jenis}:ip:${alamatIp(ctx.request)}`, batasIp(jenis)) };
   }],
 
   ['POST', 'masuk-siswa', async (ctx) => {
     const { username, pin } = await bacaJson(ctx.request);
     const { hasil, akun } = await prosesMasuk(ctx, 'siswa', username, String(pin || ''),
-      (u) => satu(ctx.env.DB, 'SELECT * FROM siswa WHERE username = ?', u), 'pin_hash', 'Username atau PIN belum cocok.');
+      (u) => satu(ctx.env.DB, 'SELECT * FROM siswa WHERE username = ?', u), 'siswa', 'pin_hash', 'Username atau PIN belum cocok.');
     if (hasil) return hasil;
     const setCookie = await buatSesi(ctx.env, 'siswa', akun.id);
     await perintahAktivitas(ctx.env.DB, akun.id, 'masuk', 'Masuk ke Coding Island').run();
@@ -124,7 +124,7 @@ export const onRequest = buatRouter([
   ['POST', 'masuk-guru', async (ctx) => {
     const { username, password } = await bacaJson(ctx.request);
     const { hasil, akun } = await prosesMasuk(ctx, 'guru', username, String(password || ''),
-      (u) => satu(ctx.env.DB, 'SELECT * FROM guru WHERE username = ?', u), 'password_hash', 'Username atau password salah.');
+      (u) => satu(ctx.env.DB, 'SELECT * FROM guru WHERE username = ?', u), 'guru', 'password_hash', 'Username atau password salah.');
     if (hasil) return hasil;
     const setCookie = await buatSesi(ctx.env, 'guru', akun.id);
     const kelasIds = (await semua(ctx.env.DB, 'SELECT kelas_id FROM guru_kelas WHERE guru_id = ?', akun.id)).map((r) => r.kelas_id);
@@ -180,28 +180,48 @@ export const onRequest = buatRouter([
 
   ['GET', 'saran-username', async (ctx) => ({ username: await sarankanUsernameDb(ctx.env.DB, kueri(ctx.request).panggilan) })],
 
-  // ================= Demo =================
-  ['GET', 'akun-demo', async (ctx) => {
-    if (ctx.env.TAMPILKAN_AKUN_DEMO !== '1') return { guru: [], siswa: [] };
-    const db = ctx.env.DB;
-    const kelas = await semuaKelas(db);
-    const siswa = await semua(db, "SELECT nama_panggilan, username, kelas_id, id FROM siswa WHERE id GLOB 'siswa_[0-9][a-z]_*' ORDER BY id");
-    const guruDemo = [
-      { nama: 'Admin Sekolah', username: 'admin', password: 'admin123', peran: 'admin' },
-      { nama: 'Bu Sari', username: 'bu.sari', password: 'guru123', peran: 'guru' },
-      { nama: 'Pak Budi', username: 'pak.budi', password: 'guru123', peran: 'guru' }
-    ];
-    const adaGuru = new Set((await semua(db, 'SELECT username FROM guru')).map((g) => g.username));
-    return {
-      guru: guruDemo.filter((g) => adaGuru.has(g.username)),
-      siswa: siswa.map((s) => ({ namaPanggilan: s.nama_panggilan, username: s.username, pin: '1234', kelas: kelas.find((k) => k.id === s.kelas_id)?.nama || '-' }))
-    };
-  }],
+  // ================= Pemasangan pertama (sekali pakai) =================
+  ['GET', 'pasang', async (ctx) => ({ perluPasang: (await jumlahGuru(ctx.env.DB)) === 0 })],
 
-  ['POST', 'reset-demo', async (ctx) => {
-    wajibAdmin(await aksesGuru(ctx));
-    await resetDb(ctx.env.DB); // tabel sesi ikut dibuat ulang, jadi semua orang keluar
-    return json({ ok: true }, 200, { 'Set-Cookie': await hapusSesi(ctx) });
+  ['POST', 'pasang', async (ctx) => {
+    const db = ctx.env.DB;
+    if (await jumlahGuru(db)) throw new GalatApi(403, PESAN_TERPASANG);
+    if (!ctx.env.KODE_PASANG) throw new GalatApi(500, 'Kode pemasangan belum diatur di server. Jalankan: npx wrangler secret put KODE_PASANG');
+
+    const kunci = `pasang:ip:${alamatIp(ctx.request)}`;
+    const tahan = await sisaTahanJendela(db, kunci, BATAS.ipPasang);
+    if (tahan) return { ok: false, kolom: 'kode', pesan: `Terlalu banyak kode salah. Coba lagi dalam ${Math.ceil(tahan / 60)} menit.`, tahanDetik: tahan };
+
+    const data = await bacaJson(ctx.request);
+    const d = {
+      nama: String(data.nama || '').trim().replace(/\s+/g, ' '),
+      username: String(data.username || '').trim().toLowerCase(),
+      password: String(data.password || ''),
+      konfirmasi: String(data.konfirmasi || '')
+    };
+    if (d.nama.length < 2 || d.nama.length > 40) return { ok: false, kolom: 'nama', pesan: 'Nama admin 2–40 huruf.' };
+    if (!/^[a-z][a-z0-9._]{2,23}$/.test(d.username)) return { ok: false, kolom: 'username', pesan: 'Username 3–24 huruf kecil, angka, titik, atau garis bawah, diawali huruf.' };
+    if (d.password.length < 8 || d.password.length > 64) return { ok: false, kolom: 'password', pesan: 'Password minimal 8 karakter.' };
+    if (d.konfirmasi !== d.password) return { ok: false, kolom: 'konfirmasi', pesan: 'Konfirmasi password belum sama.' };
+
+    // Kode dicocokkan dengan waktu konstan; setiap kode salah dihitung per IP
+    if (!(await samaKonstan(String(data.kode || '').trim(), ctx.env.KODE_PASANG))) {
+      const sisa = await catatGagalJendela(db, kunci, BATAS.ipPasang);
+      return sisa
+        ? { ok: false, kolom: 'kode', pesan: `Kode pemasangan salah. Sisa ${sisa} kesempatan.` }
+        : { ok: false, kolom: 'kode', pesan: 'Kode pemasangan salah. Coba lagi dalam 15 menit.', tahanDetik: await sisaTahanJendela(db, kunci, BATAS.ipPasang) };
+    }
+
+    // Hanya berhasil jika tabel guru masih kosong (aman bila dua orang memasang bersamaan)
+    const id = idBaru('guru');
+    const hasil = await jalankan(db, `INSERT INTO guru (id, nama, username, password_hash, peran, dibuat_pada)
+      SELECT ?, ?, ?, ?, 'admin', ? WHERE NOT EXISTS (SELECT 1 FROM guru)`,
+    id, d.nama, d.username, await hashRahasia(d.password, iterasi(ctx.env)), sekarang());
+    if (!hasil.meta?.changes) throw new GalatApi(403, PESAN_TERPASANG);
+    await hapusBatas(db, kunci);
+
+    const setCookie = await buatSesi(ctx.env, 'guru', id);
+    return json({ ok: true, guru: guruKeObjek(await satu(db, 'SELECT * FROM guru WHERE id = ?', id), []) }, 200, { 'Set-Cookie': setCookie });
   }],
 
   // ================= Dashboard guru: konteks & akun sendiri =================

@@ -1,28 +1,59 @@
 # wrangler.toml — konfigurasi Cloudflare Worker Coding Island (berkas statis + API + D1)
-# Deploy: npx wrangler deploy   |   Uji lokal: npx wrangler dev
+# Deploy produksi: npx wrangler deploy                 (otomatis setiap push ke main)
+# Deploy staging : npx wrangler deploy --env staging   (untuk pengujian, database terpisah)
+# Uji lokal      : npx wrangler dev
 # "name" harus sama dengan nama Worker di dashboard Cloudflare.
 
 name = "codingisland"
 main = "worker.js"
 compatibility_date = "2026-09-01"
 
-# Berkas statis (index.html, css/, js/, image/). Yang dikecualikan ada di .assetsignore.
+# Berkas statis (index.html, css/, js/, image/, fonts/). Yang dikecualikan ada di .assetsignore.
 # Permintaan /api/* selalu ke worker.js; selainnya langsung dilayani sebagai berkas.
 [assets]
 directory = "."
 binding = "ASSETS"
 run_worker_first = ["/api/*"]
 
-# Database D1 (dibuat manual di dashboard, dihubungkan lewat database_id). Tabel + data contoh diisi otomatis oleh worker saat pertama dibuka.
+# Log, waktu CPU, dan error tampil di dashboard (Workers & Pages -> codingisland -> Observability)
+[observability]
+enabled = true
+
+# Database D1 PRODUKSI (data siswa sungguhan). Struktur dikelola lewat migrasi bernomor di migrations/:
+#   npx wrangler d1 migrations apply coding-island-db --remote
+# Database yang masih kosong juga diisi otomatis oleh worker.js (struktur, pengaturan, 13 level bawaan).
 [[d1_databases]]
 binding = "DB"
 database_name = "coding-island-db"
 database_id = "9e840ba1-077f-4322-8560-d01841b7b21d"
+migrations_dir = "migrations"
 
 [vars]
-# "1" = halaman masuk menampilkan daftar akun contoh. Ubah ke "0" saat dipakai sungguhan.
-TAMPILKAN_AKUN_DEMO = "1"
-# "1" = alat pengembang (?dev=1) boleh mengubah progres siswa. Biarkan "0" di server.
-MODE_DEV = "0"
-# Jumlah iterasi PBKDF2 untuk hash baru (maksimal 100000 di Cloudflare Workers)
-ITERASI_PBKDF2 = "100000"
+# Iterasi PBKDF2 untuk hash baru. 10000 ≈ 1,5 ms CPU (aman untuk batas ±10 ms paket Workers Free).
+# Hash lama dengan iterasi lain tetap bisa dipakai dan otomatis di-hash ulang saat login berhasil.
+ITERASI_PBKDF2 = "10000"
+
+# Rahasia TIDAK ditulis di sini. Atur lewat perintah:
+#   npx wrangler secret put KODE_PASANG     (kode pemasangan pertama, lihat README)
+# MODE_DEV sengaja tidak ada: alat pengembang hanya aktif lewat .dev.vars saat uji lokal.
+
+# =====================================================================
+# STAGING — Worker & database TERPISAH untuk pengujian.
+# Jangan pernah memakai atau menyalin data siswa sungguhan ke sini.
+# Sekali saja: npx wrangler d1 create coding-island-db-staging  -> salin database_id ke bawah.
+# Lalu: npx wrangler d1 migrations apply coding-island-db-staging --env staging --remote
+#       npx wrangler secret put KODE_PASANG --env staging
+#       npx wrangler deploy --env staging   -> https://codingisland-staging.<akun>.workers.dev
+# (vars dan d1_databases tidak diwariskan dari atas, jadi ditulis ulang di sini)
+# =====================================================================
+[env.staging]
+name = "codingisland-staging"
+
+[env.staging.vars]
+ITERASI_PBKDF2 = "10000"
+
+[[env.staging.d1_databases]]
+binding = "DB"
+database_name = "coding-island-db-staging"
+database_id = "ISI-DATABASE-ID-STAGING"
+migrations_dir = "migrations"

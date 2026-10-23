@@ -1,27 +1,10 @@
--- schema.sql — struktur database D1 Coding Island + data awal
+-- schema.sql — struktur lengkap database Coding Island (gabungan migrations/*.sql)
 -- DIBUAT OTOMATIS oleh scripts/buat-schema.mjs. Jangan diedit manual.
--- PERINGATAN: menjalankan file ini MENGHAPUS semua data lama lalu mengisi data contoh.
---   npx wrangler d1 execute coding-island-db --local  --file=schema.sql   (lokal)
---   npx wrangler d1 execute coding-island-db --remote --file=schema.sql   (Cloudflare)
--- Akun contoh: admin / admin123, bu.sari / guru123, pak.budi / guru123, siswa PIN 1234.
+-- Aman dijalankan ulang: tidak menghapus data. Untuk database online pakai:
+--   npx wrangler d1 migrations apply coding-island-db --remote
+-- Migrasi: 0001_struktur_awal.sql, 0002_hapus_data_demo.sql, 0003_indeks.sql
 
-PRAGMA defer_foreign_keys = true;
-
-DROP TABLE IF EXISTS nilai_timpa;
-DROP TABLE IF EXISTS catatan_guru;
-DROP TABLE IF EXISTS aktivitas;
-DROP TABLE IF EXISTS progres;
-DROP TABLE IF EXISTS sesi;
-DROP TABLE IF EXISTS percobaan_login;
-DROP TABLE IF EXISTS pengaturan;
-DROP TABLE IF EXISTS level;
-DROP TABLE IF EXISTS siswa;
-DROP TABLE IF EXISTS guru_kelas;
-DROP TABLE IF EXISTS kelas;
-DROP TABLE IF EXISTS guru;
-
--- Guru dan admin (peran: 'guru' | 'admin'). password_hash berformat pbkdf2$sha256$iterasi$salt$hash
-CREATE TABLE guru (
+CREATE TABLE IF NOT EXISTS guru (
   id            TEXT PRIMARY KEY,
   nama          TEXT NOT NULL,
   username      TEXT NOT NULL UNIQUE,
@@ -30,23 +13,22 @@ CREATE TABLE guru (
   dibuat_pada   TEXT NOT NULL
 );
 
-CREATE TABLE kelas (
+CREATE TABLE IF NOT EXISTS kelas (
   id         TEXT PRIMARY KEY,
   nama       TEXT NOT NULL,
   tingkat    INTEGER NOT NULL CHECK (tingkat BETWEEN 1 AND 6),
   kode_kelas TEXT NOT NULL UNIQUE
 );
 
--- Kelas yang diampu setiap guru
-CREATE TABLE guru_kelas (
+CREATE TABLE IF NOT EXISTS guru_kelas (
   guru_id  TEXT NOT NULL REFERENCES guru(id) ON DELETE CASCADE,
   kelas_id TEXT NOT NULL REFERENCES kelas(id) ON DELETE CASCADE,
   PRIMARY KEY (guru_id, kelas_id)
 );
-CREATE INDEX idx_guru_kelas_kelas ON guru_kelas(kelas_id);
 
--- Siswa. zona_terlihat: JSON array id zona yang animasi pembukaannya sudah dilihat
-CREATE TABLE siswa (
+CREATE INDEX IF NOT EXISTS idx_guru_kelas_kelas ON guru_kelas(kelas_id);
+
+CREATE TABLE IF NOT EXISTS siswa (
   id             TEXT PRIMARY KEY,
   nama_lengkap   TEXT NOT NULL,
   nama_panggilan TEXT NOT NULL,
@@ -60,11 +42,10 @@ CREATE TABLE siswa (
   zona_terlihat  TEXT NOT NULL DEFAULT '["pantai"]',
   dibuat_pada    TEXT NOT NULL
 );
-CREATE INDEX idx_siswa_kelas ON siswa(kelas_id);
 
--- Level. Kolom yang sering disaring dipisah; isi lain (instruksi, dunia, tujuan, solusi, clue, ...) di kolom JSON data.
--- kelas_ids NULL = untuk semua kelas; kelas_nonaktif = JSON array kelas yang menonaktifkan level ini.
-CREATE TABLE level (
+CREATE INDEX IF NOT EXISTS idx_siswa_kelas ON siswa(kelas_id);
+
+CREATE TABLE IF NOT EXISTS level (
   id             TEXT PRIMARY KEY,
   zona           TEXT NOT NULL,
   urutan         REAL NOT NULL DEFAULT 0,
@@ -80,10 +61,10 @@ CREATE TABLE level (
   dibuat_pada    TEXT NOT NULL,
   diperbarui     TEXT NOT NULL
 );
-CREATE INDEX idx_level_zona ON level(zona, urutan);
 
--- Progres satu siswa di satu level
-CREATE TABLE progres (
+CREATE INDEX IF NOT EXISTS idx_level_zona ON level(zona, urutan);
+
+CREATE TABLE IF NOT EXISTS progres (
   siswa_id      TEXT NOT NULL REFERENCES siswa(id) ON DELETE CASCADE,
   level_id      TEXT NOT NULL REFERENCES level(id) ON DELETE CASCADE,
   selesai       INTEGER NOT NULL DEFAULT 0,
@@ -97,39 +78,38 @@ CREATE TABLE progres (
   diperbarui    TEXT NOT NULL,
   PRIMARY KEY (siswa_id, level_id)
 );
-CREATE INDEX idx_progres_level ON progres(level_id);
 
--- Log aktivitas siswa (jenis: daftar, masuk, coba, selesai, clue, piala, juara)
-CREATE TABLE aktivitas (
+CREATE INDEX IF NOT EXISTS idx_progres_level ON progres(level_id);
+
+CREATE TABLE IF NOT EXISTS aktivitas (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
   waktu      TEXT NOT NULL,
   siswa_id   TEXT NOT NULL REFERENCES siswa(id) ON DELETE CASCADE,
   jenis      TEXT NOT NULL,
   keterangan TEXT NOT NULL DEFAULT ''
 );
-CREATE INDEX idx_aktivitas_siswa ON aktivitas(siswa_id, waktu);
-CREATE INDEX idx_aktivitas_waktu ON aktivitas(waktu);
 
--- ===== Tabel pendukung =====
--- Sesi login: hanya hash SHA-256 token yang disimpan; kadaluarsa dalam milidetik epoch
-CREATE TABLE sesi (
+CREATE INDEX IF NOT EXISTS idx_aktivitas_siswa ON aktivitas(siswa_id, waktu);
+
+CREATE INDEX IF NOT EXISTS idx_aktivitas_waktu ON aktivitas(waktu);
+
+CREATE TABLE IF NOT EXISTS sesi (
   token_hash  TEXT PRIMARY KEY,
   jenis       TEXT NOT NULL CHECK (jenis IN ('siswa', 'guru')),
   pengguna_id TEXT NOT NULL,
   kadaluarsa  INTEGER NOT NULL
 );
-CREATE INDEX idx_sesi_pengguna ON sesi(jenis, pengguna_id);
 
--- Batas percobaan login (kunci: 'siswa:<username>', 'guru:<username>', 'ip:<alamat>')
-CREATE TABLE percobaan_login (
+CREATE INDEX IF NOT EXISTS idx_sesi_pengguna ON sesi(jenis, pengguna_id);
+
+CREATE TABLE IF NOT EXISTS percobaan_login (
   kunci        TEXT PRIMARY KEY,
   gagal        INTEGER NOT NULL DEFAULT 0,
   tahan_sampai INTEGER NOT NULL DEFAULT 0,
   diperbarui   INTEGER NOT NULL
 );
 
--- Catatan guru untuk seorang siswa
-CREATE TABLE catatan_guru (
+CREATE TABLE IF NOT EXISTS catatan_guru (
   siswa_id   TEXT PRIMARY KEY REFERENCES siswa(id) ON DELETE CASCADE,
   teks       TEXT NOT NULL,
   guru_id    TEXT,
@@ -137,8 +117,7 @@ CREATE TABLE catatan_guru (
   diperbarui TEXT NOT NULL
 );
 
--- Nilai akhir yang ditimpa guru (1–100) beserta alasannya
-CREATE TABLE nilai_timpa (
+CREATE TABLE IF NOT EXISTS nilai_timpa (
   siswa_id  TEXT NOT NULL REFERENCES siswa(id) ON DELETE CASCADE,
   kelas_id  TEXT NOT NULL REFERENCES kelas(id) ON DELETE CASCADE,
   nilai     INTEGER NOT NULL CHECK (nilai BETWEEN 1 AND 100),
@@ -149,53 +128,16 @@ CREATE TABLE nilai_timpa (
   PRIMARY KEY (siswa_id, kelas_id)
 );
 
--- Pengaturan umum (kunci: harga_clue, koin_awal); nilai berupa JSON
-CREATE TABLE pengaturan (
+CREATE TABLE IF NOT EXISTS pengaturan (
   kunci TEXT PRIMARY KEY,
   nilai TEXT NOT NULL
 );
 
--- ===== Data awal =====
-INSERT INTO guru (id, nama, username, password_hash, peran, dibuat_pada) VALUES
-  ('guru_admin', 'Admin Sekolah', 'admin', 'pbkdf2$sha256$100000$UQ+qNhZb+vH7IJOTFx8B2g==$Ys0IcTD/mJ5Cf5JSDgMUrUSISbiIGc1yKCR5/zbvVwg=', 'admin', '2026-09-01T00:30:00.000Z'),
-  ('guru_sari', 'Bu Sari', 'bu.sari', 'pbkdf2$sha256$100000$KJEeKGjvz34VkWBabQ2wug==$lcKnvF383ggI44J31eZBbqL/T7zuyfX2BUSXpeKnSwQ=', 'guru', '2026-09-01T00:30:00.000Z'),
-  ('guru_budi', 'Pak Budi', 'pak.budi', 'pbkdf2$sha256$100000$5Rtd96/olfmVjxmQ7OtI3g==$blVcVc+lSBpVWcUIXfCJPFzpZIBXW038/WbwF/slGzs=', 'guru', '2026-09-01T00:30:00.000Z');
+INSERT OR IGNORE INTO pengaturan (kunci, nilai) VALUES
+  ('harga_clue', '[5,10,20]'),
+  ('koin_awal', '20');
 
-INSERT INTO kelas (id, nama, tingkat, kode_kelas) VALUES
-  ('kelas_3a', 'Kelas 3A', 3, 'PULAU3'),
-  ('kelas_4a', 'Kelas 4A', 4, 'PULAU4'),
-  ('kelas_5a', 'Kelas 5A', 5, 'PULAU5'),
-  ('kelas_6a', 'Kelas 6A', 6, 'PULAU6');
-
-INSERT INTO guru_kelas (guru_id, kelas_id) VALUES
-  ('guru_sari', 'kelas_3a'),
-  ('guru_sari', 'kelas_4a'),
-  ('guru_budi', 'kelas_5a'),
-  ('guru_budi', 'kelas_6a');
-
-INSERT INTO siswa (id, nama_lengkap, nama_panggilan, jenis_kelamin, avatar, kelas_id, username, pin_hash, koin, berlian, zona_terlihat, dibuat_pada) VALUES
-  ('siswa_3a_1', 'Andi Pratama', 'Andi', 'L', 'pria', 'kelas_3a', 'andi3', 'pbkdf2$sha256$100000$LAGk1NWPTbVF0VLwVH0+gQ==$GpHTYouLIrASCFlbcryWn9Stlta4doFchBU98upD52g=', 25, 0, '["pantai"]', '2026-09-04T00:30:00.000Z'),
-  ('siswa_3a_2', 'Siti Aisyah', 'Aisyah', 'P', 'wanita', 'kelas_3a', 'aisyah3', 'pbkdf2$sha256$100000$qM1Ry2i7glsSYU6Azxnw/Q==$FV6mk6NbDBULX3Dv4znK3oVOSEXwdiLhVi7NvjlmNQM=', 45, 0, '["pantai"]', '2026-09-05T00:30:00.000Z'),
-  ('siswa_3a_3', 'Rizky Ramadhan', 'Rizky', 'L', 'pria', 'kelas_3a', 'rizky3', 'pbkdf2$sha256$100000$wZDgllot0ofZO14AUj3UKQ==$HvDn9WeYcN5h9VVHDQUAiIePgAMFDzqTsEdN/bVrcNo=', 45, 0, '["pantai"]', '2026-09-02T00:30:00.000Z'),
-  ('siswa_3a_4', 'Nabila Putri', 'Nabila', 'P', 'wanita', 'kelas_3a', 'nabila3', 'pbkdf2$sha256$100000$ofjNS8repx/qnKXevO7kAg==$iW9T4wtrbzg5ReexPYu/fiHhMAdvsUM5YwrMqDXF86U=', 25, 0, '["pantai"]', '2026-09-01T00:30:00.000Z'),
-  ('siswa_3a_5', 'Fajar Nugroho', 'Fajar', 'L', 'pria', 'kelas_3a', 'fajar3', 'pbkdf2$sha256$100000$bJWIEruesBvwNhDUUpdPyQ==$BZxj1f17easT8qQ5tpKhF9e7AtrYUg+H3X9KhJSJ6HU=', 40, 0, '["pantai"]', '2026-09-03T00:30:00.000Z'),
-  ('siswa_4a_1', 'Dimas Saputra', 'Dimas', 'L', 'pria', 'kelas_4a', 'dimas4', 'pbkdf2$sha256$100000$7P08nBAwCKx1No4DmHUtbw==$IMjD0wWpKPztKuasFPcjGzUtoF/pylcJIHtzHlvhGE4=', 70, 3, '["pantai","laut"]', '2026-09-04T00:30:00.000Z'),
-  ('siswa_4a_2', 'Zahra Amelia', 'Zahra', 'P', 'wanita', 'kelas_4a', 'zahra4', 'pbkdf2$sha256$100000$/dywtL6dM/+xTivPmZa0RA==$oPuYUvdEyP/7ZV7vvmN0grKMXR+RVNJ8B0n05ssdNm8=', 55, 3, '["pantai","laut"]', '2026-09-03T00:30:00.000Z'),
-  ('siswa_4a_3', 'Bima Ardiansyah', 'Bima', 'L', 'pria', 'kelas_4a', 'bima4', 'pbkdf2$sha256$100000$cCYYGHYbm/jlEcPRiYQ/zw==$tXYNVUU9baHq/II847xq65DKIdR8xetcRtNB9ZL/rHM=', 35, 3, '["pantai","laut"]', '2026-09-02T00:30:00.000Z'),
-  ('siswa_4a_4', 'Keisha Ananda', 'Keisha', 'P', 'wanita', 'kelas_4a', 'keisha4', 'pbkdf2$sha256$100000$P+Q9qA8EqQz+WBd+6XNwbA==$4MWmcHW4/fehhyZce3MZYhEooV+TLaI0gU/TvQZA1Nk=', 75, 3, '["pantai","laut"]', '2026-09-06T00:30:00.000Z'),
-  ('siswa_4a_5', 'Raka Firmansyah', 'Raka', 'L', 'pria', 'kelas_4a', 'raka4', 'pbkdf2$sha256$100000$kyvTv9L6Qm19UGt43QKCvA==$FpDXsTcDViKXwSMItS/GxcSURlSmM+J0CLInYUo8ff8=', 85, 3, '["pantai","laut"]', '2026-09-06T00:30:00.000Z'),
-  ('siswa_5a_1', 'Farhan Hidayat', 'Farhan', 'L', 'pria', 'kelas_5a', 'farhan5', 'pbkdf2$sha256$100000$+h309Eym5jNNffrA6mmTDg==$/EZRzbBNG9iUUMo2+ib8ImsRTQZSk+7THqA3BhLAgNY=', 100, 6, '["pantai","laut","gurun"]', '2026-09-05T00:30:00.000Z'),
-  ('siswa_5a_2', 'Salsabila Rahma', 'Salsa', 'P', 'wanita', 'kelas_5a', 'salsa5', 'pbkdf2$sha256$100000$JnIRp/mbUoZ89P0No5CMeQ==$UVwAnXwOzejT0WHsdtYCpyiUJsoam1Tq5q532X3impo=', 90, 6, '["pantai","laut","gurun"]', '2026-09-05T00:30:00.000Z'),
-  ('siswa_5a_3', 'Yusuf Maulana', 'Yusuf', 'L', 'pria', 'kelas_5a', 'yusuf5', 'pbkdf2$sha256$100000$fYJ4bTD4yIOnIdspgIIw5Q==$dQlNxAMfCPrQ5HmuQ5tTgOiTkSiC6qHE0wjsPzB/u4Y=', 105, 6, '["pantai","laut","gurun"]', '2026-09-04T00:30:00.000Z'),
-  ('siswa_5a_4', 'Alya Safitri', 'Alya', 'P', 'wanita', 'kelas_5a', 'alya5', 'pbkdf2$sha256$100000$7YTJfERQcOU9oRw53zwtMw==$4ogOKvf/PsULFuLVVNgqBYrQ957iNbsMG4Y4+JvPKv0=', 105, 9, '["pantai","laut","gurun","salju"]', '2026-09-05T00:30:00.000Z'),
-  ('siswa_5a_5', 'Hafiz Akbar', 'Hafiz', 'L', 'pria', 'kelas_5a', 'hafiz5', 'pbkdf2$sha256$100000$2M+IgpFS+NeDnnEw4A4FRw==$oG6IsKbCllmKuK5Gn5Y9actjAHgJm+YLy4uRq6FI7nI=', 110, 6, '["pantai","laut","gurun"]', '2026-09-07T00:30:00.000Z'),
-  ('siswa_6a_1', 'Naufal Rizqi', 'Naufal', 'L', 'pria', 'kelas_6a', 'naufal6', 'pbkdf2$sha256$100000$L6t+emqtAYtQwg125Sd6fg==$Ss2jlhoFPcrbOi2qvMN7kK+COd3u1RG3RO+IOiYngW4=', 140, 9, '["pantai","laut","gurun","salju"]', '2026-09-02T00:30:00.000Z'),
-  ('siswa_6a_2', 'Aurel Kirana', 'Aurel', 'P', 'wanita', 'kelas_6a', 'aurel6', 'pbkdf2$sha256$100000$C/1LHLPcHrTQMuikaYzmeQ==$Q20ekmNrBT5vvJ4HYDawIpV1idQrLSf53gF/XAUcoao=', 160, 9, '["pantai","laut","gurun","salju"]', '2026-09-06T00:30:00.000Z'),
-  ('siswa_6a_3', 'Galih Permana', 'Galih', 'L', 'pria', 'kelas_6a', 'galih6', 'pbkdf2$sha256$100000$JgifbyuG4T/uKZIEvg1kug==$pvPk2MDa2W1eO6VMPnmJ5PoyCfMaWuV0FDM9EdLWRGo=', 120, 9, '["pantai","laut","gurun","salju"]', '2026-09-04T00:30:00.000Z'),
-  ('siswa_6a_4', 'Intan Permata', 'Intan', 'P', 'wanita', 'kelas_6a', 'intan6', 'pbkdf2$sha256$100000$7aIkZyBnD31dDzraDUGARg==$fMnMZ1YaUfmFHbor7aXSTm3RXHur1Q9j74zM6IGmGts=', 145, 9, '["pantai","laut","gurun","salju"]', '2026-09-05T00:30:00.000Z'),
-  ('siswa_6a_5', 'Rafi Kurniawan', 'Rafi', 'L', 'pria', 'kelas_6a', 'rafi6', 'pbkdf2$sha256$100000$zUCgxDRskbdmvUTdv2nQbA==$fVveKJZMhMqVAMRgeMiZVCMnFxvfswLJcj4XYZd6/MM=', 160, 9, '["pantai","laut","gurun","salju"]', '2026-09-02T00:30:00.000Z');
-
-INSERT INTO level (id, zona, urutan, jenis, judul, bawaan, terbit, pembuat_id, pembuat_nama, kelas_ids, kelas_nonaktif, data, dibuat_pada, diperbarui) VALUES
+INSERT OR IGNORE INTO level (id, zona, urutan, jenis, judul, bawaan, terbit, pembuat_id, pembuat_nama, kelas_ids, kelas_nonaktif, data, dibuat_pada, diperbarui) VALUES
   ('pantai-1', 'pantai', 1, 'ketik', 'Langkah Pertama', 1, 1, NULL, NULL, NULL, '[]', '{"ringkasan":"Gerakkan robot maju sampai ke bendera.","instruksi":"Bawa robot ke bendera! Ketik maju() untuk maju 1 petak.","tantanganBonus":"Bisakah kamu menyelesaikannya hanya dengan 1 baris? Coba maju(4).","tujuanTeks":[{"teks":"Sampai di bendera","jenis":"sampai"}],"dunia":{"kolom":8,"baris":5,"robot":{"x":1,"y":2,"arah":"timur"},"tujuan":{"x":5,"y":2},"item":[],"rintangan":[{"jenis":"batu","x":3,"y":0},{"jenis":"batu","x":0,"y":4},{"jenis":"batu","x":6,"y":4}],"jurang":[]},"perintahTersedia":["maju"],"kodeAwal":"// Ketik perintahmu di bawah ini\n","solusi":"maju(4)","batasBaris":4,"clue":["Bendera ada lurus di depan robot. Robot cukup berjalan maju.","Hitung petaknya: dari robot ke bendera ada 4 petak.","Tulis maju() empat kali, atau cukup maju(4)."],"tingkat":[3,4,5,6]}', '2026-09-01T00:30:00.000Z', '2026-09-01T00:30:00.000Z'),
   ('pantai-2', 'pantai', 2, 'ketik', 'Koin di Tepi Pantai', 1, 1, NULL, NULL, NULL, '[]', '{"ringkasan":"Ambil 2 koin, lalu belok menuju bendera.","instruksi":"Ambil 2 koin, lalu belok ke bendera. Ketik ambil() saat robot berdiri di atas koin.","tantanganBonus":"Pakai maju(2) supaya kodemu cukup 7 baris.","tujuanTeks":[{"teks":"Ambil 2 koin","jenis":"ambil","jumlah":2},{"teks":"Sampai di bendera","jenis":"sampai"}],"dunia":{"kolom":8,"baris":5,"robot":{"x":0,"y":1,"arah":"timur"},"tujuan":{"x":5,"y":3},"item":[{"jenis":"koin","x":2,"y":1,"wajib":true},{"jenis":"koin","x":4,"y":1,"wajib":true}],"rintangan":[{"jenis":"batu","x":6,"y":1},{"jenis":"batu","x":1,"y":3},{"jenis":"batu","x":7,"y":4}],"jurang":[]},"perintahTersedia":["maju","belok_kiri","belok_kanan","ambil"],"kodeAwal":"// Ambil 2 koin, lalu menuju bendera\n","solusi":"maju(2)\nambil()\nmaju(2)\nambil()\nmaju()\nbelok_kanan()\nmaju(2)","batasBaris":7,"clue":["Robot berjalan lurus mengambil koin, lalu belok ke bawah (kanan robot) menuju bendera.","Robot harus berhenti tepat di atas koin, baru ketik ambil(). Koin pertama 2 petak di depan.","Setelah koin kedua: maju() sekali, belok_kanan(), lalu maju(2)."],"tingkat":[3,4,5,6]}', '2026-09-01T00:30:00.000Z', '2026-09-01T00:30:00.000Z'),
   ('pantai-3', 'pantai', 3, 'debug', 'Belokan yang Tertukar', 1, 1, NULL, NULL, NULL, '[]', '{"ringkasan":"Arah belok robot tertukar. Perbaiki ya!","instruksi":"Robot berbelok ke arah yang salah. Perbaiki kodenya!","tantanganBonus":"Sebelum menekan Jalankan, tebak dulu ke mana robot akan pergi.","tujuanTeks":[{"teks":"Sampai di bendera","jenis":"sampai"}],"dunia":{"kolom":8,"baris":5,"robot":{"x":1,"y":1,"arah":"timur"},"tujuan":{"x":6,"y":3},"item":[],"rintangan":[{"jenis":"batu","x":4,"y":1},{"jenis":"batu","x":0,"y":4},{"jenis":"batu","x":7,"y":4}],"jurang":[]},"perintahTersedia":["maju","belok_kiri","belok_kanan","ambil"],"kodeAwal":"// Ada bug! Arah beloknya tertukar.\nmaju(2)\nbelok_kiri()\nmaju(2)\nbelok_kanan()\nmaju(3)","solusi":"maju(2)\nbelok_kanan()\nmaju(2)\nbelok_kiri()\nmaju(3)","batasBaris":5,"clue":["Di depan batu, robot harus turun ke bawah dulu, baru berjalan ke kanan.","Baris 3 bermasalah: belok_kiri() membuat robot naik ke atas lalu keluar peta.","Tukar dua perintah belok: baris 3 jadi belok_kanan() dan baris 5 jadi belok_kiri()."],"tingkat":[3,4,5,6]}', '2026-09-01T00:30:00.000Z', '2026-09-01T00:30:00.000Z'),
@@ -210,292 +152,16 @@ INSERT INTO level (id, zona, urutan, jenis, judul, bawaan, terbit, pembuat_id, p
   ('salju-2', 'salju', 2, 'debug', 'Putaran Salju', 1, 1, NULL, NULL, NULL, '[]', '{"ringkasan":"Perulangan selama tidak pernah berhenti. Cari bug-nya!","instruksi":"Robot berputar terus tanpa henti! Perbaiki isi selama.","tantanganBonus":"Kenapa perulangan tadi tidak pernah berhenti?","tujuanTeks":[{"teks":"Sampai di bendera","jenis":"sampai"}],"dunia":{"kolom":8,"baris":5,"robot":{"x":0,"y":2,"arah":"timur"},"tujuan":{"x":6,"y":2},"item":[],"rintangan":[{"jenis":"es","x":4,"y":0},{"jenis":"es","x":1,"y":4}],"jurang":[]},"perintahTersedia":["maju","belok_kiri","belok_kanan","ambil","ulangi","lompat","jika","ada_jurang","ada_rintangan","selama","sampai_tujuan","buat"],"kodeAwal":"// Ada bug! Robot tidak pernah sampai.\nselama bukan sampai_tujuan() {\n  belok_kanan()\n}","solusi":"selama bukan sampai_tujuan() {\n  maju()\n}","batasBaris":2,"clue":["Bendera lurus di depan robot. Robot cukup terus maju sampai tiba.","Baris 3 bermasalah: belok_kanan() hanya memutar robot, robot tidak pernah berpindah.","selama bukan sampai_tujuan() {\n  maju()\n}"],"tingkat":[3,4,5,6]}', '2026-09-01T00:30:00.000Z', '2026-09-01T00:30:00.000Z'),
   ('salju-3', 'salju', 3, 'boss', 'Boss Puncak Salju', 1, 1, NULL, NULL, NULL, '[]', '{"ringkasan":"Gunakan selama dan jika untuk mencapai puncak gunung.","instruksi":"Boss terakhir! Robot berjalan sendiri sampai bendera dan belok saat ada rintangan.","tantanganBonus":"Kodemu hanya perlu 5 baris, tanpa angka sama sekali.","tujuanTeks":[{"teks":"Sampai di bendera","jenis":"sampai"}],"dunia":{"kolom":8,"baris":5,"robot":{"x":0,"y":0,"arah":"timur"},"tujuan":{"x":1,"y":2},"item":[],"rintangan":[{"jenis":"es","x":5,"y":0},{"jenis":"es","x":7,"y":1},{"jenis":"es","x":6,"y":2},{"jenis":"es","x":4,"y":3},{"jenis":"es","x":6,"y":4}],"jurang":[]},"perintahTersedia":["maju","belok_kiri","belok_kanan","ambil","ulangi","lompat","jika","ada_jurang","ada_rintangan","selama","sampai_tujuan","buat"],"kodeAwal":"// Kalahkan boss terakhir: pakai selama dan jika\n","solusi":"selama bukan sampai_tujuan() {\n  jika ada_rintangan() {\n    belok_kanan()\n  } lainnya {\n    maju()\n  }\n}","batasBaris":5,"clue":["Robot terus maju. Setiap bertemu bongkahan es, robot belok ke kanan.","Pakai selama bukan sampai_tujuan() { ... } dan di dalamnya jika ada_rintangan().","selama bukan sampai_tujuan() {\n  jika ada_rintangan() {\n    belok_kanan()\n  } lainnya {"],"tingkat":[3,4,5,6]}', '2026-09-01T00:30:00.000Z', '2026-09-01T00:30:00.000Z');
 
-INSERT INTO progres (siswa_id, level_id, selesai, bintang, nilai, percobaan, clue_dibeli, kode_terakhir, detik, selesai_pada, diperbarui) VALUES
-  ('siswa_3a_1', 'pantai-1', 1, 2, 75, 4, 1, '', 178, '2026-09-05T00:30:00.000Z', '2026-09-05T00:30:00.000Z'),
-  ('siswa_3a_1', 'pantai-2', 0, 0, 0, 3, 0, '', 104, NULL, '2026-09-06T00:30:00.000Z'),
-  ('siswa_3a_2', 'pantai-1', 1, 3, 86, 2, 0, '', 392, '2026-09-06T00:30:00.000Z', '2026-09-06T00:30:00.000Z'),
-  ('siswa_3a_2', 'pantai-2', 1, 2, 81, 5, 0, '', 308, '2026-09-08T00:30:00.000Z', '2026-09-08T00:30:00.000Z'),
-  ('siswa_3a_3', 'pantai-1', 1, 2, 83, 5, 0, '', 175, '2026-09-04T00:30:00.000Z', '2026-09-04T00:30:00.000Z'),
-  ('siswa_3a_3', 'pantai-2', 1, 3, 99, 3, 0, '', 41, '2026-09-05T00:30:00.000Z', '2026-09-05T00:30:00.000Z'),
-  ('siswa_3a_3', 'pantai-3', 0, 0, 0, 2, 0, '', 154, NULL, '2026-09-06T00:30:00.000Z'),
-  ('siswa_3a_4', 'pantai-1', 1, 1, 64, 3, 0, '', 367, '2026-09-03T00:30:00.000Z', '2026-09-03T00:30:00.000Z'),
-  ('siswa_3a_4', 'pantai-2', 0, 0, 0, 1, 0, '', 59, NULL, '2026-09-04T00:30:00.000Z'),
-  ('siswa_3a_5', 'pantai-1', 1, 2, 77, 4, 0, '', 263, '2026-09-04T00:30:00.000Z', '2026-09-04T00:30:00.000Z'),
-  ('siswa_3a_5', 'pantai-2', 1, 2, 83, 1, 0, '', 89, '2026-09-05T00:30:00.000Z', '2026-09-05T00:30:00.000Z'),
-  ('siswa_4a_1', 'pantai-1', 1, 2, 82, 5, 0, '', 45, '2026-09-06T00:30:00.000Z', '2026-09-06T00:30:00.000Z'),
-  ('siswa_4a_1', 'pantai-2', 1, 2, 82, 3, 1, '', 68, '2026-09-07T00:30:00.000Z', '2026-09-07T00:30:00.000Z'),
-  ('siswa_4a_1', 'pantai-3', 1, 1, 66, 5, 0, '', 296, '2026-09-09T00:30:00.000Z', '2026-09-09T00:30:00.000Z'),
-  ('siswa_4a_1', 'pantai-4', 1, 3, 97, 5, 0, '', 373, '2026-09-11T00:30:00.000Z', '2026-09-11T00:30:00.000Z'),
-  ('siswa_4a_1', 'laut-1', 1, 3, 98, 2, 0, '', 93, '2026-09-13T00:30:00.000Z', '2026-09-13T00:30:00.000Z'),
-  ('siswa_4a_1', 'laut-2', 0, 0, 0, 3, 0, '', 63, NULL, '2026-09-14T00:30:00.000Z'),
-  ('siswa_4a_2', 'pantai-1', 1, 2, 84, 2, 0, '', 324, '2026-09-05T00:30:00.000Z', '2026-09-05T00:30:00.000Z'),
-  ('siswa_4a_2', 'pantai-2', 1, 2, 77, 5, 2, '', 66, '2026-09-06T00:30:00.000Z', '2026-09-06T00:30:00.000Z'),
-  ('siswa_4a_2', 'pantai-3', 1, 2, 79, 2, 0, '', 70, '2026-09-08T00:30:00.000Z', '2026-09-08T00:30:00.000Z'),
-  ('siswa_4a_2', 'pantai-4', 1, 3, 95, 2, 0, '', 93, '2026-09-10T00:30:00.000Z', '2026-09-10T00:30:00.000Z'),
-  ('siswa_4a_2', 'laut-1', 0, 0, 0, 3, 0, '', 69, NULL, '2026-09-11T00:30:00.000Z'),
-  ('siswa_4a_3', 'pantai-1', 1, 2, 72, 4, 0, '', 230, '2026-09-03T00:30:00.000Z', '2026-09-03T00:30:00.000Z'),
-  ('siswa_4a_3', 'pantai-2', 1, 2, 77, 5, 2, '', 82, '2026-09-05T00:30:00.000Z', '2026-09-05T00:30:00.000Z'),
-  ('siswa_4a_3', 'pantai-3', 1, 2, 75, 1, 2, '', 293, '2026-09-07T00:30:00.000Z', '2026-09-07T00:30:00.000Z'),
-  ('siswa_4a_3', 'pantai-4', 1, 3, 98, 5, 2, '', 332, '2026-09-08T00:30:00.000Z', '2026-09-08T00:30:00.000Z'),
-  ('siswa_4a_3', 'laut-1', 0, 0, 0, 2, 0, '', 120, NULL, '2026-09-09T00:30:00.000Z'),
-  ('siswa_4a_4', 'pantai-1', 1, 3, 95, 4, 0, '', 88, '2026-09-08T00:30:00.000Z', '2026-09-08T00:30:00.000Z'),
-  ('siswa_4a_4', 'pantai-2', 1, 3, 97, 1, 0, '', 52, '2026-09-09T00:30:00.000Z', '2026-09-09T00:30:00.000Z'),
-  ('siswa_4a_4', 'pantai-3', 1, 3, 85, 2, 0, '', 390, '2026-09-11T00:30:00.000Z', '2026-09-11T00:30:00.000Z'),
-  ('siswa_4a_4', 'pantai-4', 1, 2, 70, 1, 0, '', 348, '2026-09-13T00:30:00.000Z', '2026-09-13T00:30:00.000Z'),
-  ('siswa_4a_4', 'laut-1', 0, 0, 0, 1, 0, '', 27, NULL, '2026-09-14T00:30:00.000Z'),
-  ('siswa_4a_5', 'pantai-1', 1, 2, 83, 1, 0, '', 279, '2026-09-08T00:30:00.000Z', '2026-09-08T00:30:00.000Z'),
-  ('siswa_4a_5', 'pantai-2', 1, 3, 90, 1, 0, '', 48, '2026-09-09T00:30:00.000Z', '2026-09-09T00:30:00.000Z'),
-  ('siswa_4a_5', 'pantai-3', 1, 2, 77, 5, 0, '', 196, '2026-09-11T00:30:00.000Z', '2026-09-11T00:30:00.000Z'),
-  ('siswa_4a_5', 'pantai-4', 1, 2, 73, 2, 1, '', 313, '2026-09-13T00:30:00.000Z', '2026-09-13T00:30:00.000Z'),
-  ('siswa_4a_5', 'laut-1', 1, 2, 76, 2, 0, '', 130, '2026-09-14T00:30:00.000Z', '2026-09-14T00:30:00.000Z'),
-  ('siswa_4a_5', 'laut-2', 1, 3, 95, 5, 0, '', 199, '2026-09-16T00:30:00.000Z', '2026-09-16T00:30:00.000Z'),
-  ('siswa_5a_1', 'pantai-1', 1, 2, 82, 5, 0, '', 292, '2026-09-06T00:30:00.000Z', '2026-09-06T00:30:00.000Z'),
-  ('siswa_5a_1', 'pantai-2', 1, 3, 100, 4, 1, '', 398, '2026-09-08T00:30:00.000Z', '2026-09-08T00:30:00.000Z'),
-  ('siswa_5a_1', 'pantai-3', 1, 2, 80, 3, 0, '', 271, '2026-09-10T00:30:00.000Z', '2026-09-10T00:30:00.000Z'),
-  ('siswa_5a_1', 'pantai-4', 1, 3, 97, 2, 0, '', 348, '2026-09-12T00:30:00.000Z', '2026-09-12T00:30:00.000Z'),
-  ('siswa_5a_1', 'laut-1', 1, 2, 84, 5, 0, '', 40, '2026-09-13T00:30:00.000Z', '2026-09-13T00:30:00.000Z'),
-  ('siswa_5a_1', 'laut-2', 1, 2, 81, 4, 0, '', 280, '2026-09-14T00:30:00.000Z', '2026-09-14T00:30:00.000Z'),
-  ('siswa_5a_1', 'laut-3', 1, 2, 84, 2, 0, '', 338, '2026-09-15T00:30:00.000Z', '2026-09-15T00:30:00.000Z'),
-  ('siswa_5a_1', 'gurun-1', 1, 3, 95, 3, 2, '', 88, '2026-09-16T00:30:00.000Z', '2026-09-16T00:30:00.000Z'),
-  ('siswa_5a_1', 'gurun-2', 0, 0, 0, 3, 0, '', 74, NULL, '2026-09-17T00:30:00.000Z'),
-  ('siswa_5a_2', 'pantai-1', 1, 3, 94, 4, 0, '', 150, '2026-09-07T00:30:00.000Z', '2026-09-07T00:30:00.000Z'),
-  ('siswa_5a_2', 'pantai-2', 1, 1, 66, 4, 0, '', 249, '2026-09-09T00:30:00.000Z', '2026-09-09T00:30:00.000Z'),
-  ('siswa_5a_2', 'pantai-3', 1, 3, 94, 4, 0, '', 49, '2026-09-10T00:30:00.000Z', '2026-09-10T00:30:00.000Z'),
-  ('siswa_5a_2', 'pantai-4', 1, 2, 76, 1, 0, '', 367, '2026-09-12T00:30:00.000Z', '2026-09-12T00:30:00.000Z'),
-  ('siswa_5a_2', 'laut-1', 1, 1, 63, 2, 0, '', 53, '2026-09-13T00:30:00.000Z', '2026-09-13T00:30:00.000Z'),
-  ('siswa_5a_2', 'laut-2', 1, 1, 65, 3, 0, '', 119, '2026-09-14T00:30:00.000Z', '2026-09-14T00:30:00.000Z'),
-  ('siswa_5a_2', 'laut-3', 1, 3, 91, 5, 0, '', 348, '2026-09-16T00:30:00.000Z', '2026-09-16T00:30:00.000Z'),
-  ('siswa_5a_2', 'gurun-1', 0, 0, 0, 2, 0, '', 26, NULL, '2026-09-17T00:30:00.000Z'),
-  ('siswa_5a_3', 'pantai-1', 1, 3, 85, 5, 0, '', 104, '2026-09-05T00:30:00.000Z', '2026-09-05T00:30:00.000Z'),
-  ('siswa_5a_3', 'pantai-2', 1, 3, 94, 2, 1, '', 317, '2026-09-07T00:30:00.000Z', '2026-09-07T00:30:00.000Z'),
-  ('siswa_5a_3', 'pantai-3', 1, 3, 97, 3, 0, '', 166, '2026-09-09T00:30:00.000Z', '2026-09-09T00:30:00.000Z'),
-  ('siswa_5a_3', 'pantai-4', 1, 2, 74, 1, 0, '', 206, '2026-09-10T00:30:00.000Z', '2026-09-10T00:30:00.000Z'),
-  ('siswa_5a_3', 'laut-1', 1, 3, 100, 4, 0, '', 86, '2026-09-11T00:30:00.000Z', '2026-09-11T00:30:00.000Z'),
-  ('siswa_5a_3', 'laut-2', 1, 1, 60, 3, 0, '', 65, '2026-09-12T00:30:00.000Z', '2026-09-12T00:30:00.000Z'),
-  ('siswa_5a_3', 'laut-3', 1, 3, 97, 3, 0, '', 163, '2026-09-13T00:30:00.000Z', '2026-09-13T00:30:00.000Z'),
-  ('siswa_5a_3', 'gurun-1', 0, 0, 0, 3, 0, '', 95, NULL, '2026-09-14T00:30:00.000Z'),
-  ('siswa_5a_4', 'pantai-1', 1, 2, 72, 4, 2, '', 358, '2026-09-06T00:30:00.000Z', '2026-09-06T00:30:00.000Z'),
-  ('siswa_5a_4', 'pantai-2', 1, 3, 100, 2, 0, '', 65, '2026-09-08T00:30:00.000Z', '2026-09-08T00:30:00.000Z'),
-  ('siswa_5a_4', 'pantai-3', 1, 1, 66, 2, 0, '', 272, '2026-09-09T00:30:00.000Z', '2026-09-09T00:30:00.000Z'),
-  ('siswa_5a_4', 'pantai-4', 1, 2, 70, 3, 0, '', 198, '2026-09-10T00:30:00.000Z', '2026-09-10T00:30:00.000Z'),
-  ('siswa_5a_4', 'laut-1', 1, 2, 80, 2, 0, '', 125, '2026-09-11T00:30:00.000Z', '2026-09-11T00:30:00.000Z'),
-  ('siswa_5a_4', 'laut-2', 1, 2, 72, 4, 0, '', 376, '2026-09-13T00:30:00.000Z', '2026-09-13T00:30:00.000Z'),
-  ('siswa_5a_4', 'laut-3', 1, 1, 61, 3, 0, '', 94, '2026-09-15T00:30:00.000Z', '2026-09-15T00:30:00.000Z'),
-  ('siswa_5a_4', 'gurun-1', 1, 2, 82, 5, 0, '', 414, '2026-09-17T00:30:00.000Z', '2026-09-17T00:30:00.000Z'),
-  ('siswa_5a_4', 'gurun-2', 1, 3, 94, 1, 1, '', 182, '2026-09-18T00:30:00.000Z', '2026-09-18T00:30:00.000Z'),
-  ('siswa_5a_4', 'gurun-3', 1, 2, 80, 5, 0, '', 394, '2026-09-20T00:30:00.000Z', '2026-09-20T00:30:00.000Z'),
-  ('siswa_5a_5', 'pantai-1', 1, 3, 98, 2, 0, '', 128, '2026-09-09T00:30:00.000Z', '2026-09-09T00:30:00.000Z'),
-  ('siswa_5a_5', 'pantai-2', 1, 3, 87, 4, 1, '', 346, '2026-09-11T00:30:00.000Z', '2026-09-11T00:30:00.000Z'),
-  ('siswa_5a_5', 'pantai-3', 1, 3, 91, 4, 0, '', 225, '2026-09-13T00:30:00.000Z', '2026-09-13T00:30:00.000Z'),
-  ('siswa_5a_5', 'pantai-4', 1, 2, 76, 1, 0, '', 294, '2026-09-14T00:30:00.000Z', '2026-09-14T00:30:00.000Z'),
-  ('siswa_5a_5', 'laut-1', 1, 2, 73, 4, 0, '', 265, '2026-09-15T00:30:00.000Z', '2026-09-15T00:30:00.000Z'),
-  ('siswa_5a_5', 'laut-2', 1, 2, 75, 1, 0, '', 382, '2026-09-17T00:30:00.000Z', '2026-09-17T00:30:00.000Z'),
-  ('siswa_5a_5', 'laut-3', 1, 3, 87, 5, 0, '', 384, '2026-09-18T00:30:00.000Z', '2026-09-18T00:30:00.000Z'),
-  ('siswa_5a_5', 'gurun-1', 1, 2, 76, 2, 1, '', 200, '2026-09-20T00:30:00.000Z', '2026-09-20T00:30:00.000Z'),
-  ('siswa_6a_1', 'pantai-1', 1, 3, 86, 3, 0, '', 114, '2026-09-04T00:30:00.000Z', '2026-09-04T00:30:00.000Z'),
-  ('siswa_6a_1', 'pantai-2', 1, 3, 98, 3, 1, '', 362, '2026-09-05T00:30:00.000Z', '2026-09-05T00:30:00.000Z'),
-  ('siswa_6a_1', 'pantai-3', 1, 2, 75, 5, 0, '', 311, '2026-09-06T00:30:00.000Z', '2026-09-06T00:30:00.000Z'),
-  ('siswa_6a_1', 'pantai-4', 1, 3, 89, 4, 0, '', 378, '2026-09-08T00:30:00.000Z', '2026-09-08T00:30:00.000Z'),
-  ('siswa_6a_1', 'laut-1', 1, 3, 92, 1, 0, '', 221, '2026-09-10T00:30:00.000Z', '2026-09-10T00:30:00.000Z'),
-  ('siswa_6a_1', 'laut-2', 1, 2, 73, 2, 0, '', 154, '2026-09-12T00:30:00.000Z', '2026-09-12T00:30:00.000Z'),
-  ('siswa_6a_1', 'laut-3', 1, 2, 76, 4, 0, '', 347, '2026-09-14T00:30:00.000Z', '2026-09-14T00:30:00.000Z'),
-  ('siswa_6a_1', 'gurun-1', 1, 1, 64, 1, 0, '', 75, '2026-09-16T00:30:00.000Z', '2026-09-16T00:30:00.000Z'),
-  ('siswa_6a_1', 'gurun-2', 1, 3, 98, 1, 0, '', 339, '2026-09-18T00:30:00.000Z', '2026-09-18T00:30:00.000Z'),
-  ('siswa_6a_1', 'gurun-3', 1, 2, 79, 5, 0, '', 384, '2026-09-20T00:30:00.000Z', '2026-09-20T00:30:00.000Z'),
-  ('siswa_6a_1', 'salju-1', 1, 1, 58, 5, 0, '', 417, '2026-09-21T00:30:00.000Z', '2026-09-21T00:30:00.000Z'),
-  ('siswa_6a_2', 'pantai-1', 1, 1, 66, 4, 0, '', 166, '2026-09-07T00:30:00.000Z', '2026-09-07T00:30:00.000Z'),
-  ('siswa_6a_2', 'pantai-2', 1, 3, 100, 1, 0, '', 46, '2026-09-09T00:30:00.000Z', '2026-09-09T00:30:00.000Z'),
-  ('siswa_6a_2', 'pantai-3', 1, 2, 83, 4, 0, '', 271, '2026-09-11T00:30:00.000Z', '2026-09-11T00:30:00.000Z'),
-  ('siswa_6a_2', 'pantai-4', 1, 3, 88, 2, 0, '', 208, '2026-09-13T00:30:00.000Z', '2026-09-13T00:30:00.000Z'),
-  ('siswa_6a_2', 'laut-1', 1, 3, 96, 4, 0, '', 369, '2026-09-14T00:30:00.000Z', '2026-09-14T00:30:00.000Z'),
-  ('siswa_6a_2', 'laut-2', 1, 3, 99, 4, 0, '', 156, '2026-09-15T00:30:00.000Z', '2026-09-15T00:30:00.000Z'),
-  ('siswa_6a_2', 'laut-3', 1, 2, 73, 5, 0, '', 342, '2026-09-17T00:30:00.000Z', '2026-09-17T00:30:00.000Z'),
-  ('siswa_6a_2', 'gurun-1', 1, 3, 96, 5, 0, '', 213, '2026-09-19T00:30:00.000Z', '2026-09-19T00:30:00.000Z'),
-  ('siswa_6a_2', 'gurun-2', 1, 2, 81, 4, 0, '', 82, '2026-09-20T00:30:00.000Z', '2026-09-20T00:30:00.000Z'),
-  ('siswa_6a_2', 'gurun-3', 1, 3, 91, 4, 0, '', 192, '2026-09-22T00:30:00.000Z', '2026-09-22T00:30:00.000Z'),
-  ('siswa_6a_2', 'salju-1', 1, 3, 100, 2, 0, '', 330, '2026-09-23T00:30:00.000Z', '2026-09-23T00:30:00.000Z'),
-  ('siswa_6a_3', 'pantai-1', 1, 2, 76, 3, 0, '', 243, '2026-09-06T00:30:00.000Z', '2026-09-06T00:30:00.000Z'),
-  ('siswa_6a_3', 'pantai-2', 1, 3, 98, 5, 0, '', 51, '2026-09-07T00:30:00.000Z', '2026-09-07T00:30:00.000Z'),
-  ('siswa_6a_3', 'pantai-3', 1, 3, 98, 1, 0, '', 298, '2026-09-09T00:30:00.000Z', '2026-09-09T00:30:00.000Z'),
-  ('siswa_6a_3', 'pantai-4', 1, 3, 90, 2, 0, '', 347, '2026-09-11T00:30:00.000Z', '2026-09-11T00:30:00.000Z'),
-  ('siswa_6a_3', 'laut-1', 1, 2, 71, 2, 0, '', 263, '2026-09-12T00:30:00.000Z', '2026-09-12T00:30:00.000Z'),
-  ('siswa_6a_3', 'laut-2', 1, 3, 86, 1, 0, '', 330, '2026-09-13T00:30:00.000Z', '2026-09-13T00:30:00.000Z'),
-  ('siswa_6a_3', 'laut-3', 1, 2, 71, 1, 2, '', 233, '2026-09-15T00:30:00.000Z', '2026-09-15T00:30:00.000Z'),
-  ('siswa_6a_3', 'gurun-1', 1, 1, 57, 5, 1, '', 88, '2026-09-17T00:30:00.000Z', '2026-09-17T00:30:00.000Z'),
-  ('siswa_6a_3', 'gurun-2', 1, 1, 65, 5, 0, '', 210, '2026-09-19T00:30:00.000Z', '2026-09-19T00:30:00.000Z'),
-  ('siswa_6a_3', 'gurun-3', 1, 3, 93, 2, 0, '', 166, '2026-09-20T00:30:00.000Z', '2026-09-20T00:30:00.000Z'),
-  ('siswa_6a_4', 'pantai-1', 1, 3, 90, 3, 1, '', 378, '2026-09-07T00:30:00.000Z', '2026-09-07T00:30:00.000Z'),
-  ('siswa_6a_4', 'pantai-2', 1, 2, 72, 1, 0, '', 63, '2026-09-09T00:30:00.000Z', '2026-09-09T00:30:00.000Z'),
-  ('siswa_6a_4', 'pantai-3', 1, 1, 64, 1, 0, '', 49, '2026-09-11T00:30:00.000Z', '2026-09-11T00:30:00.000Z'),
-  ('siswa_6a_4', 'pantai-4', 1, 2, 76, 2, 0, '', 136, '2026-09-12T00:30:00.000Z', '2026-09-12T00:30:00.000Z'),
-  ('siswa_6a_4', 'laut-1', 1, 2, 71, 2, 0, '', 65, '2026-09-14T00:30:00.000Z', '2026-09-14T00:30:00.000Z'),
-  ('siswa_6a_4', 'laut-2', 1, 3, 85, 4, 0, '', 60, '2026-09-15T00:30:00.000Z', '2026-09-15T00:30:00.000Z'),
-  ('siswa_6a_4', 'laut-3', 1, 3, 86, 2, 0, '', 109, '2026-09-16T00:30:00.000Z', '2026-09-16T00:30:00.000Z'),
-  ('siswa_6a_4', 'gurun-1', 1, 3, 88, 2, 0, '', 227, '2026-09-18T00:30:00.000Z', '2026-09-18T00:30:00.000Z'),
-  ('siswa_6a_4', 'gurun-2', 1, 3, 85, 5, 0, '', 390, '2026-09-19T00:30:00.000Z', '2026-09-19T00:30:00.000Z'),
-  ('siswa_6a_4', 'gurun-3', 1, 3, 91, 4, 0, '', 401, '2026-09-21T00:30:00.000Z', '2026-09-21T00:30:00.000Z'),
-  ('siswa_6a_4', 'salju-1', 1, 1, 69, 5, 0, '', 232, '2026-09-23T00:30:00.000Z', '2026-09-23T00:30:00.000Z'),
-  ('siswa_6a_5', 'pantai-1', 1, 3, 97, 1, 1, '', 120, '2026-09-04T00:30:00.000Z', '2026-09-04T00:30:00.000Z'),
-  ('siswa_6a_5', 'pantai-2', 1, 2, 77, 3, 0, '', 61, '2026-09-05T00:30:00.000Z', '2026-09-05T00:30:00.000Z'),
-  ('siswa_6a_5', 'pantai-3', 1, 3, 85, 4, 0, '', 407, '2026-09-07T00:30:00.000Z', '2026-09-07T00:30:00.000Z'),
-  ('siswa_6a_5', 'pantai-4', 1, 1, 60, 5, 0, '', 46, '2026-09-09T00:30:00.000Z', '2026-09-09T00:30:00.000Z'),
-  ('siswa_6a_5', 'laut-1', 1, 3, 100, 1, 0, '', 230, '2026-09-10T00:30:00.000Z', '2026-09-10T00:30:00.000Z'),
-  ('siswa_6a_5', 'laut-2', 1, 3, 90, 2, 0, '', 414, '2026-09-11T00:30:00.000Z', '2026-09-11T00:30:00.000Z'),
-  ('siswa_6a_5', 'laut-3', 1, 2, 77, 3, 0, '', 84, '2026-09-13T00:30:00.000Z', '2026-09-13T00:30:00.000Z'),
-  ('siswa_6a_5', 'gurun-1', 1, 2, 74, 4, 0, '', 282, '2026-09-14T00:30:00.000Z', '2026-09-14T00:30:00.000Z'),
-  ('siswa_6a_5', 'gurun-2', 1, 3, 87, 3, 0, '', 220, '2026-09-15T00:30:00.000Z', '2026-09-15T00:30:00.000Z'),
-  ('siswa_6a_5', 'gurun-3', 1, 1, 57, 4, 0, '', 349, '2026-09-16T00:30:00.000Z', '2026-09-16T00:30:00.000Z'),
-  ('siswa_6a_5', 'salju-1', 1, 3, 89, 1, 0, '', 341, '2026-09-17T00:30:00.000Z', '2026-09-17T00:30:00.000Z'),
-  ('siswa_6a_5', 'salju-2', 1, 3, 90, 2, 0, '', 160, '2026-09-19T00:30:00.000Z', '2026-09-19T00:30:00.000Z');
+CREATE INDEX IF NOT EXISTS idx_siswa_kelas ON siswa(kelas_id);
 
-INSERT INTO aktivitas (id, waktu, siswa_id, jenis, keterangan) VALUES
-  (1, '2026-09-01T00:30:00.000Z', 'siswa_3a_4', 'daftar', 'Mendaftar di Coding Island'),
-  (2, '2026-09-02T00:30:00.000Z', 'siswa_3a_3', 'daftar', 'Mendaftar di Coding Island'),
-  (3, '2026-09-02T00:30:00.000Z', 'siswa_4a_3', 'daftar', 'Mendaftar di Coding Island'),
-  (4, '2026-09-02T00:30:00.000Z', 'siswa_6a_1', 'daftar', 'Mendaftar di Coding Island'),
-  (5, '2026-09-02T00:30:00.000Z', 'siswa_6a_5', 'daftar', 'Mendaftar di Coding Island'),
-  (6, '2026-09-03T00:30:00.000Z', 'siswa_3a_4', 'selesai', 'Menyelesaikan level Langkah Pertama dengan 1 bintang'),
-  (7, '2026-09-03T00:30:00.000Z', 'siswa_3a_5', 'daftar', 'Mendaftar di Coding Island'),
-  (8, '2026-09-03T00:30:00.000Z', 'siswa_4a_2', 'daftar', 'Mendaftar di Coding Island'),
-  (9, '2026-09-03T00:30:00.000Z', 'siswa_4a_3', 'selesai', 'Menyelesaikan level Langkah Pertama dengan 2 bintang'),
-  (10, '2026-09-04T00:30:00.000Z', 'siswa_3a_1', 'daftar', 'Mendaftar di Coding Island'),
-  (11, '2026-09-04T00:30:00.000Z', 'siswa_3a_3', 'selesai', 'Menyelesaikan level Langkah Pertama dengan 2 bintang'),
-  (12, '2026-09-04T00:30:00.000Z', 'siswa_3a_5', 'selesai', 'Menyelesaikan level Langkah Pertama dengan 2 bintang'),
-  (13, '2026-09-04T00:30:00.000Z', 'siswa_4a_1', 'daftar', 'Mendaftar di Coding Island'),
-  (14, '2026-09-04T00:30:00.000Z', 'siswa_5a_3', 'daftar', 'Mendaftar di Coding Island'),
-  (15, '2026-09-04T00:30:00.000Z', 'siswa_6a_1', 'selesai', 'Menyelesaikan level Langkah Pertama dengan 3 bintang'),
-  (16, '2026-09-04T00:30:00.000Z', 'siswa_6a_3', 'daftar', 'Mendaftar di Coding Island'),
-  (17, '2026-09-04T00:30:00.000Z', 'siswa_6a_5', 'selesai', 'Menyelesaikan level Langkah Pertama dengan 3 bintang'),
-  (18, '2026-09-05T00:30:00.000Z', 'siswa_3a_1', 'selesai', 'Menyelesaikan level Langkah Pertama dengan 2 bintang'),
-  (19, '2026-09-05T00:30:00.000Z', 'siswa_3a_2', 'daftar', 'Mendaftar di Coding Island'),
-  (20, '2026-09-05T00:30:00.000Z', 'siswa_3a_3', 'selesai', 'Menyelesaikan level Koin di Tepi Pantai dengan 3 bintang'),
-  (21, '2026-09-05T00:30:00.000Z', 'siswa_3a_5', 'selesai', 'Menyelesaikan level Koin di Tepi Pantai dengan 2 bintang'),
-  (22, '2026-09-05T00:30:00.000Z', 'siswa_4a_2', 'selesai', 'Menyelesaikan level Langkah Pertama dengan 2 bintang'),
-  (23, '2026-09-05T00:30:00.000Z', 'siswa_4a_3', 'selesai', 'Menyelesaikan level Koin di Tepi Pantai dengan 2 bintang'),
-  (24, '2026-09-05T00:30:00.000Z', 'siswa_5a_1', 'daftar', 'Mendaftar di Coding Island'),
-  (25, '2026-09-05T00:30:00.000Z', 'siswa_5a_2', 'daftar', 'Mendaftar di Coding Island'),
-  (26, '2026-09-05T00:30:00.000Z', 'siswa_5a_3', 'selesai', 'Menyelesaikan level Langkah Pertama dengan 3 bintang'),
-  (27, '2026-09-05T00:30:00.000Z', 'siswa_5a_4', 'daftar', 'Mendaftar di Coding Island'),
-  (28, '2026-09-05T00:30:00.000Z', 'siswa_6a_1', 'selesai', 'Menyelesaikan level Koin di Tepi Pantai dengan 3 bintang'),
-  (29, '2026-09-05T00:30:00.000Z', 'siswa_6a_4', 'daftar', 'Mendaftar di Coding Island'),
-  (30, '2026-09-05T00:30:00.000Z', 'siswa_6a_5', 'selesai', 'Menyelesaikan level Koin di Tepi Pantai dengan 2 bintang'),
-  (31, '2026-09-06T00:30:00.000Z', 'siswa_3a_2', 'selesai', 'Menyelesaikan level Langkah Pertama dengan 3 bintang'),
-  (32, '2026-09-06T00:30:00.000Z', 'siswa_4a_1', 'selesai', 'Menyelesaikan level Langkah Pertama dengan 2 bintang'),
-  (33, '2026-09-06T00:30:00.000Z', 'siswa_4a_2', 'selesai', 'Menyelesaikan level Koin di Tepi Pantai dengan 2 bintang'),
-  (34, '2026-09-06T00:30:00.000Z', 'siswa_4a_4', 'daftar', 'Mendaftar di Coding Island'),
-  (35, '2026-09-06T00:30:00.000Z', 'siswa_4a_5', 'daftar', 'Mendaftar di Coding Island'),
-  (36, '2026-09-06T00:30:00.000Z', 'siswa_5a_1', 'selesai', 'Menyelesaikan level Langkah Pertama dengan 2 bintang'),
-  (37, '2026-09-06T00:30:00.000Z', 'siswa_5a_4', 'selesai', 'Menyelesaikan level Langkah Pertama dengan 2 bintang'),
-  (38, '2026-09-06T00:30:00.000Z', 'siswa_6a_1', 'selesai', 'Menyelesaikan level Belokan yang Tertukar dengan 2 bintang'),
-  (39, '2026-09-06T00:30:00.000Z', 'siswa_6a_2', 'daftar', 'Mendaftar di Coding Island'),
-  (40, '2026-09-06T00:30:00.000Z', 'siswa_6a_3', 'selesai', 'Menyelesaikan level Langkah Pertama dengan 2 bintang'),
-  (41, '2026-09-07T00:30:00.000Z', 'siswa_4a_1', 'selesai', 'Menyelesaikan level Koin di Tepi Pantai dengan 2 bintang'),
-  (42, '2026-09-07T00:30:00.000Z', 'siswa_4a_3', 'selesai', 'Menyelesaikan level Belokan yang Tertukar dengan 2 bintang'),
-  (43, '2026-09-07T00:30:00.000Z', 'siswa_5a_2', 'selesai', 'Menyelesaikan level Langkah Pertama dengan 3 bintang'),
-  (44, '2026-09-07T00:30:00.000Z', 'siswa_5a_3', 'selesai', 'Menyelesaikan level Koin di Tepi Pantai dengan 3 bintang'),
-  (45, '2026-09-07T00:30:00.000Z', 'siswa_5a_5', 'daftar', 'Mendaftar di Coding Island'),
-  (46, '2026-09-07T00:30:00.000Z', 'siswa_6a_2', 'selesai', 'Menyelesaikan level Langkah Pertama dengan 1 bintang'),
-  (47, '2026-09-07T00:30:00.000Z', 'siswa_6a_3', 'selesai', 'Menyelesaikan level Koin di Tepi Pantai dengan 3 bintang'),
-  (48, '2026-09-07T00:30:00.000Z', 'siswa_6a_4', 'selesai', 'Menyelesaikan level Langkah Pertama dengan 3 bintang'),
-  (49, '2026-09-07T00:30:00.000Z', 'siswa_6a_5', 'selesai', 'Menyelesaikan level Belokan yang Tertukar dengan 3 bintang'),
-  (50, '2026-09-08T00:30:00.000Z', 'siswa_3a_2', 'selesai', 'Menyelesaikan level Koin di Tepi Pantai dengan 2 bintang'),
-  (51, '2026-09-08T00:30:00.000Z', 'siswa_4a_2', 'selesai', 'Menyelesaikan level Belokan yang Tertukar dengan 2 bintang'),
-  (52, '2026-09-08T00:30:00.000Z', 'siswa_4a_3', 'selesai', 'Menyelesaikan level Boss Labirin Batu dengan 3 bintang'),
-  (53, '2026-09-08T00:30:00.000Z', 'siswa_4a_4', 'selesai', 'Menyelesaikan level Langkah Pertama dengan 3 bintang'),
-  (54, '2026-09-08T00:30:00.000Z', 'siswa_4a_5', 'selesai', 'Menyelesaikan level Langkah Pertama dengan 2 bintang'),
-  (55, '2026-09-08T00:30:00.000Z', 'siswa_5a_1', 'selesai', 'Menyelesaikan level Koin di Tepi Pantai dengan 3 bintang'),
-  (56, '2026-09-08T00:30:00.000Z', 'siswa_5a_4', 'selesai', 'Menyelesaikan level Koin di Tepi Pantai dengan 3 bintang'),
-  (57, '2026-09-08T00:30:00.000Z', 'siswa_6a_1', 'selesai', 'Menyelesaikan level Boss Labirin Batu dengan 3 bintang'),
-  (58, '2026-09-09T00:30:00.000Z', 'siswa_4a_1', 'selesai', 'Menyelesaikan level Belokan yang Tertukar dengan 1 bintang'),
-  (59, '2026-09-09T00:30:00.000Z', 'siswa_4a_4', 'selesai', 'Menyelesaikan level Koin di Tepi Pantai dengan 3 bintang'),
-  (60, '2026-09-09T00:30:00.000Z', 'siswa_4a_5', 'selesai', 'Menyelesaikan level Koin di Tepi Pantai dengan 3 bintang'),
-  (61, '2026-09-09T00:30:00.000Z', 'siswa_5a_2', 'selesai', 'Menyelesaikan level Koin di Tepi Pantai dengan 1 bintang'),
-  (62, '2026-09-09T00:30:00.000Z', 'siswa_5a_3', 'selesai', 'Menyelesaikan level Belokan yang Tertukar dengan 3 bintang'),
-  (63, '2026-09-09T00:30:00.000Z', 'siswa_5a_4', 'selesai', 'Menyelesaikan level Belokan yang Tertukar dengan 1 bintang'),
-  (64, '2026-09-09T00:30:00.000Z', 'siswa_5a_5', 'selesai', 'Menyelesaikan level Langkah Pertama dengan 3 bintang'),
-  (65, '2026-09-09T00:30:00.000Z', 'siswa_6a_2', 'selesai', 'Menyelesaikan level Koin di Tepi Pantai dengan 3 bintang'),
-  (66, '2026-09-09T00:30:00.000Z', 'siswa_6a_3', 'selesai', 'Menyelesaikan level Belokan yang Tertukar dengan 3 bintang'),
-  (67, '2026-09-09T00:30:00.000Z', 'siswa_6a_4', 'selesai', 'Menyelesaikan level Koin di Tepi Pantai dengan 2 bintang'),
-  (68, '2026-09-09T00:30:00.000Z', 'siswa_6a_5', 'selesai', 'Menyelesaikan level Boss Labirin Batu dengan 1 bintang'),
-  (69, '2026-09-10T00:30:00.000Z', 'siswa_4a_2', 'selesai', 'Menyelesaikan level Boss Labirin Batu dengan 3 bintang'),
-  (70, '2026-09-10T00:30:00.000Z', 'siswa_5a_1', 'selesai', 'Menyelesaikan level Belokan yang Tertukar dengan 2 bintang'),
-  (71, '2026-09-10T00:30:00.000Z', 'siswa_5a_2', 'selesai', 'Menyelesaikan level Belokan yang Tertukar dengan 3 bintang'),
-  (72, '2026-09-10T00:30:00.000Z', 'siswa_5a_3', 'selesai', 'Menyelesaikan level Boss Labirin Batu dengan 2 bintang'),
-  (73, '2026-09-10T00:30:00.000Z', 'siswa_5a_4', 'selesai', 'Menyelesaikan level Boss Labirin Batu dengan 2 bintang'),
-  (74, '2026-09-10T00:30:00.000Z', 'siswa_6a_1', 'selesai', 'Menyelesaikan level Berenang Jauh dengan 3 bintang'),
-  (75, '2026-09-10T00:30:00.000Z', 'siswa_6a_5', 'selesai', 'Menyelesaikan level Berenang Jauh dengan 3 bintang'),
-  (76, '2026-09-11T00:30:00.000Z', 'siswa_4a_1', 'selesai', 'Menyelesaikan level Boss Labirin Batu dengan 3 bintang'),
-  (77, '2026-09-11T00:30:00.000Z', 'siswa_4a_4', 'selesai', 'Menyelesaikan level Belokan yang Tertukar dengan 3 bintang'),
-  (78, '2026-09-11T00:30:00.000Z', 'siswa_4a_5', 'selesai', 'Menyelesaikan level Belokan yang Tertukar dengan 2 bintang'),
-  (79, '2026-09-11T00:30:00.000Z', 'siswa_5a_3', 'selesai', 'Menyelesaikan level Berenang Jauh dengan 3 bintang'),
-  (80, '2026-09-11T00:30:00.000Z', 'siswa_5a_4', 'selesai', 'Menyelesaikan level Berenang Jauh dengan 2 bintang'),
-  (81, '2026-09-11T00:30:00.000Z', 'siswa_5a_5', 'selesai', 'Menyelesaikan level Koin di Tepi Pantai dengan 3 bintang'),
-  (82, '2026-09-11T00:30:00.000Z', 'siswa_6a_2', 'selesai', 'Menyelesaikan level Belokan yang Tertukar dengan 2 bintang'),
-  (83, '2026-09-11T00:30:00.000Z', 'siswa_6a_3', 'selesai', 'Menyelesaikan level Boss Labirin Batu dengan 3 bintang'),
-  (84, '2026-09-11T00:30:00.000Z', 'siswa_6a_4', 'selesai', 'Menyelesaikan level Belokan yang Tertukar dengan 1 bintang'),
-  (85, '2026-09-11T00:30:00.000Z', 'siswa_6a_5', 'selesai', 'Menyelesaikan level Ombak Berulang dengan 3 bintang'),
-  (86, '2026-09-12T00:30:00.000Z', 'siswa_5a_1', 'selesai', 'Menyelesaikan level Boss Labirin Batu dengan 3 bintang'),
-  (87, '2026-09-12T00:30:00.000Z', 'siswa_5a_2', 'selesai', 'Menyelesaikan level Boss Labirin Batu dengan 2 bintang'),
-  (88, '2026-09-12T00:30:00.000Z', 'siswa_5a_3', 'selesai', 'Menyelesaikan level Ombak Berulang dengan 1 bintang'),
-  (89, '2026-09-12T00:30:00.000Z', 'siswa_6a_1', 'selesai', 'Menyelesaikan level Ombak Berulang dengan 2 bintang'),
-  (90, '2026-09-12T00:30:00.000Z', 'siswa_6a_3', 'selesai', 'Menyelesaikan level Berenang Jauh dengan 2 bintang'),
-  (91, '2026-09-12T00:30:00.000Z', 'siswa_6a_4', 'selesai', 'Menyelesaikan level Boss Labirin Batu dengan 2 bintang'),
-  (92, '2026-09-13T00:30:00.000Z', 'siswa_4a_1', 'selesai', 'Menyelesaikan level Berenang Jauh dengan 3 bintang'),
-  (93, '2026-09-13T00:30:00.000Z', 'siswa_4a_4', 'selesai', 'Menyelesaikan level Boss Labirin Batu dengan 2 bintang'),
-  (94, '2026-09-13T00:30:00.000Z', 'siswa_4a_5', 'selesai', 'Menyelesaikan level Boss Labirin Batu dengan 2 bintang'),
-  (95, '2026-09-13T00:30:00.000Z', 'siswa_5a_1', 'selesai', 'Menyelesaikan level Berenang Jauh dengan 2 bintang'),
-  (96, '2026-09-13T00:30:00.000Z', 'siswa_5a_2', 'selesai', 'Menyelesaikan level Berenang Jauh dengan 1 bintang'),
-  (97, '2026-09-13T00:30:00.000Z', 'siswa_5a_3', 'selesai', 'Menyelesaikan level Boss Tangga Karang dengan 3 bintang'),
-  (98, '2026-09-13T00:30:00.000Z', 'siswa_5a_4', 'selesai', 'Menyelesaikan level Ombak Berulang dengan 2 bintang'),
-  (99, '2026-09-13T00:30:00.000Z', 'siswa_5a_5', 'selesai', 'Menyelesaikan level Belokan yang Tertukar dengan 3 bintang'),
-  (100, '2026-09-13T00:30:00.000Z', 'siswa_6a_2', 'selesai', 'Menyelesaikan level Boss Labirin Batu dengan 3 bintang'),
-  (101, '2026-09-13T00:30:00.000Z', 'siswa_6a_3', 'selesai', 'Menyelesaikan level Ombak Berulang dengan 3 bintang'),
-  (102, '2026-09-13T00:30:00.000Z', 'siswa_6a_5', 'selesai', 'Menyelesaikan level Boss Tangga Karang dengan 2 bintang'),
-  (103, '2026-09-14T00:30:00.000Z', 'siswa_4a_5', 'selesai', 'Menyelesaikan level Berenang Jauh dengan 2 bintang'),
-  (104, '2026-09-14T00:30:00.000Z', 'siswa_5a_1', 'selesai', 'Menyelesaikan level Ombak Berulang dengan 2 bintang'),
-  (105, '2026-09-14T00:30:00.000Z', 'siswa_5a_2', 'selesai', 'Menyelesaikan level Ombak Berulang dengan 1 bintang'),
-  (106, '2026-09-14T00:30:00.000Z', 'siswa_5a_5', 'selesai', 'Menyelesaikan level Boss Labirin Batu dengan 2 bintang'),
-  (107, '2026-09-14T00:30:00.000Z', 'siswa_6a_1', 'selesai', 'Menyelesaikan level Boss Tangga Karang dengan 2 bintang'),
-  (108, '2026-09-14T00:30:00.000Z', 'siswa_6a_2', 'selesai', 'Menyelesaikan level Berenang Jauh dengan 3 bintang'),
-  (109, '2026-09-14T00:30:00.000Z', 'siswa_6a_4', 'selesai', 'Menyelesaikan level Berenang Jauh dengan 2 bintang'),
-  (110, '2026-09-14T00:30:00.000Z', 'siswa_6a_5', 'selesai', 'Menyelesaikan level Lompat Jurang dengan 2 bintang'),
-  (111, '2026-09-15T00:30:00.000Z', 'siswa_5a_1', 'selesai', 'Menyelesaikan level Boss Tangga Karang dengan 2 bintang'),
-  (112, '2026-09-15T00:30:00.000Z', 'siswa_5a_4', 'selesai', 'Menyelesaikan level Boss Tangga Karang dengan 1 bintang'),
-  (113, '2026-09-15T00:30:00.000Z', 'siswa_5a_5', 'selesai', 'Menyelesaikan level Berenang Jauh dengan 2 bintang'),
-  (114, '2026-09-15T00:30:00.000Z', 'siswa_6a_2', 'selesai', 'Menyelesaikan level Ombak Berulang dengan 3 bintang'),
-  (115, '2026-09-15T00:30:00.000Z', 'siswa_6a_3', 'selesai', 'Menyelesaikan level Boss Tangga Karang dengan 2 bintang'),
-  (116, '2026-09-15T00:30:00.000Z', 'siswa_6a_4', 'selesai', 'Menyelesaikan level Ombak Berulang dengan 3 bintang'),
-  (117, '2026-09-15T00:30:00.000Z', 'siswa_6a_5', 'selesai', 'Menyelesaikan level Fatamorgana dengan 3 bintang'),
-  (118, '2026-09-16T00:30:00.000Z', 'siswa_4a_5', 'selesai', 'Menyelesaikan level Ombak Berulang dengan 3 bintang'),
-  (119, '2026-09-16T00:30:00.000Z', 'siswa_5a_1', 'selesai', 'Menyelesaikan level Lompat Jurang dengan 3 bintang'),
-  (120, '2026-09-16T00:30:00.000Z', 'siswa_5a_2', 'selesai', 'Menyelesaikan level Boss Tangga Karang dengan 3 bintang'),
-  (121, '2026-09-16T00:30:00.000Z', 'siswa_6a_1', 'selesai', 'Menyelesaikan level Lompat Jurang dengan 1 bintang'),
-  (122, '2026-09-16T00:30:00.000Z', 'siswa_6a_4', 'selesai', 'Menyelesaikan level Boss Tangga Karang dengan 3 bintang'),
-  (123, '2026-09-16T00:30:00.000Z', 'siswa_6a_5', 'selesai', 'Menyelesaikan level Boss Jalan Seribu Jurang dengan 1 bintang'),
-  (124, '2026-09-17T00:30:00.000Z', 'siswa_5a_4', 'selesai', 'Menyelesaikan level Lompat Jurang dengan 2 bintang'),
-  (125, '2026-09-17T00:30:00.000Z', 'siswa_5a_5', 'selesai', 'Menyelesaikan level Ombak Berulang dengan 2 bintang'),
-  (126, '2026-09-17T00:30:00.000Z', 'siswa_6a_2', 'selesai', 'Menyelesaikan level Boss Tangga Karang dengan 2 bintang'),
-  (127, '2026-09-17T00:30:00.000Z', 'siswa_6a_3', 'selesai', 'Menyelesaikan level Lompat Jurang dengan 1 bintang'),
-  (128, '2026-09-17T00:30:00.000Z', 'siswa_6a_5', 'selesai', 'Menyelesaikan level Kantong Ajaib dengan 3 bintang'),
-  (129, '2026-09-18T00:30:00.000Z', 'siswa_5a_4', 'selesai', 'Menyelesaikan level Fatamorgana dengan 3 bintang'),
-  (130, '2026-09-18T00:30:00.000Z', 'siswa_5a_5', 'selesai', 'Menyelesaikan level Boss Tangga Karang dengan 3 bintang'),
-  (131, '2026-09-18T00:30:00.000Z', 'siswa_6a_1', 'selesai', 'Menyelesaikan level Fatamorgana dengan 3 bintang'),
-  (132, '2026-09-18T00:30:00.000Z', 'siswa_6a_4', 'selesai', 'Menyelesaikan level Lompat Jurang dengan 3 bintang'),
-  (133, '2026-09-19T00:30:00.000Z', 'siswa_6a_2', 'selesai', 'Menyelesaikan level Lompat Jurang dengan 3 bintang'),
-  (134, '2026-09-19T00:30:00.000Z', 'siswa_6a_3', 'selesai', 'Menyelesaikan level Fatamorgana dengan 1 bintang'),
-  (135, '2026-09-19T00:30:00.000Z', 'siswa_6a_4', 'selesai', 'Menyelesaikan level Fatamorgana dengan 3 bintang'),
-  (136, '2026-09-19T00:30:00.000Z', 'siswa_6a_5', 'selesai', 'Menyelesaikan level Putaran Salju dengan 3 bintang'),
-  (137, '2026-09-20T00:30:00.000Z', 'siswa_5a_4', 'selesai', 'Menyelesaikan level Boss Jalan Seribu Jurang dengan 2 bintang'),
-  (138, '2026-09-20T00:30:00.000Z', 'siswa_5a_5', 'selesai', 'Menyelesaikan level Lompat Jurang dengan 2 bintang'),
-  (139, '2026-09-20T00:30:00.000Z', 'siswa_6a_1', 'selesai', 'Menyelesaikan level Boss Jalan Seribu Jurang dengan 2 bintang'),
-  (140, '2026-09-20T00:30:00.000Z', 'siswa_6a_2', 'selesai', 'Menyelesaikan level Fatamorgana dengan 2 bintang'),
-  (141, '2026-09-20T00:30:00.000Z', 'siswa_6a_3', 'selesai', 'Menyelesaikan level Boss Jalan Seribu Jurang dengan 3 bintang'),
-  (142, '2026-09-21T00:30:00.000Z', 'siswa_6a_1', 'selesai', 'Menyelesaikan level Kantong Ajaib dengan 1 bintang'),
-  (143, '2026-09-21T00:30:00.000Z', 'siswa_6a_4', 'selesai', 'Menyelesaikan level Boss Jalan Seribu Jurang dengan 3 bintang'),
-  (144, '2026-09-22T00:30:00.000Z', 'siswa_6a_2', 'selesai', 'Menyelesaikan level Boss Jalan Seribu Jurang dengan 3 bintang'),
-  (145, '2026-09-23T00:30:00.000Z', 'siswa_6a_2', 'selesai', 'Menyelesaikan level Kantong Ajaib dengan 3 bintang'),
-  (146, '2026-09-23T00:30:00.000Z', 'siswa_6a_4', 'selesai', 'Menyelesaikan level Kantong Ajaib dengan 1 bintang');
+CREATE INDEX IF NOT EXISTS idx_progres_level ON progres(level_id);
 
-INSERT INTO pengaturan (kunci, nilai) VALUES
-  ('harga_clue', '[5,10,20]'),
-  ('koin_awal', '20');
+CREATE INDEX IF NOT EXISTS idx_aktivitas_waktu ON aktivitas(waktu);
+
+CREATE INDEX IF NOT EXISTS idx_sesi_kadaluarsa ON sesi(kadaluarsa);
+
+CREATE INDEX IF NOT EXISTS idx_percobaan_login_diperbarui ON percobaan_login(diperbarui);
+
+CREATE INDEX IF NOT EXISTS idx_aktivitas_jenis ON aktivitas(jenis, waktu);
+
+CREATE INDEX IF NOT EXISTS idx_nilai_timpa_kelas ON nilai_timpa(kelas_id);

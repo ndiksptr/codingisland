@@ -4,7 +4,6 @@
 import { robot, tombol, toast, aturPesan, goyangkan, kotakPinHTML, pasangKotakPin } from '../ui.js';
 import { masukSiswa, statusTahan } from '../store.js';
 import { pindah } from '../router.js';
-import { kotakAkunDemo, pasangKotakAkunDemo } from './akun-demo.js';
 
 const IKON_HAPUS = `
   <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -28,8 +27,6 @@ function tujuanAman(ke) {
 }
 
 export async function renderMasuk(halaman, { query }) {
-  const kotakDemo = await kotakAkunDemo('siswa');
-
   halaman.innerHTML = `
     <section class="min-h-screen py-8 sm:py-12 px-4 bg-gradient-to-b from-mint/60 to-latar">
       <div class="mx-auto max-w-md">
@@ -65,8 +62,6 @@ export async function renderMasuk(halaman, { query }) {
           <p class="text-center">Belum punya akun? <a href="#/daftar" class="tautan">Daftar dulu</a></p>
         </form>
 
-        <div class="mt-6" data-demo>${kotakDemo}</div>
-
         <p class="mt-6 text-center"><a href="#/guru/masuk" class="tautan">Masuk sebagai Guru</a></p>
       </div>
     </section>`;
@@ -76,13 +71,12 @@ export async function renderMasuk(halaman, { query }) {
   const tombolKirim = form.querySelector('[data-kirim]');
   const pesanUmum = form.querySelector('[data-pesan="umum"]');
   let sedangKirim = false;
-  let sedangIsiDemo = false;
   let timerTahan = null;
 
   const pin = pasangKotakPin(form.querySelector('[data-kolom="pin"]'), {
     saatUbah: () => aturPesan(form, 'pin'),
     // Masuk otomatis begitu 4 angka terisi dan username sudah ada
-    saatLengkap: () => { if (!sedangIsiDemo && inputUsername.value.trim()) kirim(); }
+    saatLengkap: () => { if (inputUsername.value.trim()) kirim(); }
   });
 
   inputUsername.addEventListener('input', () => {
@@ -167,18 +161,6 @@ export async function renderMasuk(halaman, { query }) {
     if (btnAngka) return pin.isi(btnAngka.dataset.angka);
     if (e.target.closest('[data-hapus]')) return pin.hapus();
     if (e.target.closest('[data-ok]')) return kirim();
-  });
-
-  // Tombol "Pakai" di kotak akun demo
-  pasangKotakAkunDemo(halaman.querySelector('[data-demo]'), (username, rahasia) => {
-    if (inputUsername.disabled) return;
-    inputUsername.value = username;
-    aturPesan(form, 'username');
-    pin.kosongkan();
-    sedangIsiDemo = true;
-    [...rahasia].forEach((d) => pin.isi(d));
-    sedangIsiDemo = false;
-    tombolKirim.focus(); // tinggal tekan Masuk
   });
 
   // Lanjutkan hitungan mundur jika sebelumnya sudah ditahan

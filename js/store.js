@@ -1,7 +1,5 @@
 // js/store.js — satu-satunya pintu akses data Coding Island (versi server)
 // Semua fungsi memanggil API di /api (Cloudflare Worker + database D1).
-// Nama, parameter, dan bentuk hasil fungsi SAMA dengan versi demo localStorage
-// (js/store-lokal.js), jadi halaman lain tidak perlu diubah.
 // Hash PIN/password, sesi (cookie HttpOnly), batas login, dan pemeriksaan kelas
 // yang diampu guru semuanya dikerjakan server. Yang tetap di browser hanya
 // draf kode dan preferensi tampilan (per perangkat).
@@ -35,30 +33,55 @@ function qs(obj = {}) {
   return s ? `?${s}` : '';
 }
 
+// Pesan untuk jaringan putus/lambat, server sibuk (503), dan batas CPU Cloudflare (error 1102)
+const PESAN_LAMBAT = 'Internet sedang lambat, coba lagi ya.';
+// Status yang biasanya sementara: gerbang Cloudflare/server sibuk
+const STATUS_SEMENTARA = new Set([502, 503, 504, 520, 521, 522, 523, 524]);
+const JEDA_COBA_ULANG_MS = 800;
+
 /**
  * Panggil API. Hasil: data JSON. Galat dari server dilempar sebagai Error dengan pesan ramah.
  * cara: { metode, data }
+ * Permintaan GET dicoba ulang SEKALI bila gagal karena jaringan atau server sibuk.
+ * Permintaan yang mengubah data tidak diulang otomatis (agar tidak terkirim dua kali).
  */
 async function api(path, { metode = 'GET', data } = {}) {
-  let res;
-  try {
-    res = await fetch(`/api/${path}`, {
-      method: metode,
-      credentials: 'same-origin',
-      headers: data !== undefined ? { 'Content-Type': 'application/json' } : {},
-      body: data !== undefined ? JSON.stringify(data) : undefined
-    });
-  } catch {
-    throw new Error('Tidak bisa terhubung ke server. Periksa internet lalu coba lagi.');
+  const bolehUlang = metode === 'GET';
+  for (let ke = 1; ; ke++) {
+    let res;
+    try {
+      res = await fetch(`/api/${path}`, {
+        method: metode,
+        credentials: 'same-origin',
+        headers: data !== undefined ? { 'Content-Type': 'application/json' } : {},
+        body: data !== undefined ? JSON.stringify(data) : undefined
+      });
+    } catch {
+      if (bolehUlang && ke === 1) { await jeda(JEDA_COBA_ULANG_MS); continue; }
+      throw galatLambat();
+    }
+    if (STATUS_SEMENTARA.has(res.status)) {
+      if (bolehUlang && ke === 1) { await jeda(JEDA_COBA_ULANG_MS); continue; }
+      throw galatLambat();
+    }
+    let isi = null;
+    try { isi = await res.json(); } catch { /* respons bukan JSON (mis. halaman galat Cloudflare) */ }
+    if (!res.ok) {
+      if (res.status === 401) lupakanSesi();
+      throw isi?.galat ? new Error(isi.galat) : galatLambat();
+    }
+    if (metode !== 'GET') lupakanSesi(); // data berubah: sesi (koin, nama) dibaca ulang
+    return isi;
   }
-  let isi = null;
-  try { isi = await res.json(); } catch { /* respons bukan JSON */ }
-  if (!res.ok) {
-    if (res.status === 401) lupakanSesi();
-    throw new Error(isi?.galat || `Server sedang bermasalah (kode ${res.status}). Coba lagi ya.`);
-  }
-  if (metode !== 'GET') lupakanSesi(); // data berubah: sesi (koin, nama) dibaca ulang
-  return isi;
+}
+
+const jeda = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Galat jaringan ditandai agar router & penangkap galat menampilkan pesan ini, bukan pesan umum
+function galatLambat() {
+  const err = new Error(PESAN_LAMBAT);
+  err.jaringan = true;
+  return err;
 }
 
 // Penyimpanan lokal (hanya draf kode & preferensi)
@@ -78,7 +101,7 @@ function tulisLokal(kunci, nilai) {
 // =====================================================================
 // Sesi (cache singkat agar penjaga rute & header tidak memanggil server terus)
 // =====================================================================
-let cacheSesi = null; // { waktu, janji }
+let cacheSesi = null; // { waktu, janji } — janji berisi respons /api/auth/sesi: { sesi, modeDev }
 
 function lupakanSesi() {
   cacheSesi = null;
@@ -89,11 +112,20 @@ function lupakanSesi() {
  * Hasil: { jenis: 'siswa'|'guru', peran: 'siswa'|'guru'|'admin', kadaluarsa, pengguna }
  */
 export async function sesiAktif() {
-  if (cacheSesi && Date.now() - cacheSesi.waktu < LAMA_CACHE_SESI_MS) return structuredClone(await cacheSesi.janji);
-  const janji = api('auth/sesi').then((r) => r.sesi || null);
+  return structuredClone((await infoSesi()).sesi || null);
+}
+
+/** true bila server berjalan dalam mode pengembang (MODE_DEV=1, hanya uji lokal). */
+export async function modeDevAktif() {
+  return (await infoSesi()).modeDev === true;
+}
+
+async function infoSesi() {
+  if (cacheSesi && Date.now() - cacheSesi.waktu < LAMA_CACHE_SESI_MS) return cacheSesi.janji;
+  const janji = api('auth/sesi');
   cacheSesi = { waktu: Date.now(), janji };
   try {
-    return structuredClone(await janji);
+    return await janji;
   } catch (err) {
     cacheSesi = null;
     throw err;
@@ -107,17 +139,22 @@ export async function keluar() {
   }
 }
 
-/** Khusus admin: kembalikan seluruh database ke data contoh (semua orang ikut keluar). */
-export async function resetDataDemo() {
-  await api('auth/reset-demo', { metode: 'POST' });
-  lupakanSesi();
-  beritahu('sesi');
-  return true;
+// =====================================================================
+// Pemasangan pertama (selama belum ada akun guru)
+// =====================================================================
+/** Hasil: { perluPasang } — true jika belum ada satu pun akun guru/admin. */
+export async function statusPasang() {
+  return api('auth/pasang');
 }
 
-/** Daftar akun contoh untuk halaman masuk (kosong jika TAMPILKAN_AKUN_DEMO bukan "1"). */
-export async function getAkunDemo() {
-  return api('auth/akun-demo');
+/**
+ * Buat admin pertama. data: { kode, nama, username, password, konfirmasi }
+ * Hasil: { ok: true, guru } (langsung masuk) atau { ok: false, kolom, pesan, tahanDetik }
+ */
+export async function pasangAdmin(data) {
+  const hasil = await api('auth/pasang', { metode: 'POST', data });
+  if (hasil.ok) beritahu('sesi');
+  return hasil;
 }
 
 /** Berapa detik lagi percobaan masuk ditahan (0 berarti boleh mencoba). */
@@ -397,8 +434,26 @@ export async function guruPratinjauImpor(baris) {
   return api('siswa/impor/pratinjau', { metode: 'POST', data: { baris } });
 }
 
+// Setiap PIN di-hash di server (butuh waktu CPU), jadi impor dikirim per potongan kecil
+// agar tiap permintaan tetap di bawah batas CPU Workers gratis.
+const UKURAN_POTONGAN_IMPOR = 4;
+
 export async function guruImporSiswa(baris) {
-  return api('siswa/impor', { metode: 'POST', data: { baris } });
+  const hasil = [];
+  for (let i = 0; i < baris.length; i += UKURAN_POTONGAN_IMPOR) {
+    const potongan = baris.slice(i, i + UKURAN_POTONGAN_IMPOR);
+    try {
+      hasil.push(...await api('siswa/impor', { metode: 'POST', data: { baris: potongan, nomorAwal: i + 1 } }));
+    } catch (err) {
+      // Berhenti, tetapi tetap tampilkan PIN akun yang sudah terbuat. Baris sisanya ditandai gagal.
+      baris.slice(i).forEach((_, j) => hasil.push({
+        nomor: i + j + 1, ok: false, data: { namaLengkap: String(baris[i + j]?.namaLengkap || '') },
+        pesan: `${err.message} Cek menu Siswa: jika akunnya sudah ada, reset PIN-nya.`
+      }));
+      break;
+    }
+  }
+  return hasil;
 }
 
 // ---------- Aktivitas ----------

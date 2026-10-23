@@ -1,18 +1,16 @@
-// js/dev.js — alat bantu pengembang, tersembunyi dari pengguna biasa
-// Hanya aktif jika alamat mengandung ?dev=1 (di localhost maupun situs Cloudflare):
-// 1. Panel di layar: buka mis. http://localhost:8000/?dev=1#/peta lalu klik tombol "Dev" di pojok kiri bawah.
-// 2. Console (setelah membuka dengan ?dev=1): ciDev.selesaikanLevel('pantai-4', 3) | ciDev.resetProgres()
-//    | ciDev.validasiLevel() | ciDev.bantuan()
+// js/dev.js — alat bantu pengembang (panel Dev, ciDev, rute #/uji-interpreter)
+// File ini HANYA diimpor oleh main.js bila server melaporkan modeDev (MODE_DEV=1 di .dev.vars),
+// jadi tidak pernah dimuat di situs online. Cara pakai saat uji lokal (http://localhost:8787):
+// 1. Panel di layar: klik tombol "Dev" di pojok kiri bawah.
+// 2. Console: ciDev.selesaikanLevel('pantai-4', 3) | ciDev.resetProgres() | ciDev.validasiLevel() | ciDev.bantuan()
 //    (Chrome meminta mengetik "allow pasting" dulu jika perintah ditempel, bukan diketik.)
 
 import { sesiAktif, daftarLevel, getLevel, getProgres, simpanProgres, hapusProgres, aturZonaTerlihat } from './store.js';
-import { muatUlang } from './router.js';
+import { muatUlang, rute } from './router.js';
 import { ZONA } from './data/zona.js';
 import { NILAI_BINTANG } from './game/skor.js';
 import { esc, toast } from './ui.js';
 import { validasiLevel } from './game/validasi-level.js';
-
-const modeDev = () => new URLSearchParams(location.search).get('dev') === '1' || /[?&]dev=1\b/.test(location.hash);
 
 async function siswaAktif() {
   const sesi = await sesiAktif();
@@ -102,7 +100,7 @@ const perintahDev = {
       'ciDev.tuntaskanPulau(zona, bintang)  contoh: ciDev.tuntaskanPulau("pantai")',
       'ciDev.resetProgres()                 hapus progres siswa yang sedang masuk',
       'ciDev.validasiLevel()                periksa solusi semua level (console.table)',
-      'Lebih mudah: buka alamat dengan ?dev=1 lalu klik tombol "Dev" di pojok kiri bawah.'
+      'Lebih mudah: klik tombol "Dev" di pojok kiri bawah.'
     ].join('\n'));
   }
 };
@@ -192,16 +190,14 @@ function pasangPanel() {
   document.body.append(tombolBuka, panel);
 }
 
-export function pasangCiDev() {
-  // ciDev & panel hanya dipasang jika alamat mengandung ?dev=1 (tetap ada saat pindah halaman)
-  let terpasang = false;
-  const cek = () => {
-    if (terpasang || !modeDev()) return;
-    terpasang = true;
-    window.ciDev = perintahDev;
-    console.info('[ciDev] Mode pengembang aktif. Ketik ciDev.bantuan() untuk melihat perintah.');
-    pasangPanel();
-  };
-  cek();
-  window.addEventListener('hashchange', cek);
+/** Pasang semua alat pengembang. Dipanggil main.js sebelum router mulai. */
+export function pasangAlatDev() {
+  // Halaman uji interpreter baru dimuat saat dibuka
+  rute('/uji-interpreter', async (halaman, konteks) => {
+    const { renderUjiInterpreter } = await import('./pages/uji-interpreter.js');
+    return renderUjiInterpreter(halaman, konteks);
+  }, 'Uji Interpreter');
+  window.ciDev = perintahDev;
+  console.info('[ciDev] Mode pengembang aktif. Ketik ciDev.bantuan() untuk melihat perintah.');
+  pasangPanel();
 }

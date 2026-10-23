@@ -1,9 +1,9 @@
 // js/guru/pengaturan.js — #/guru/pengaturan: nama & password sendiri;
-// khusus admin: harga clue, koin awal siswa baru, dan reset data demo.
+// khusus admin: harga clue dan koin awal siswa baru.
 
-import { esc, bukaModal, toast } from '../ui.js';
-import { guruUbahNama, guruUbahPassword, adminSimpanPengaturan, resetDataDemo } from '../store.js';
-import { pindah, muatUlang } from '../router.js';
+import { esc, toast } from '../ui.js';
+import { guruUbahNama, guruUbahPassword, adminSimpanPengaturan } from '../store.js';
+import { muatUlang } from '../router.js';
 import { CLUE } from '../game/skor.js';
 
 export async function renderPengaturan(wadah, { konteks }) {
@@ -45,13 +45,7 @@ export async function renderPengaturan(wadah, { konteks }) {
           </div>
           <p class="pesan-kolom pesan-galat" data-galat></p>
           <button type="submit" class="tombol tombol-utama tombol-kecil">Simpan pengaturan</button>
-        </form>
-
-        <section class="dg-kartu dg-zona-bahaya">
-          <h2 class="dg-subjudul">Reset data demo <span class="dg-chip">Admin</span></h2>
-          <p class="text-sm mt-1 mb-3">Semua akun, kelas, progres, catatan, dan pengaturan kembali seperti data contoh awal. Akun yang baru dibuat akan hilang dan Anda perlu masuk lagi.</p>
-          <button type="button" class="tombol tombol-bahaya tombol-kecil" data-reset-demo-admin>Reset data demo</button>
-        </section>` : ''}
+        </form>` : ''}
     </div>`;
 
   // Kirim form, tampilkan pesan galat di dalam form itu
@@ -94,22 +88,5 @@ export async function renderPengaturan(wadah, { konteks }) {
     });
     toast('Pengaturan permainan disimpan.', 'sukses');
     muatUlang();
-  });
-
-  wadah.querySelector('[data-reset-demo-admin]')?.addEventListener('click', async () => {
-    const ya = await bukaModal({
-      judul: 'Reset semua data demo?',
-      isi: '<p>Tindakan ini tidak bisa dibatalkan. Semua data kembali seperti awal dan Anda akan keluar.</p>',
-      tombol: [{ teks: 'Batal', nilai: false, varian: 'sekunder' }, { teks: 'Ya, reset', nilai: true, varian: 'bahaya' }]
-    });
-    if (!ya) return;
-    try {
-      await resetDataDemo();
-    } catch (err) {
-      toast(err.message, 'peringatan');
-      return;
-    }
-    toast('Data demo sudah kembali seperti awal. Silakan masuk lagi.', 'sukses');
-    pindah('/guru/masuk');
   });
 }

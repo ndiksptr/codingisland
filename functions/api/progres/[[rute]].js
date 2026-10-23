@@ -16,7 +16,7 @@ import {
   bacaPengaturan, perintahAktivitas, levelTerlihatUntukKelas, semuaKelas
 } from '../../../server/data.js';
 import { jalankanKode } from '../../../js/game/interpreter.js';
-import { hitungBintang, hitungKoin, NILAI_BINTANG, BERLIAN_BOSS, CLUE } from '../../../js/game/skor.js';
+import { hitungBintang, hitungKoin, NILAI_BINTANG, BERLIAN_BOSS, CLUE, KOIN_SELESAI_PERTAMA, KOIN_PER_BINTANG_BARU } from '../../../js/game/skor.js';
 import { ZONA } from '../../../js/data/zona.js';
 
 const MAKS_KODE = 5000;
@@ -33,6 +33,17 @@ async function levelUntukSiswa(db, siswa, levelId) {
   const l = r ? levelKeObjek(r) : null;
   if (!l || !levelTerlihatUntukKelas(l, siswa.kelas_id)) throw new GalatApi(404, 'Level tidak ditemukan.');
   return l;
+}
+
+/** Level + progres siswa dalam satu kali bolak-balik ke D1. */
+async function levelDanProgres(db, siswa, levelId) {
+  const [rl, rp] = await db.batch([
+    perintah(db, 'SELECT * FROM level WHERE id = ?', levelId),
+    perintah(db, 'SELECT * FROM progres WHERE siswa_id = ? AND level_id = ?', siswa.id, levelId)
+  ]);
+  const l = rl.results?.[0] ? levelKeObjek(rl.results[0]) : null;
+  if (!l || !levelTerlihatUntukKelas(l, siswa.kelas_id)) throw new GalatApi(404, 'Level tidak ditemukan.');
+  return { level: l, progres: rp.results?.[0] ? progresKeObjek(rp.results[0]) : null };
 }
 
 const pastikanBarisProgres = (db, siswaId, levelId) =>
@@ -96,33 +107,50 @@ export const onRequest = buatRouter([
   }],
 
   // ================= Jalankan (dihitung ulang di server) =================
+  // Hadiah (koin, berlian, piala, juara) dihitung DI DALAM satu db.batch (satu transaksi D1) dari isi
+  // baris progres saat itu, bukan dari data yang dibaca sebelumnya. Jadi dua permintaan yang sama
+  // bersamaan tidak memberi koin dobel: yang kedua sudah melihat level selesai beserta bintangnya.
   ['POST', ':levelId/percobaan', async (ctx, { levelId }) => {
     const siswa = await wajibSiswa(ctx);
     const db = ctx.env.DB;
-    const level = await levelUntukSiswa(db, siswa, levelId);
+    const { level, progres: awal } = await levelDanProgres(db, siswa, levelId);
     const body = await bacaJson(ctx.request);
     const kode = String(body.kode ?? '').slice(0, MAKS_KODE);
     const detik = Math.min(MAKS_DETIK, Math.max(0, Math.round(Number(body.detik) || 0)));
 
-    // Jalankan ulang kode siswa: hasil dari browser tidak dipercaya
+    // Jalankan ulang kode siswa (interpreter dibatasi 1000 langkah): hasil dari browser tidak dipercaya
     const hasil = jalankanKode(kode, level.dunia, { perintahTersedia: level.perintahTersedia });
-    const lama = (await ambilProgres(db, siswa.id, levelId)) || { selesai: false, bintang: 0, nilai: 0, clueDibeli: 0 };
-    const bintang = hitungBintang({ berhasil: hasil.berhasil, clueDibeli: lama.clueDibeli || 0, jumlahBaris: hasil.jumlahBaris, batasBaris: level.batasBaris });
+    const bintang = hitungBintang({ berhasil: hasil.berhasil, clueDibeli: awal?.clueDibeli || 0, jumlahBaris: hasil.jumlahBaris, batasBaris: level.batasBaris });
     const nilai = NILAI_BINTANG[bintang];
-    const bintangLama = lama.bintang || 0;
-    const pertamaKali = hasil.berhasil && !lama.selesai;
-
-    let koinDidapat = 0;
-    let berlianDidapat = 0;
-    if (hasil.berhasil) {
-      koinDidapat = hitungKoin({ pertamaKali, bintangLama, bintangBaru: bintang });
-      if (pertamaKali && level.jenis === 'boss') berlianDidapat = BERLIAN_BOSS;
-    }
-    const juara = pertamaKali && level.jenis === 'boss' && level.zona === ZONA[ZONA.length - 1].id;
+    const ok = hasil.berhasil ? 1 : 0;
+    const boss = level.jenis === 'boss' ? 1 : 0;
+    const bossAkhir = boss && level.zona === ZONA[ZONA.length - 1].id ? 1 : 0;
     const waktu = sekarang();
+    const dari = 'FROM progres WHERE siswa_id = ? AND level_id = ?';
+    const kunci = [siswa.id, levelId];
 
-    const stmts = [
+    const hasilBatch = await db.batch([
       pastikanBarisProgres(db, siswa.id, levelId),
+      // [1] keadaan progres sebelum percobaan ini, dibaca di dalam transaksi yang sama
+      perintah(db, `SELECT selesai, bintang ${dari}`, ...kunci),
+      // [2] koin & berlian bertambah atomik; besarnya dihitung dari keadaan progres saat ini
+      perintah(db, `UPDATE siswa SET
+          koin = koin + COALESCE((SELECT CASE WHEN ? = 1 THEN (CASE WHEN selesai = 0 THEN ? ELSE 0 END) + ? * MAX(0, ? - bintang) ELSE 0 END ${dari}), 0),
+          berlian = berlian + COALESCE((SELECT CASE WHEN ? = 1 AND ? = 1 AND selesai = 0 THEN ? ELSE 0 END ${dari}), 0)
+        WHERE id = ?`,
+      ok, KOIN_SELESAI_PERTAMA, KOIN_PER_BINTANG_BARU, bintang, ...kunci, ok, boss, BERLIAN_BOSS, ...kunci, siswa.id),
+      // [3][4] piala & juara hanya dicatat saat boss pertama kali selesai
+      perintah(db, `INSERT INTO aktivitas (waktu, siswa_id, jenis, keterangan)
+        SELECT ?, ?, 'piala', ? WHERE ? = 1 AND ? = 1 AND (SELECT selesai ${dari}) = 0`,
+      waktu, siswa.id, `Mengalahkan ${level.judul} dan mendapat piala`, ok, boss, ...kunci),
+      perintah(db, `INSERT INTO aktivitas (waktu, siswa_id, jenis, keterangan)
+        SELECT ?, ?, 'juara', 'Menjadi Juara Coding Island' WHERE ? = 1 AND ? = 1 AND (SELECT selesai ${dari}) = 0`,
+      waktu, siswa.id, ok, bossAkhir, ...kunci),
+      // [5] aktivitas percobaan ini
+      perintahAktivitas(db, siswa.id, ok ? 'selesai' : 'coba', ok
+        ? `Menyelesaikan level ${level.judul} dengan ${bintang} bintang`
+        : `Mencoba level ${level.judul} (belum berhasil)`),
+      // [6] progres: bintang & nilai terbaik dengan MAX, percobaan & detik bertambah atomik
       perintah(db, `UPDATE progres SET
           percobaan = percobaan + 1,
           kode_terakhir = ?,
@@ -133,54 +161,76 @@ export const onRequest = buatRouter([
           selesai_pada = COALESCE(selesai_pada, CASE WHEN ? = 1 THEN ? END),
           diperbarui = ?
         WHERE siswa_id = ? AND level_id = ?`,
-      kode, detik, hasil.berhasil ? 1 : 0, bintang, hasil.berhasil ? nilai : 0, hasil.berhasil ? 1 : 0, waktu, waktu, siswa.id, levelId),
-      perintahAktivitas(db, siswa.id, hasil.berhasil ? 'selesai' : 'coba', hasil.berhasil
-        ? `Menyelesaikan level ${level.judul} dengan ${bintang} bintang`
-        : `Mencoba level ${level.judul} (belum berhasil)`)
-    ];
-    if (koinDidapat || berlianDidapat) stmts.push(perintah(db, 'UPDATE siswa SET koin = koin + ?, berlian = berlian + ? WHERE id = ?', koinDidapat, berlianDidapat, siswa.id));
-    if (berlianDidapat) stmts.push(perintahAktivitas(db, siswa.id, 'piala', `Mengalahkan ${level.judul} dan mendapat piala`));
-    if (juara) stmts.push(perintahAktivitas(db, siswa.id, 'juara', 'Menjadi Juara Coding Island'));
-    await db.batch(stmts);
+      kode, detik, ok, bintang, ok ? nilai : 0, ok, waktu, waktu, ...kunci),
+      // [7][8] keadaan akhir untuk dikirim ke browser
+      perintah(db, `SELECT * ${dari}`, ...kunci),
+      perintah(db, 'SELECT * FROM siswa WHERE id = ?', siswa.id)
+    ]);
 
+    // Angka yang dilaporkan memakai keadaan "sebelum" yang sama dengan yang dipakai SQL di atas
+    const sebelum = hasilBatch[1].results?.[0] || { selesai: 0, bintang: 0 };
+    const pertamaKali = !!ok && !sebelum.selesai;
+    const koinDidapat = ok ? hitungKoin({ pertamaKali, bintangLama: sebelum.bintang || 0, bintangBaru: bintang }) : 0;
+    const berlianDidapat = pertamaKali && boss ? BERLIAN_BOSS : 0;
     return {
       berhasil: hasil.berhasil,
       bintang,
       nilai,
-      progres: await ambilProgres(db, siswa.id, levelId),
+      progres: progresKeObjek(hasilBatch[7].results[0]),
       koinDidapat,
       berlianDidapat,
       pertamaKali,
-      bintangLama,
-      juara,
-      siswa: koinDidapat || berlianDidapat ? siswaKeObjek(await satu(db, 'SELECT * FROM siswa WHERE id = ?', siswa.id)) : null
+      bintangLama: sebelum.bintang || 0,
+      juara: pertamaKali && !!bossAkhir,
+      siswa: koinDidapat || berlianDidapat ? siswaKeObjek(hasilBatch[8].results[0]) : null
     };
   }],
 
   // ================= Toko clue =================
+  // Koin dipotong dengan UPDATE ... WHERE koin >= harga (cek jumlah baris berubah), lalu clue "diklaim"
+  // dengan UPDATE ... WHERE clue_dibeli = nomor - 1. Jika klaim kalah dari permintaan lain yang sama
+  // (klik ganda), koin dikembalikan, jadi koin tidak pernah terpotong dua kali.
   ['POST', ':levelId/clue', async (ctx, { levelId }) => {
     const siswa = await wajibSiswa(ctx);
     const db = ctx.env.DB;
-    const level = await levelUntukSiswa(db, siswa, levelId);
+    const { level, progres } = await levelDanProgres(db, siswa, levelId);
     const nomor = Number((await bacaJson(ctx.request)).nomor);
     if (!CLUE.some((c) => c.nomor === nomor)) return { ok: false, alasan: 'urutan', pesan: 'Clue tidak ada.' };
-    const sudah = (await ambilProgres(db, siswa.id, levelId))?.clueDibeli || 0;
+    const sudah = progres?.clueDibeli || 0;
     const teks = (sampai) => (level.clue || []).slice(0, sampai);
+    const PESAN_KURANG = 'Koinmu belum cukup. Selesaikan atau ulangi level lain untuk mengumpulkan koin.';
 
     if (nomor <= sudah) return { ok: true, clueDibeli: sudah, siswa: siswaKeObjek(siswa), dibayar: 0, clue: teks(sudah) };
     if (nomor !== sudah + 1) return { ok: false, alasan: 'urutan', pesan: `Beli Clue ${sudah + 1} dulu ya.` };
     const harga = (await bacaPengaturan(db)).hargaClue[nomor - 1];
-    if ((siswa.koin || 0) < harga) {
-      return { ok: false, alasan: 'koin', kurang: harga - (siswa.koin || 0), pesan: 'Koinmu belum cukup. Selesaikan atau ulangi level lain untuk mengumpulkan koin.' };
-    }
-    // Kurangi koin hanya jika masih cukup (aman dari klik ganda)
+
+    // 1) Potong koin hanya jika masih cukup
     const potong = await jalankan(db, 'UPDATE siswa SET koin = koin - ? WHERE id = ? AND koin >= ?', harga, siswa.id, harga);
-    if (!potong.meta?.changes) return { ok: false, alasan: 'koin', pesan: 'Koinmu belum cukup. Selesaikan atau ulangi level lain untuk mengumpulkan koin.' };
-    await db.batch([
+    if (!potong.meta?.changes) {
+      const kini = await satu(db, 'SELECT koin FROM siswa WHERE id = ?', siswa.id);
+      return { ok: false, alasan: 'koin', kurang: Math.max(1, harga - (kini?.koin || 0)), pesan: PESAN_KURANG };
+    }
+    // 2) Klaim clue + catat aktivitas dalam satu batch; aktivitas hanya ditulis bila klaim berhasil (changes() = 1)
+    const waktu = sekarang();
+    const [, klaim] = await db.batch([
       pastikanBarisProgres(db, siswa.id, levelId),
-      perintah(db, 'UPDATE progres SET clue_dibeli = MAX(clue_dibeli, ?), diperbarui = ? WHERE siswa_id = ? AND level_id = ?', nomor, sekarang(), siswa.id, levelId),
-      perintahAktivitas(db, siswa.id, 'clue', `Membeli Clue ${nomor} di level ${level.judul}`)
+      perintah(db, 'UPDATE progres SET clue_dibeli = ?, diperbarui = ? WHERE siswa_id = ? AND level_id = ? AND clue_dibeli = ?',
+        nomor, waktu, siswa.id, levelId, nomor - 1),
+      perintah(db, `INSERT INTO aktivitas (waktu, siswa_id, jenis, keterangan) SELECT ?, ?, 'clue', ? WHERE changes() = 1`,
+        waktu, siswa.id, `Membeli Clue ${nomor} di level ${level.judul}`)
     ]);
+    if (!klaim.meta?.changes) {
+      // 3) Kalah cepat dari permintaan lain: kembalikan koin, laporkan keadaan terbaru
+      const [, rs, rp] = await db.batch([
+        perintah(db, 'UPDATE siswa SET koin = koin + ? WHERE id = ?', harga, siswa.id),
+        perintah(db, 'SELECT * FROM siswa WHERE id = ?', siswa.id),
+        perintah(db, 'SELECT clue_dibeli FROM progres WHERE siswa_id = ? AND level_id = ?', siswa.id, levelId)
+      ]);
+      const kini = rp.results?.[0]?.clue_dibeli || 0;
+      return kini >= nomor
+        ? { ok: true, clueDibeli: kini, siswa: siswaKeObjek(rs.results[0]), dibayar: 0, clue: teks(kini) }
+        : { ok: false, alasan: 'urutan', pesan: `Beli Clue ${kini + 1} dulu ya.` };
+    }
     return {
       ok: true,
       clueDibeli: nomor,

@@ -1,16 +1,21 @@
-# Header untuk Cloudflare Pages (https://developers.cloudflare.com/pages/configuration/headers/)
+# _headers — header untuk berkas statis yang dilayani Worker (binding ASSETS)
 
 # Header keamanan dasar untuk semua halaman dan berkas
 /*
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
 
-# Aset statis disimpan di cache browser selama 1 hari (86400 detik)
-/image/*
-  Cache-Control: public, max-age=86400
+# JS & CSS: browser selalu memeriksa ulang (jawaban 304 bila tidak berubah),
+# jadi pembaruan langsung terasa tanpa Ctrl+F5
+/js/*
+  Cache-Control: no-cache
 
 /css/*
-  Cache-Control: public, max-age=86400
+  Cache-Control: no-cache
 
-/js/*
-  Cache-Control: public, max-age=86400
+# Gambar & font jarang berubah: simpan 7 hari (604800 detik)
+/image/*
+  Cache-Control: public, max-age=604800
+
+/fonts/*
+  Cache-Control: public, max-age=604800

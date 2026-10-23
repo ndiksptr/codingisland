@@ -3,7 +3,7 @@
 
 import { GalatApi } from './http.js';
 import { tokenAcak, sha256Hex } from './kripto.js';
-import { satu, semua, jalankan, guruKeObjek, siswaKeObjek, semuaKelas } from './data.js';
+import { satu, jalankan, perintah, guruKeObjek, siswaKeObjek, kelasDariBaris } from './data.js';
 
 const NAMA_COOKIE = 'ci_sesi';
 const MASA_DETIK = 8 * 60 * 60; // 8 jam
@@ -32,27 +32,32 @@ export async function hapusSesi(context) {
   return cookie('', 0);
 }
 
+/** Hash token dari cookie (disimpan per permintaan), atau null. */
+async function hashToken(context) {
+  context.data = context.data || {};
+  if (!('hashToken' in context.data)) {
+    const token = bacaCookie(context.request);
+    context.data.hashToken = token ? await sha256Hex(token) : null;
+  }
+  return context.data.hashToken;
+}
+
 /** Sesi aktif (disimpan di context.data agar hanya dibaca sekali per permintaan) atau null. */
 export async function ambilSesi(context) {
   if (context.data && 'sesi' in context.data) return context.data.sesi;
-  let sesi = null;
-  const token = bacaCookie(context.request);
-  if (token) {
-    const row = await satu(context.env.DB, 'SELECT * FROM sesi WHERE token_hash = ?', await sha256Hex(token));
-    if (row && row.kadaluarsa > Date.now()) sesi = row;
-    else if (row) await jalankan(context.env.DB, 'DELETE FROM sesi WHERE token_hash = ?', row.token_hash);
-  }
-  context.data = context.data || {};
-  context.data.sesi = sesi;
-  return sesi;
+  const h = await hashToken(context);
+  // Sesi kedaluwarsa cukup diabaikan; barisnya dihapus oleh bersihkanKedaluwarsa saat ada login
+  const sesi = h ? await satu(context.env.DB, 'SELECT * FROM sesi WHERE token_hash = ? AND kadaluarsa > ?', h, Date.now()) : null;
+  context.data.sesi = sesi || null;
+  return context.data.sesi;
 }
 
-/** Wajib siswa yang sedang masuk. Hasil: baris siswa dari D1. */
+/** Wajib siswa yang sedang masuk. Hasil: baris siswa dari D1 (sesi + siswa dalam satu kueri JOIN). */
 export async function wajibSiswa(context) {
-  const s = await ambilSesi(context);
-  if (!s || s.jenis !== 'siswa') throw new GalatApi(401, 'Masuk dulu ya.');
-  const siswa = await satu(context.env.DB, 'SELECT * FROM siswa WHERE id = ?', s.pengguna_id);
-  if (!siswa) throw new GalatApi(401, 'Akun tidak ditemukan. Masuk lagi ya.');
+  const h = await hashToken(context);
+  const siswa = h && await satu(context.env.DB, `SELECT s.* FROM sesi x JOIN siswa s ON s.id = x.pengguna_id
+    WHERE x.token_hash = ? AND x.jenis = 'siswa' AND x.kadaluarsa > ?`, h, Date.now());
+  if (!siswa) throw new GalatApi(401, 'Masuk dulu ya.');
   return siswa;
 }
 
@@ -62,14 +67,23 @@ export async function wajibSiswa(context) {
  * Admin boleh semua kelas; guru hanya kelas di tabel guru_kelas.
  */
 export async function aksesGuru(context) {
-  const s = await ambilSesi(context);
-  if (!s || s.jenis !== 'guru') throw new GalatApi(401, 'Sesi guru sudah berakhir. Silakan masuk lagi.');
-  const guru = await satu(context.env.DB, 'SELECT * FROM guru WHERE id = ?', s.pengguna_id);
-  if (!guru) throw new GalatApi(401, 'Akun guru tidak ditemukan.');
+  const db = context.env.DB;
+  const h = await hashToken(context);
+  if (!h) throw new GalatApi(401, 'Sesi guru sudah berakhir. Silakan masuk lagi.');
+  // Sesi + guru, semua kelas, dan relasi guru_kelas dalam satu kali bolak-balik ke D1
+  const [rg, rk, rr] = await db.batch([
+    perintah(db, `SELECT g.*, x.kadaluarsa AS sesi_kadaluarsa FROM sesi x JOIN guru g ON g.id = x.pengguna_id
+      WHERE x.token_hash = ? AND x.jenis = 'guru' AND x.kadaluarsa > ?`, h, Date.now()),
+    perintah(db, 'SELECT * FROM kelas ORDER BY tingkat, nama'),
+    perintah(db, 'SELECT guru_id, kelas_id FROM guru_kelas')
+  ]);
+  const guru = rg.results?.[0];
+  if (!guru) throw new GalatApi(401, 'Sesi guru sudah berakhir. Silakan masuk lagi.');
   const admin = guru.peran === 'admin';
-  const semuaK = await semuaKelas(context.env.DB);
+  const semuaK = kelasDariBaris(rk.results || [], rr.results || []);
   const kelas = admin ? semuaK : semuaK.filter((k) => k.guruIds.includes(guru.id));
-  return { guru, admin, kelas, kelasIds: new Set(kelas.map((k) => k.id)), sesi: s };
+  const sesi = { jenis: 'guru', pengguna_id: guru.id, kadaluarsa: guru.sesi_kadaluarsa };
+  return { guru, admin, kelas, kelasIds: new Set(kelas.map((k) => k.id)), sesi };
 }
 
 export function wajibAdmin(a) {
@@ -93,17 +107,24 @@ export async function ambilSiswaBoleh(context, a, siswaId) {
   return s;
 }
 
-/** Bentuk hasil sesiAktif() yang sama dengan versi demo. */
+/** Bentuk hasil sesiAktif() yang dipakai halaman. */
+// Dipanggil sangat sering (penjaga rute, header), jadi semua dibaca dalam satu db.batch
 export async function sesiUntukKlien(context) {
-  const s = await ambilSesi(context);
-  if (!s) return null;
+  const h = await hashToken(context);
+  if (!h) return null;
   const db = context.env.DB;
-  if (s.jenis === 'siswa') {
-    const siswa = await satu(db, 'SELECT * FROM siswa WHERE id = ?', s.pengguna_id);
-    return siswa ? { jenis: 'siswa', peran: 'siswa', kadaluarsa: s.kadaluarsa, pengguna: siswaKeObjek(siswa) } : null;
-  }
-  const guru = await satu(db, 'SELECT * FROM guru WHERE id = ?', s.pengguna_id);
+  const kini = Date.now();
+  const [rs, rg, rk] = await db.batch([
+    perintah(db, `SELECT s.*, x.kadaluarsa AS sesi_kadaluarsa FROM sesi x JOIN siswa s ON s.id = x.pengguna_id
+      WHERE x.token_hash = ? AND x.jenis = 'siswa' AND x.kadaluarsa > ?`, h, kini),
+    perintah(db, `SELECT g.*, x.kadaluarsa AS sesi_kadaluarsa FROM sesi x JOIN guru g ON g.id = x.pengguna_id
+      WHERE x.token_hash = ? AND x.jenis = 'guru' AND x.kadaluarsa > ?`, h, kini),
+    perintah(db, `SELECT gk.kelas_id FROM sesi x JOIN guru_kelas gk ON gk.guru_id = x.pengguna_id
+      WHERE x.token_hash = ? AND x.jenis = 'guru'`, h)
+  ]);
+  const siswa = rs.results?.[0];
+  if (siswa) return { jenis: 'siswa', peran: 'siswa', kadaluarsa: siswa.sesi_kadaluarsa, pengguna: siswaKeObjek(siswa) };
+  const guru = rg.results?.[0];
   if (!guru) return null;
-  const kelasIds = (await semua(db, 'SELECT kelas_id FROM guru_kelas WHERE guru_id = ?', guru.id)).map((r) => r.kelas_id);
-  return { jenis: 'guru', peran: guru.peran, kadaluarsa: s.kadaluarsa, pengguna: guruKeObjek(guru, kelasIds) };
+  return { jenis: 'guru', peran: guru.peran, kadaluarsa: guru.sesi_kadaluarsa, pengguna: guruKeObjek(guru, (rk.results || []).map((r) => r.kelas_id)) };
 }

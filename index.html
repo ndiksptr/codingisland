@@ -25,37 +25,16 @@
   <meta property="og:image:alt" content="Robot Tutor melambaikan tangan di pantai dengan tulisan Coding Island">
   <meta name="twitter:card" content="summary_large_image">
 
-  <!-- Font dari Google Fonts: Baloo 2 (judul), Nunito (isi), JetBrains Mono (kode) -->
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700;800&family=JetBrains+Mono:wght@400;600;700&family=Nunito:wght@400;600;700;800&display=swap">
+  <!-- Semua aset dari server sendiri (tanpa CDN) agar tidak terganggu filter internet sekolah.
+       Font Baloo 2, Nunito, JetBrains Mono ada di fonts/ (@font-face di css/app.css). -->
+  <link rel="preload" href="fonts/nunito-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="fonts/baloo-2-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
 
-  <!-- Tailwind CSS lewat CDN (untuk demo, tanpa proses build) -->
-  <script src="https://cdn.tailwindcss.com/3.4.16"></script>
-  <script>
-    // Warna dan font proyek didaftarkan agar bisa dipakai sebagai kelas, mis. bg-teal-tua, text-tinta, font-judul
-    tailwind.config = {
-      theme: {
-        extend: {
-          colors: {
-            teal: { DEFAULT: '#55A9A0', tua: '#287A74' },
-            mint: '#AEEED3',
-            kuning: '#FFF8B0',
-            tinta: '#12332F',
-            oranye: '#E8743B',
-            latar: '#F6FBF9'
-          },
-          fontFamily: {
-            judul: ['"Baloo 2"', 'system-ui', 'sans-serif'],
-            isi: ['Nunito', 'system-ui', 'sans-serif'],
-            kode: ['"JetBrains Mono"', 'ui-monospace', 'monospace']
-          }
-        }
-      }
-    };
-  </script>
-
+  <!-- Gaya proyek, lalu Tailwind CSS hasil Tailwind CLI v3 (npm run build:css).
+       Urutan ini sengaja: dulu Tailwind CDN menyisipkan gayanya SETELAH app.css, jadi kelas
+       Tailwind menang bila sama kuat. Urutan yang sama menjaga tampilan tetap persis. -->
   <link rel="stylesheet" href="css/app.css">
+  <link rel="stylesheet" href="css/tailwind.css">
 </head>
 <body class="font-isi text-tinta bg-latar">
   <a href="#app" class="lewati-konten" data-lewati>Lewati ke isi halaman</a>

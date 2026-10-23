@@ -1,26 +1,11 @@
 // js/game/editor.js — editor kode untuk siswa
-// Memakai CodeMirror 6 dari esm.sh (versi dipin). Jika gagal dimuat (offline, diblokir),
+// Memakai CodeMirror 6 dari js/vendor/codemirror.js (dibundel sekali, tanpa CDN). Jika gagal dimuat,
 // otomatis memakai textarea dengan nomor baris. Keduanya punya API yang sama:
 //   { jenis, getNilai, setNilai, sisipkan, sorotBaris, tandaiGalat, bersihkanSorotan, fokus, hancurkan }
 
-const VERSI = {
-  state: '6.4.1',
-  view: '6.26.3',
-  commands: '6.5.0',
-  language: '6.10.1',
-  autocomplete: '6.16.0',
-  highlight: '1.2.0'
-};
-// Semua paket memakai versi dependensi yang sama agar @codemirror/state tidak dimuat dua kali
-const DEPS = `deps=@codemirror/state@${VERSI.state},@codemirror/view@${VERSI.view},@codemirror/language@${VERSI.language},@lezer/highlight@${VERSI.highlight}`;
-const URL_CM = {
-  state: `https://esm.sh/@codemirror/state@${VERSI.state}`,
-  view: `https://esm.sh/@codemirror/view@${VERSI.view}?${DEPS}`,
-  commands: `https://esm.sh/@codemirror/commands@${VERSI.commands}?${DEPS}`,
-  language: `https://esm.sh/@codemirror/language@${VERSI.language}?${DEPS}`,
-  autocomplete: `https://esm.sh/@codemirror/autocomplete@${VERSI.autocomplete}?${DEPS}`,
-  highlight: `https://esm.sh/@lezer/highlight@${VERSI.highlight}`
-};
+// Bundel lokal berisi state, view, commands, language, autocomplete, dan @lezer/highlight
+// (versi dipin di package.json; dibuat ulang dengan npm run build:vendor)
+const URL_CM = '../vendor/codemirror.js';
 const BATAS_MUAT_MS = 6000;
 
 const STRUKTUR = new Set(['ulangi', 'jika', 'lainnya', 'selama', 'buat', 'bukan', 'kali']);
@@ -35,8 +20,8 @@ function pecahTemplat(teks) {
 let janjiCM = null;
 function muatCodeMirror() {
   if (!janjiCM) {
-    const muat = Promise.all(Object.values(URL_CM).map((u) => import(u)))
-      .then(([state, view, commands, language, autocomplete, highlight]) =>
+    const muat = import(URL_CM)
+      .then(({ state, view, commands, language, autocomplete, highlight }) =>
         ({ state, view, commands, language, autocomplete, highlight }));
     const batas = new Promise((_, tolak) => setTimeout(() => tolak(new Error('CodeMirror terlalu lama dimuat')), BATAS_MUAT_MS));
     janjiCM = Promise.race([muat, batas]).catch((err) => { janjiCM = null; throw err; });

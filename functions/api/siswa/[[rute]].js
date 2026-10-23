@@ -17,17 +17,27 @@
 import { buatRouter, bacaJson, kueri, GalatApi } from '../../../server/http.js';
 import { wajibSiswa, aksesGuru, bolehKelas, saringKelas, ambilSiswaBoleh } from '../../../server/sesi.js';
 import {
-  semua, satu, jalankan, perintah, sekarang, siswaKeObjek, bacaPengaturan, perintahAktivitas, sarankanUsernameDb
+  semua, satu, jalankan, perintah, sekarang, siswaKeObjek, bacaPengaturan, perintahAktivitas, sarankanDariSet
 } from '../../../server/data.js';
 import { hitungStatistik, siswaDalamAkses } from '../../../server/statistik.js';
-import { hashRahasia, acakPin, idBaru, ITERASI_BAWAAN } from '../../../server/kripto.js';
+import { hashRahasia, acakPin, idBaru, iterasiDari } from '../../../server/kripto.js';
 import { periksaKolomSiswa } from '../../../js/game/aturan-siswa.js';
 import { ZONA } from '../../../js/data/zona.js';
 
-const iterasi = (env) => Math.min(ITERASI_BAWAAN, Number(env.ITERASI_PBKDF2) || ITERASI_BAWAAN);
+const iterasi = iterasiDari;
 
 // ---------- Tambah siswa oleh guru (juga dipakai impor) ----------
-async function tambahSiswaOlehGuru(ctx, a, data) {
+/** Data pendukung yang dibaca SEKALI per permintaan: username terpakai & koin awal. */
+async function siapTambahSiswa(db) {
+  const [baris, { koinAwal }] = await Promise.all([semua(db, 'SELECT username FROM siswa'), bacaPengaturan(db)]);
+  return { dipakai: new Set(baris.map((r) => r.username)), koinAwal };
+}
+
+/**
+ * Siapkan satu siswa baru tanpa kueri: validasi, username, PIN acak, dan perintah INSERT.
+ * Hasil: { id, username, pin, perintah: [...] } — dijalankan pemanggil dalam satu db.batch.
+ */
+async function siswaBaru(ctx, a, data, siap) {
   const db = ctx.env.DB;
   bolehKelas(a, data.kelasId);
   const d = {
@@ -35,23 +45,32 @@ async function tambahSiswaOlehGuru(ctx, a, data) {
     namaPanggilan: String(data.namaPanggilan || '').trim(),
     avatar: data.avatar || (data.jenisKelamin === 'P' ? 'wanita' : 'pria'),
     kelasId: data.kelasId,
-    username: String(data.username || '').trim().toLowerCase() || await sarankanUsernameDb(db, data.namaPanggilan)
+    username: String(data.username || '').trim().toLowerCase() || sarankanDariSet(siap.dipakai, data.namaPanggilan)
   };
   for (const kolom of ['namaLengkap', 'namaPanggilan', 'avatar', 'kelasId', 'username']) {
     const pesan = periksaKolomSiswa(kolom, d[kolom]);
     if (pesan) throw new GalatApi(400, pesan);
   }
-  if (await satu(db, 'SELECT id FROM siswa WHERE username = ?', d.username)) throw new GalatApi(409, 'Username ini sudah dipakai. Coba yang lain ya.');
+  if (siap.dipakai.has(d.username)) throw new GalatApi(409, 'Username ini sudah dipakai. Coba yang lain ya.');
+  siap.dipakai.add(d.username); // baris impor berikutnya tidak memakai username yang sama
   const pin = acakPin();
   const id = idBaru('siswa');
-  const { koinAwal } = await bacaPengaturan(db);
-  await db.batch([
-    perintah(db, `INSERT INTO siswa (id, nama_lengkap, nama_panggilan, jenis_kelamin, avatar, kelas_id, username, pin_hash, koin, berlian, zona_terlihat, dibuat_pada)
-      VALUES (?,?,?,?,?,?,?,?,?,0,?,?)`, id, d.namaLengkap, d.namaPanggilan, d.avatar === 'pria' ? 'L' : 'P', d.avatar, d.kelasId,
-    d.username, await hashRahasia(pin, iterasi(ctx.env)), koinAwal, JSON.stringify([ZONA[0].id]), sekarang()),
-    perintahAktivitas(db, id, 'daftar', `Didaftarkan oleh ${a.guru.nama}`)
-  ]);
-  return { siswa: siswaKeObjek(await satu(db, 'SELECT * FROM siswa WHERE id = ?', id)), pin };
+  return {
+    id, username: d.username, pin,
+    perintah: [
+      perintah(db, `INSERT INTO siswa (id, nama_lengkap, nama_panggilan, jenis_kelamin, avatar, kelas_id, username, pin_hash, koin, berlian, zona_terlihat, dibuat_pada)
+        VALUES (?,?,?,?,?,?,?,?,?,0,?,?)`, id, d.namaLengkap, d.namaPanggilan, d.avatar === 'pria' ? 'L' : 'P', d.avatar, d.kelasId,
+      d.username, await hashRahasia(pin, iterasi(ctx.env)), siap.koinAwal, JSON.stringify([ZONA[0].id]), sekarang()),
+      perintahAktivitas(db, id, 'daftar', `Didaftarkan oleh ${a.guru.nama}`)
+    ]
+  };
+}
+
+async function tambahSiswaOlehGuru(ctx, a, data) {
+  const db = ctx.env.DB;
+  const baru = await siswaBaru(ctx, a, data, await siapTambahSiswa(db));
+  const hasil = await db.batch([...baru.perintah, perintah(db, 'SELECT * FROM siswa WHERE id = ?', baru.id)]);
+  return { siswa: siswaKeObjek(hasil[hasil.length - 1].results[0]), pin: baru.pin };
 }
 
 // ---------- Impor CSV ----------
@@ -81,7 +100,8 @@ function periksaBarisImpor(a, baris, nomor) {
     pesan: masalah.join(' ')
   };
 }
-const BATAS_IMPOR = 200;
+const BATAS_IMPOR = 200;            // pratinjau (tanpa hash)
+const BATAS_IMPOR_PER_KIRIM = 10;   // impor sungguhan per permintaan (setiap PIN di-hash)
 
 export const onRequest = buatRouter([
   // ================= Siswa yang masuk =================
@@ -118,21 +138,37 @@ export const onRequest = buatRouter([
     return (baris || []).slice(0, BATAS_IMPOR).map((b, i) => periksaBarisImpor(a, b, i + 1));
   }],
 
+  // Setiap PIN di-hash (±1,5 ms CPU), jadi satu permintaan dibatasi BATAS_IMPOR_PER_KIRIM baris;
+  // js/store.js mengirim CSV dalam potongan kecil. Semua akun satu potongan disimpan dalam satu db.batch.
   ['POST', 'impor', async (ctx) => {
     const a = await aksesGuru(ctx);
-    const { baris } = await bacaJson(ctx.request);
+    const db = ctx.env.DB;
+    const { baris, nomorAwal = 1 } = await bacaJson(ctx.request);
+    if ((baris || []).length > BATAS_IMPOR_PER_KIRIM) throw new GalatApi(400, `Kirim paling banyak ${BATAS_IMPOR_PER_KIRIM} baris sekali impor.`);
+    const siap = await siapTambahSiswa(db);
     const hasil = [];
-    for (const [i, b] of (baris || []).slice(0, BATAS_IMPOR).entries()) {
-      const cek = periksaBarisImpor(a, b, i + 1);
+    const semuaPerintah = [];
+    for (const [i, b] of (baris || []).entries()) {
+      const cek = periksaBarisImpor(a, b, Number(nomorAwal) + i);
       if (!cek.ok) { hasil.push(cek); continue; }
       try {
-        const { siswa, pin } = await tambahSiswaOlehGuru(ctx, a, {
+        const baru = await siswaBaru(ctx, a, {
           namaLengkap: cek.data.namaLengkap, namaPanggilan: cek.data.namaPanggilan,
           avatar: cek.data.jenisKelamin === 'P' ? 'wanita' : 'pria', kelasId: cek.data.kelasId
-        });
-        hasil.push({ ...cek, username: siswa.username, pin });
+        }, siap);
+        semuaPerintah.push(...baru.perintah);
+        hasil.push({ ...cek, username: baru.username, pin: baru.pin });
       } catch (err) {
         hasil.push({ ...cek, ok: false, pesan: err.message });
+      }
+    }
+    if (semuaPerintah.length) {
+      try {
+        await db.batch(semuaPerintah);
+      } catch (err) {
+        console.error(err);
+        // Satu transaksi: jika gagal (mis. username baru saja dipakai orang lain), tidak ada akun yang terbuat
+        return hasil.map((h) => (h.pin ? { ...h, ok: false, pesan: 'Gagal menyimpan. Coba impor baris ini lagi.', username: undefined, pin: undefined } : h));
       }
     }
     return hasil;
