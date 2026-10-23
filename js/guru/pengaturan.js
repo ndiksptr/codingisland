@@ -103,7 +103,12 @@ export async function renderPengaturan(wadah, { konteks }) {
       tombol: [{ teks: 'Batal', nilai: false, varian: 'sekunder' }, { teks: 'Ya, reset', nilai: true, varian: 'bahaya' }]
     });
     if (!ya) return;
-    await resetDataDemo();
+    try {
+      await resetDataDemo();
+    } catch (err) {
+      toast(err.message, 'peringatan'); // versi server: reset lewat wrangler
+      return;
+    }
     toast('Data demo sudah kembali seperti awal. Silakan masuk lagi.', 'sukses');
     pindah('/guru/masuk');
   });

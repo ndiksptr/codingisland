@@ -13,15 +13,15 @@ Fitur utama:
 - **Siswa:** mendaftar sendiri dengan kode kelas, peta pulau, level ketik/debug/boss, bintang dan koin, toko clue, piala dan berlian, profil, sertifikat juara, dan halaman bantuan.
 - **Guru:** dashboard dengan ringkasan, kelas, siswa (termasuk impor CSV), level dan soal (editor dunia), nilai 1–100 (ekspor CSV dan cetak), serta aktivitas.
 - **Admin:** semua fitur guru ditambah kelola akun guru dan pengaturan permainan.
-- **Teknis:** website statis tanpa proses build (HTML, CSS, JavaScript ES module), hash router, dan kode siswa dijalankan oleh interpreter buatan sendiri di Web Worker (tanpa `eval`).
+- **Teknis:** tampilan statis tanpa proses build (HTML, CSS, JavaScript ES module) dan hash router. Data disimpan di **Cloudflare D1** lewat API **Cloudflare Pages Functions** (`functions/api`). Kode siswa dijalankan interpreter buatan sendiri di Web Worker (tanpa `eval`), lalu dijalankan ulang di server untuk menghitung nilai.
 
-Dokumen lain: [UJI-COBA.md](UJI-COBA.md) (daftar uji Tahap 1–9) dan [REVISI.md](REVISI.md) (catatan revisi).
+Dokumen lain: [UJI-COBA.md](UJI-COBA.md) (daftar uji Tahap 1–10B) dan [REVISI.md](REVISI.md) (catatan revisi).
 
 ---
 
 ## 1. Akun demo
 
-Data contoh dibuat otomatis saat aplikasi pertama kali dibuka. Akun demo juga tampil di halaman masuk dan bisa diisi dengan tombol **Pakai**.
+Data contoh diisi ke database oleh `schema.sql` (bagian 3). Akun demo tampil di halaman masuk dan bisa diisi dengan tombol **Pakai** selama variabel `TAMPILKAN_AKUN_DEMO` bernilai `"1"`.
 
 | Peran | Username | Password / PIN |
 |---|---|---|
@@ -31,78 +31,101 @@ Data contoh dibuat otomatis saat aplikasi pertama kali dibuka. Akun demo juga ta
 | Siswa | `andi3`, `aisyah3`, `dimas4`, `zahra4`, `farhan5`, `salsa5`, `naufal6`, `aurel6`, dan lainnya (5 per kelas) | PIN `1234` |
 
 - Kode kelas untuk pendaftaran siswa: `PULAU3`, `PULAU4`, `PULAU5`, `PULAU6` (huruf besar/kecil tidak berpengaruh).
-- Untuk mengembalikan semua data ke awal, klik **Reset data demo** di footer beranda, atau buka menu **Pengaturan** sebagai admin.
+- Untuk mengembalikan semua data ke awal, jalankan ulang `schema.sql` (bagian 3, langkah 3). Tombol **Reset data demo** di aplikasi hanya menampilkan pesan, karena di versi server reset dilakukan admin.
 
-> **Penting:** semua data (akun, progres, nilai) disimpan di **localStorage browser**, terpisah untuk setiap perangkat dan browser. Siswa yang bermain di komputer A tidak terlihat di dashboard guru di komputer B. Untuk dipakai bersama satu sekolah, `js/store.js` perlu diganti ke API Cloudflare Pages Functions + D1 (lihat bagian 7).
+> Semua data (akun, progres, nilai) sekarang tersimpan di **database D1**, jadi siswa yang bermain di komputer mana pun langsung terlihat di dashboard guru. Yang masih disimpan di browser hanya draf kode yang sedang diketik dan preferensi tampilan.
 
 ---
 
-## 2. Menjalankan secara lokal
+## 2. Menjalankan secara lokal (wrangler pages dev)
 
-Aplikasi memakai ES module dan Web Worker, jadi **harus dibuka lewat server lokal**. Membuka `index.html` langsung dari folder (`file://`) tidak akan berjalan.
+Versi ini memakai API di folder `functions/api` dan database D1, jadi harus dijalankan dengan **Wrangler** (alat resmi Cloudflare). Server statis biasa seperti `python -m http.server` atau Live Server hanya menampilkan tampilan; masuk dan daftar akan gagal karena `/api` tidak ada.
 
-Dari folder proyek, pilih salah satu:
+Butuh **Node.js 20 atau lebih baru**. Semua perintah dijalankan dari folder proyek.
 
-| Cara | Perintah | Alamat |
-|---|---|---|
-| Python | `python -m http.server 8000` | `http://localhost:8000` |
-| Node.js | `npx serve .` | alamat yang muncul di terminal |
-| VS Code | ekstensi **Live Server** → klik kanan `index.html` → *Open with Live Server* | biasanya `http://127.0.0.1:5500/index.html` |
+1. **Isi database lokal** (sekali, dan setiap kali ingin mengembalikan data ke awal):
+   ```bash
+   npx wrangler d1 execute coding-island-db --local --file=schema.sql
+   ```
+   Database lokal disimpan di folder `.wrangler/` dan tidak perlu `database_id` asli.
+2. **Jalankan server lokal:**
+   ```bash
+   npx wrangler pages dev .
+   ```
+3. Buka **`http://127.0.0.1:8788`** (atau `http://localhost:8788`).
 
 Catatan:
-- Buka lewat **`localhost`** atau **`https`**. PIN dan password di-hash dengan `crypto.subtle`, yang tidak tersedia di alamat IP jaringan seperti `http://192.168.x.x`.
-- Perlu internet untuk Google Fonts, Tailwind CDN, CodeMirror (esm.sh), dan confetti. Jika CodeMirror gagal dimuat, editor otomatis memakai textarea biasa.
-- Setelah kode diubah, tekan **Ctrl + F5** agar browser tidak memakai file lama. Saat menguji, buka DevTools (F12) → **Network** → centang **Disable cache**.
+- Wrangler otomatis membaca `wrangler.toml` (binding `DB`) dan `.dev.vars` (`MODE_DEV=1`, jadi panel Dev bisa mengubah progres saat uji lokal).
+- Buka lewat `127.0.0.1` atau `localhost`, **bukan** alamat jaringan seperti `http://192.168.x.x`. Cookie sesi bertanda `Secure`, dan browser hanya menerimanya di `https` atau `localhost`.
+- Perlu internet untuk Google Fonts, Tailwind CDN, CodeMirror (esm.sh), dan confetti.
+- Setelah kode diubah, tekan **Ctrl + F5**. Perubahan di `functions/` atau `server/` dimuat ulang otomatis oleh Wrangler.
+- Jika `npx wrangler` meminta izin memasang paket, jawab `y`.
 
 ---
 
-## 3. Deploy ke Cloudflare Pages
+## 3. Deploy ke Cloudflare Pages + D1
 
-Proyek ini situs statis murni, jadi **tidak perlu build command**. Semua path aset sudah relatif dan huruf besar-kecilnya sudah dicocokkan dengan nama file asli. Ini penting karena server Cloudflare membedakan `Pantai.jpeg` dan `pantai.jpeg`, sedangkan Windows tidak.
+Tampilan tetap situs statis tanpa build command. Bedanya, sekarang ada **Pages Functions** (`functions/api`) dan **database D1**, jadi deploy harus lewat **Wrangler** (atau Git). Cara **Upload assets** di dashboard tidak mendukung Functions.
 
-Berkas yang dibutuhkan situs:
+### 3a. Langkah pertama kali
 
-```
-index.html   _headers   css/   js/   image/
-```
-
-- `_headers` berisi cache 1 hari untuk `image/`, `css/`, `js/` dan header keamanan dasar (`X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`).
-- **Tidak perlu `_redirects`**: aplikasi memakai hash router (`#/peta`, `#/guru/siswa`), jadi semua halaman dilayani oleh `index.html`.
-
-### 3a. Lewat dashboard Cloudflare (unggah folder)
-
-1. Siapkan folder bersih berisi **hanya** berkas di atas. Jangan ikutkan folder `.git` atau berkas cadangan. Dengan PowerShell dari folder proyek:
-   ```powershell
-   Remove-Item -Recurse -Force ..\coding-island-publik -ErrorAction SilentlyContinue
-   New-Item -ItemType Directory ..\coding-island-publik | Out-Null
-   Copy-Item index.html, _headers -Destination ..\coding-island-publik
-   Copy-Item css, js, image -Destination ..\coding-island-publik -Recurse
+1. **Masuk ke akun Cloudflare:**
+   ```bash
+   npx wrangler login
    ```
-2. Masuk ke [dash.cloudflare.com](https://dash.cloudflare.com) → **Workers & Pages** → **Create** → tab **Pages** → **Upload assets**.
-3. Isi nama proyek `coding-island`, lalu **Create project**.
-4. Seret folder `coding-island-publik` (atau file ZIP berisinya) ke area unggah → **Deploy site**.
-5. Setelah selesai, situs tersedia di `https://coding-island.pages.dev`. Untuk memperbarui, buka proyek → **Create deployment** → unggah ulang folder yang baru.
+2. **Buat database D1:**
+   ```bash
+   npx wrangler d1 create coding-island-db
+   ```
+   Salin `database_id` dari hasilnya ke `wrangler.toml`, menggantikan `GANTI-DENGAN-ID-DATABASE-D1`.
+3. **Buat tabel dan isi data awal** di database Cloudflare:
+   ```bash
+   npx wrangler d1 execute coding-island-db --remote --file=schema.sql
+   ```
+   > **Hati-hati:** `schema.sql` menghapus semua tabel lalu membuatnya ulang. Jalankan dengan `--remote` hanya saat pertama kali atau jika memang ingin mengembalikan data ke contoh awal.
+4. **Deploy situs dan API:**
+   ```bash
+   npx wrangler pages deploy
+   ```
+   Saat pertama kali, Wrangler menawarkan membuat proyek `coding-island`. Pilih production branch `main`. Situs tersedia di `https://coding-island.pages.dev`.
+5. **Periksa binding `DB` di pengaturan proyek Pages:**
+   1. Buka [dash.cloudflare.com](https://dash.cloudflare.com) → **Workers & Pages** → proyek **coding-island**.
+   2. Buka **Settings** → **Bindings**.
+   3. Pastikan ada binding **D1 database** dengan **Variable name** `DB` yang mengarah ke `coding-island-db`.
+   4. Jika belum ada (misalnya proyek dibuat lewat Git tanpa `wrangler.toml`), klik **Add** → **D1 database** → isi Variable name `DB`, pilih database `coding-island-db` → **Save**. Lakukan untuk **Production** dan **Preview**, lalu deploy ulang agar binding dipakai.
 
-### 3b. Lewat perintah (Wrangler)
+   Karena proyek ini punya `wrangler.toml`, binding dan variabel di file itu menjadi acuan. Dashboard hanya menampilkannya, dan perubahan dilakukan di `wrangler.toml` lalu deploy ulang.
 
-Butuh Node.js 18 atau lebih baru.
+### 3b. Variabel lingkungan
 
-```bash
-# sekali saja: masuk ke akun Cloudflare
-npx wrangler login
+Diatur di bagian `[vars]` pada `wrangler.toml`:
 
-# deploy dari folder proyek
-npx wrangler pages deploy . --project-name=coding-island
-```
+| Variabel | Nilai | Arti |
+|---|---|---|
+| `TAMPILKAN_AKUN_DEMO` | `"1"` / `"0"` | Tampilkan daftar akun contoh di halaman masuk. Ubah ke `"0"` untuk pemakaian sungguhan. |
+| `MODE_DEV` | `"0"` / `"1"` | Izinkan panel Dev mengubah progres. Biarkan `"0"` di Cloudflare. |
+| `ITERASI_PBKDF2` | `"100000"` | Jumlah iterasi hash PBKDF2 untuk PIN/password baru (maksimal 100000 di Cloudflare). |
 
-- Saat pertama kali, Wrangler menawarkan untuk membuat proyek `coding-island`. Pilih **production branch** `main`.
-- Wrangler tidak mengunggah folder `.git` dan `node_modules`. Berkas dokumen seperti `README.md`, `UJI-COBA.md`, dan `REVISI.md` ikut terunggah dan bisa dibuka publik. Jika tidak diinginkan, deploy folder bersih dari langkah 3a: `npx wrangler pages deploy ..\coding-island-publik --project-name=coding-island`.
+### 3c. Memperbarui situs
 
-### 3c. Setelah deploy
+- Kode berubah: `npx wrangler pages deploy`.
+- Data contoh atau struktur tabel berubah: `node scripts/buat-schema.mjs` membuat ulang `schema.sql`, lalu jalankan langkah 3a nomor 3 (data lama akan terhapus).
+- Cadangan data: `npx wrangler d1 export coding-island-db --remote --output=cadangan.sql`.
 
-- **Domain berbeda:** jika domain bukan `coding-island.pages.dev` (misalnya domain sekolah), ganti alamat pada `og:url` dan `og:image` di `index.html` supaya pratinjau tautan di WhatsApp/Facebook tampil benar.
-- **Cache 1 hari:** pengunjung lama bisa masih memakai CSS/JS lama sampai 1 hari setelah pembaruan. Minta mereka menekan Ctrl + F5, atau perpendek `max-age` di `_headers` selama masa pengembangan.
-- **Uji di HP:** buka alamat `https://…pages.dev` di HP. Karena sudah `https`, hashing PIN berjalan normal.
+### 3d. Keamanan yang dikerjakan server
+
+- PIN dan password di-hash dengan **PBKDF2-SHA256** (Web Crypto, salt acak, 100.000 iterasi). Hash tidak pernah dikirim ke browser.
+- Sesi disimpan di cookie `ci_sesi` yang **HttpOnly, Secure, SameSite=Lax** (berlaku 8 jam). Di database hanya disimpan hash token sesinya.
+- **Batas percobaan login:** 5 kali salah untuk satu username menahan login username itu selama 1 menit, dan 50 kali salah dari satu alamat IP menahan alamat itu.
+- Setiap endpoint guru memeriksa **peran** (guru/admin) dan **kelas yang diampu**. Guru tidak bisa membaca atau mengubah siswa, nilai, atau aktivitas kelas lain.
+- Saat siswa menekan **Jalankan**, server menjalankan ulang kode dengan interpreter yang sama, lalu menghitung sendiri bintang, nilai, koin, dan berlian. Kunci jawaban (solusi) tidak dikirim ke siswa, dan teks clue baru dikirim setelah dibeli.
+- Perubahan data wajib berformat JSON (perlindungan CSRF ringan), dan `_redirects` menyembunyikan berkas server seperti `server/`, `schema.sql`, dan `wrangler.toml`.
+
+### 3e. Setelah deploy
+
+- **Domain berbeda:** jika domain bukan `coding-island.pages.dev`, ganti alamat pada `og:url` dan `og:image` di `index.html`.
+- **Cache 1 hari:** pengunjung lama bisa masih memakai JS lama sampai 1 hari setelah pembaruan. Minta mereka menekan Ctrl + F5, atau perpendek `max-age` di `_headers` selama masa pengembangan.
+- **Uji di HP:** buka alamat `https://…pages.dev` di HP.
 
 ---
 
@@ -136,7 +159,7 @@ Untuk versi produksi, buat CSS Tailwind sekali dengan **Tailwind CLI**:
 
 ## 5. Fitur pengembang (tersembunyi)
 
-Fitur pengembang tidak terlihat oleh pengguna biasa dan hanya aktif jika alamat mengandung `?dev=1`, misalnya `https://coding-island.pages.dev/?dev=1#/peta` atau `http://localhost:8000/?dev=1#/peta`.
+Fitur pengembang tidak terlihat oleh pengguna biasa dan hanya aktif jika alamat mengandung `?dev=1`, misalnya `http://127.0.0.1:8788/?dev=1#/peta`.
 
 | Alat | Cara pakai |
 |---|---|
@@ -144,7 +167,7 @@ Fitur pengembang tidak terlihat oleh pengguna biasa dan hanya aktif jika alamat 
 | `ciDev` di Console | `ciDev.selesaikanLevel('pantai-4', 3)`, `ciDev.tuntaskanPulau('pantai')`, `ciDev.resetProgres()`, `ciDev.validasiLevel()`, `ciDev.bantuan()` |
 | Uji Interpreter | `/?dev=1#/uji-interpreter`: coba kode di dunia contoh, atau klik **Jalankan semua tes** (22 kasus) |
 
-Karena datanya tersimpan di browser, siswa yang tahu `?dev=1` bisa mengubah progresnya sendiri. Ini tidak bisa dicegah sampai data dipindah ke server (bagian 7).
+Alat yang **mengubah progres** (selesaikan level, tuntaskan pulau, reset progres) hanya diterima server jika variabel `MODE_DEV` bernilai `"1"`. Nilainya `"1"` saat uji lokal (berkas `.dev.vars`) dan `"0"` di Cloudflare (`wrangler.toml`), jadi siswa yang tahu `?dev=1` tetap tidak bisa mengubah progresnya di server sungguhan. Uji Interpreter tetap bisa dipakai karena hanya menjalankan kode di browser.
 
 ---
 
@@ -154,6 +177,22 @@ Karena datanya tersimpan di browser, siswa yang tahu `?dev=1` bisa mengubah prog
 coding_island/
 ├── index.html          Halaman tunggal: meta & ikon, font, Tailwind CDN, memuat js/main.js
 ├── _headers            Header cache & keamanan untuk Cloudflare Pages
+├── _redirects          Menyembunyikan berkas khusus server (server/, scripts/, schema.sql, ...)
+├── wrangler.toml       Konfigurasi Pages + binding D1 "DB" + variabel lingkungan
+├── .dev.vars           Variabel khusus uji lokal (MODE_DEV=1), tidak ikut di-deploy
+├── schema.sql          Tabel D1 + data awal (DIBUAT oleh scripts/buat-schema.mjs)
+├── scripts/
+│   └── buat-schema.mjs Membuat ulang schema.sql dari data contoh (node scripts/buat-schema.mjs)
+├── functions/api/      API Pages Functions, satu file per sumber daya:
+│   ├── auth/           sesi, masuk/keluar, daftar, batas login, akun sendiri, kelola guru, pengaturan
+│   ├── kelas/          kelas publik, cek kode, kelola kelas
+│   ├── siswa/          data siswa sendiri, kelola siswa, impor CSV, catatan, reset PIN
+│   ├── level/          level terbit (tanpa solusi), editor & urutan level guru
+│   ├── progres/        progres, jalankan (dinilai ulang di server), beli clue, juara
+│   ├── nilai/          matriks nilai, timpa nilai
+│   └── aktivitas/      log aktivitas, data Ringkasan dashboard
+├── server/             Modul bersama API: http (router, galat), kripto (PBKDF2, token),
+│                       sesi (cookie, peran, kelas yang diampu), data (kueri D1), statistik
 ├── css/app.css         Token warna, komponen, panggung, dashboard, gaya cetak, animasi
 ├── image/              Aset: background/, robot/, item/, profile/, favicon-32.png,
 │                       apple-touch-icon.png (180 px), og-image.jpg (1200×630)
@@ -161,7 +200,8 @@ coding_island/
     ├── main.js         Daftar rute, penjaga rute, penangkap error global
     ├── router.js       Hash router dengan parameter (#/level/:id) dan penjaga rute
     ├── ui.js           Tombol, kartu, modal, toast, loader, form modal, PIN, unduh berkas
-    ├── store.js        SATU-SATUNYA pintu data (localStorage, awalan ci_)
+    ├── store.js        SATU-SATUNYA pintu data: fetch() ke /api (nama fungsi sama dengan versi demo)
+    ├── store-lokal.js  Versi demo localStorage, disimpan sebagai acuan (tidak dipakai aplikasi)
     ├── dev.js          Panel Dev & ciDev (hanya dengan ?dev=1)
     ├── data/           zona.js (4 pulau), levels.js (13 level bawaan)
     ├── game/           interpreter, worker, runner, editor (CodeMirror), panggung, kemajuan,
@@ -172,7 +212,7 @@ coding_island/
 
 Aturan teknis yang dipegang:
 - **Tanpa proses build:** HTML, CSS, dan JavaScript murni (ES module).
-- **Satu pintu data:** semua akses data hanya lewat `js/store.js`. Fungsi dashboard `guru*`/`admin*` membatasi data pada kelas yang diampu guru.
+- **Satu pintu data:** semua akses data hanya lewat `js/store.js`, yang memanggil `/api`. Server memeriksa sesi, peran, dan kelas yang diampu guru di setiap endpoint.
 - **Kode siswa** dijalankan interpreter buatan sendiri di Web Worker, dibatasi 1000 langkah dan 2 detik.
 - **Gambar tambahan** (gembok, rintangan, bendera, bug, jurang) dibuat dengan SVG/CSS; tidak ada gambar dari internet.
 - **Ukuran gambar:** keempat background sudah dikompres ke 121–175 KB (sebelumnya 580–715 KB) dengan nama file tetap.
@@ -182,6 +222,6 @@ Aturan teknis yang dipegang:
 
 ## 7. Langkah berikutnya
 
-- **Data bersama satu sekolah:** ganti isi `js/store.js` menjadi pemanggilan `fetch()` ke Cloudflare Pages Functions + D1. Nama dan bentuk fungsi publiknya sudah async dan bisa dipertahankan. Fungsi `guru*`/`admin*` dipindah ke server dengan pemeriksaan sesi yang sama.
 - **Tailwind CLI:** ganti Tailwind CDN dengan CSS hasil build (bagian 4).
-- **Data demo:** nonaktifkan akun demo dan tautan "Reset data demo" sebelum dipakai sungguhan.
+- **Pemakaian sungguhan:** setelah data asli sekolah dimasukkan, ubah `TAMPILKAN_AKUN_DEMO` menjadi `"0"` lalu ganti password `admin` (menu **Pengaturan**) dan hapus akun/kelas contoh lewat dashboard.
+- **Cadangan data:** ekspor database secara berkala dengan `npx wrangler d1 export coding-island-db --remote --output=cadangan.sql`.

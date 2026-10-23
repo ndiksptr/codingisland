@@ -122,7 +122,7 @@ document.addEventListener('click', async (e) => {
     pindah('/');
   } catch (err) {
     console.error(err);
-    toast('Reset gagal. Coba muat ulang halaman.', 'peringatan');
+    toast(err.message || 'Reset gagal. Coba muat ulang halaman.', 'peringatan');
   }
 });
 

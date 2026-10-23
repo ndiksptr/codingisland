@@ -1,0 +1,8 @@
+# _redirects — sembunyikan berkas khusus server agar tidak bisa diunduh dari situs
+# (folder functions/ dijalankan sebagai API, bukan berkas statis).
+/server/*        /    200
+/scripts/*       /    200
+/functions/*     /    200
+/schema.sql      /    200
+/wrangler.toml   /    200
+/.dev.vars       /    200

@@ -1,0 +1,23 @@
+# wrangler.toml — konfigurasi Cloudflare Pages + D1 untuk Coding Island
+# Dipakai oleh `npx wrangler pages dev .` (uji lokal) dan `npx wrangler pages deploy .`.
+# Langkah lengkap ada di README.md bagian "Versi server (Cloudflare Pages + D1)".
+
+name = "coding-island"
+pages_build_output_dir = "."
+compatibility_date = "2026-09-01"
+
+# Database D1. Ganti database_id dengan id dari perintah:
+#   npx wrangler d1 create coding-island-db
+[[d1_databases]]
+binding = "DB"
+database_name = "coding-island-db"
+database_id = "GANTI-DENGAN-ID-DATABASE-D1"
+
+# Variabel lingkungan (boleh juga diatur di Settings > Variables and Secrets proyek Pages)
+[vars]
+# "1" = halaman masuk menampilkan daftar akun contoh. Ubah ke "0" saat dipakai sungguhan.
+TAMPILKAN_AKUN_DEMO = "1"
+# "1" = alat pengembang (?dev=1) boleh mengubah progres siswa. Biarkan "0" di server sungguhan.
+MODE_DEV = "0"
+# Jumlah iterasi PBKDF2 untuk hash baru (maksimal 100000 di Cloudflare Workers)
+ITERASI_PBKDF2 = "100000"

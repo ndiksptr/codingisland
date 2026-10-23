@@ -1,9 +1,11 @@
-# Daftar Uji Coba: Tahap 1–10
+# Daftar Uji Coba: Tahap 1–10B
 
-Cara pakai: jalankan server lokal (lihat [README.md](README.md)), lalu centang `[x]` setiap butir yang sudah sesuai.
+Cara pakai: jalankan `npx wrangler pages dev .` (lihat [README.md](README.md) bagian 2), lalu centang `[x]` setiap butir yang sudah sesuai.
 Jika ada yang tidak sesuai, catat nomornya (misalnya **U2.7**) di [REVISI.md](REVISI.md).
 
-Sebelum mulai: klik **Reset data demo** di footer beranda agar datanya sama dengan daftar ini.
+Sebelum mulai, kembalikan data ke contoh awal agar sama dengan daftar ini:
+`npx wrangler d1 execute coding-island-db --local --file=schema.sql`
+(di versi server, tombol **Reset data demo** hanya menampilkan pesan, lihat U10B.12).
 
 > **Penting setelah ada pembaruan kode:** tekan **Ctrl + F5** (muat ulang paksa) agar browser tidak memakai file lama.
 > Lebih aman lagi: buka DevTools (F12) → tab **Network** → centang **Disable cache**, dan biarkan DevTools terbuka selama menguji.
@@ -318,6 +320,28 @@ Siapkan: **Reset data demo**, **Ctrl + F5**, masuk `bu.sari` / `guru123`, buka m
 | U10.9  | Buka situs di HP lewat `https` lalu daftar/masuk | PIN bisa dipakai (hashing berjalan di https) | [ ] |
 | U10.10 | Simpan ke layar utama di iPhone/Android | Ikon robot berlatar mint (180 px) | [ ] |
 
+## Tahap 10B: Versi penuh dengan Cloudflare Pages Functions + D1
+
+Persiapan: `npx wrangler d1 execute coding-island-db --local --file=schema.sql`, lalu `npx wrangler pages dev .` dan buka `http://127.0.0.1:8788`.
+
+| No      | Langkah | Hasil yang diharapkan | OK  |
+| ------- | ------- | --------------------- | --- |
+| U10B.1  | Buka beranda, peta, level, dan dashboard guru | Tampilan sama persis dengan versi sebelumnya | [ ] |
+| U10B.2  | Masuk sebagai `aisyah3` / PIN `1234` | Masuk ke peta. DevTools → Application → Cookies: ada `ci_sesi` dengan centang **HttpOnly** dan **Secure**, SameSite **Lax** | [ ] |
+| U10B.3  | Console: `document.cookie` | Tidak memuat `ci_sesi` (tidak bisa dibaca JavaScript) | [ ] |
+| U10B.4  | Masuk dengan PIN salah 5 kali untuk username yang sama | Percobaan ke-5 menahan login 60 detik; PIN benar pun ditolak selama ditahan | [ ] |
+| U10B.5  | Mainkan level, beli Clue 1, lalu selesaikan level | Teks clue tampil setelah dibeli, koin berkurang/bertambah, bintang tersimpan. Muat ulang: data tetap ada | [ ] |
+| U10B.6  | DevTools → Network → respons `/api/level/terbit` | Tidak ada `solusi`; teks clue yang belum dibeli kosong | [ ] |
+| U10B.7  | Buka browser lain (atau jendela privat), masuk sebagai `bu.sari` / `guru123` | Aktivitas dan nilai siswa dari U10B.5 langsung terlihat (data bersama, bukan per browser) | [ ] |
+| U10B.8  | Sebagai `bu.sari`, Console: `fetch('/api/siswa?kelasId=kelas_5a').then(r => r.status)` | `403` (kelas bukan ampuan) | [ ] |
+| U10B.9  | Sebagai `bu.sari`, buka `#/guru/guru` | Kembali ke Ringkasan (menu Guru khusus admin); `fetch('/api/auth/guru')` → `403` | [ ] |
+| U10B.10 | Sebagai siswa, Console: `fetch('/api/auth/konteks').then(r => r.status)` | `401` atau `403` | [ ] |
+| U10B.11 | Tambah siswa, reset PIN, timpa nilai, buat level draf lalu terbitkan | Semua berhasil; PIN baru tampil sekali; level baru terlihat siswa kelas tujuan saja | [ ] |
+| U10B.12 | Klik **Reset data demo** (footer beranda atau Pengaturan admin) | Toast: "Di versi server, reset data dilakukan admin lewat perintah wrangler d1 execute …" dan data tidak berubah | [ ] |
+| U10B.13 | Buka `/schema.sql`, `/wrangler.toml`, `/server/kripto.js` | Yang tampil halaman beranda, bukan isi berkas | [ ] |
+| U10B.14 | Ubah `MODE_DEV` di `.dev.vars` menjadi `"0"`, jalankan ulang, buka `?dev=1` → panel Dev → Selesaikan level | Ditolak dengan toast peringatan ("Fitur ini hanya untuk guru." atau "Alat pengembang tidak aktif di server ini."); progres tidak berubah | [ ] |
+| U10B.15 | Ikuti README bagian 3a di akun Cloudflare | `https://coding-island.pages.dev` bisa masuk/daftar; binding `DB` terlihat di Settings → Bindings | [ ] |
+
 ## Ringkasan hasil
 
 | Tahap   | Jumlah butir | Lulus | Gagal | Catatan |
@@ -332,5 +356,6 @@ Siapkan: **Reset data demo**, **Ctrl + F5**, masuk `bu.sari` / `guru123`, buka m
 | Tahap 8 | 26           |       |       |         |
 | Tahap 9 | 20           |       |       |         |
 | Tahap 10 | 10          |       |       |         |
+| Tahap 10B | 15         |       |       |         |
 
 Diuji oleh: \***\*\_\_\_\_\*\*** Tanggal: \***\*\_\_\_\_\*\*** Browser/perangkat: \***\*\_\_\_\_\*\***

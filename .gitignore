@@ -1,0 +1,3 @@
+# Data lokal wrangler (database D1 lokal, cache)
+.wrangler/
+node_modules/
