@@ -106,7 +106,7 @@ export async function renderPengaturan(wadah, { konteks }) {
     try {
       await resetDataDemo();
     } catch (err) {
-      toast(err.message, 'peringatan'); // versi server: reset lewat wrangler
+      toast(err.message, 'peringatan');
       return;
     }
     toast('Data demo sudah kembali seperti awal. Silakan masuk lagi.', 'sukses');

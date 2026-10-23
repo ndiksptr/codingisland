@@ -1,5 +1,5 @@
 // js/store.js — satu-satunya pintu akses data Coding Island (versi server)
-// Semua fungsi memanggil API Cloudflare Pages Functions di /api (database D1).
+// Semua fungsi memanggil API di /api (Cloudflare Worker + database D1).
 // Nama, parameter, dan bentuk hasil fungsi SAMA dengan versi demo localStorage
 // (js/store-lokal.js), jadi halaman lain tidak perlu diubah.
 // Hash PIN/password, sesi (cookie HttpOnly), batas login, dan pemeriksaan kelas
@@ -12,7 +12,6 @@
 import { periksaKolomSiswa } from './game/aturan-siswa.js';
 
 export { periksaKolomSiswa };
-export const KOIN_AWAL = 20;
 
 const AWALAN = 'ci_';
 const LAMA_CACHE_SESI_MS = 15 * 1000; // sesi dibaca ulang dari server paling cepat tiap 15 detik
@@ -62,10 +61,6 @@ async function api(path, { metode = 'GET', data } = {}) {
   return isi;
 }
 
-const tidakTersedia = (nama) => async () => {
-  throw new Error(`${nama} tidak tersedia di versi server.`);
-};
-
 // Penyimpanan lokal (hanya draf kode & preferensi)
 function bacaLokal(kunci, bawaan) {
   try {
@@ -112,7 +107,7 @@ export async function keluar() {
   }
 }
 
-/** Di versi server reset dilakukan admin lewat wrangler (server menolak dengan pesan penjelasan). */
+/** Khusus admin: kembalikan seluruh database ke data contoh (semua orang ikut keluar). */
 export async function resetDataDemo() {
   await api('auth/reset-demo', { metode: 'POST' });
   lupakanSesi();
@@ -180,30 +175,14 @@ export async function masukGuru(username, password) {
 }
 
 // =====================================================================
-// Data dasar (dipetakan ke endpoint guru/admin di server)
+// Data dasar
 // =====================================================================
-export async function getSemuaGuru() {
-  return adminDaftarGuru();
-}
-
-export async function getGuru(id) {
-  return (await adminDaftarGuru()).find((g) => g.id === id) || null;
-}
-
-export async function tambahGuru(data) {
+async function tambahGuru(data) {
   return api('auth/guru', { metode: 'POST', data });
 }
 
-export async function ubahGuru(id, perubahan) {
+async function ubahGuru(id, perubahan) {
   return api(`auth/guru/${enc(id)}`, { metode: 'PATCH', data: perubahan });
-}
-
-export async function hapusGuru(id) {
-  return adminHapusGuru(id);
-}
-
-export async function getSemuaKelas() {
-  return (await api('kelas')).map(({ id, nama, tingkat, kodeKelas, guruIds }) => ({ id, nama, tingkat, kodeKelas, guruIds }));
 }
 
 export async function getKelas(id) {
@@ -211,37 +190,12 @@ export async function getKelas(id) {
   return api(`kelas/${enc(id)}`);
 }
 
-export const buatKodeKelas = tidakTersedia('Pembuatan kode kelas terpisah');
-
-export async function tambahKelas(data) {
-  return guruSimpanKelas({ ...data, id: undefined });
-}
-
-export async function ubahKelas(id, perubahan) {
-  return api(`kelas/${enc(id)}`, { metode: 'PUT', data: perubahan });
-}
-
-export async function hapusKelas(id) {
-  return guruHapusKelas(id);
-}
-
-export async function getSemuaSiswa({ kelasId } = {}) {
-  return guruDaftarSiswa({ kelasId });
-}
 
 /** Siswa yang sedang masuk membaca datanya sendiri; guru membaca siswa di kelasnya. */
 export async function getSiswa(id) {
   const sesi = await sesiAktif();
   if (sesi?.jenis === 'siswa') return sesi.pengguna.id === id ? api('siswa/saya') : null;
   return (await guruDetailSiswa(id)).siswa;
-}
-
-export async function tambahSiswa(data) {
-  return (await guruTambahSiswa(data)).siswa;
-}
-
-export async function ubahSiswa(id, perubahan) {
-  return guruUbahSiswa(id, perubahan);
 }
 
 /** Simpan daftar zona yang animasi "pulau baru"-nya sudah pernah dilihat siswa. */
@@ -251,12 +205,6 @@ export async function aturZonaTerlihat(_id, zonaIds) {
   return siswa;
 }
 
-export const resetPinSiswa = tidakTersedia('Mengatur PIN tertentu (pakai Reset PIN di dashboard)');
-export const tambahKoin = tidakTersedia('Mengubah koin langsung');
-
-export async function hapusSiswa(id) {
-  return guruHapusSiswa(id);
-}
 
 // =====================================================================
 // Level
@@ -274,7 +222,6 @@ export async function getLevel(id) {
   return api(`level/${enc(id)}`);
 }
 
-export const simpanLevel = tidakTersedia('Menyimpan level mentah (pakai editor level di dashboard)');
 
 /**
  * Level terbit untuk kelas siswa yang sedang masuk (server memakai kelas dari sesi).
@@ -284,10 +231,6 @@ export async function daftarLevelTerbit({ zona } = {}) {
   const levels = await api(`level/terbit${qs({ zona })}`);
   for (const l of levels) clueTerbit.set(l.id, l.clue);
   return levels;
-}
-
-export async function hapusLevel(id) {
-  return guruHapusLevel(id);
 }
 
 export async function getHargaClue() {
@@ -382,15 +325,6 @@ export async function simpanPreferensi(perubahan) {
   return pref;
 }
 
-// =====================================================================
-// Aktivitas (dicatat otomatis oleh server)
-// =====================================================================
-export const catatAktivitas = tidakTersedia('Mencatat aktivitas dari browser');
-export const hapusAktivitas = tidakTersedia('Menghapus aktivitas');
-
-export async function getAktivitas({ siswaId, batas = 50 } = {}) {
-  return (await guruAktivitas({ siswaId, batas })).daftar;
-}
 
 // =====================================================================
 // API DASHBOARD GURU (server memeriksa peran & kelas yang diampu)

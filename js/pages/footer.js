@@ -1,5 +1,4 @@
 // js/pages/footer.js — footer situs yang dipakai ulang
-// Tombol [data-reset-demo] ditangani secara global di main.js.
 
 import { robot } from '../ui.js';
 
@@ -20,9 +19,6 @@ export function footerSitus() {
             © ${tahun} · Belajar dengan
             <img src="image/item/hati.png" alt="cinta" class="inline w-5 h-5 object-contain">
           </p>
-          <button type="button" data-reset-demo class="min-h-[44px] px-2 text-sm text-white underline underline-offset-4 hover:text-kuning">
-            Reset data demo
-          </button>
         </div>
       </div>
     </footer>`;

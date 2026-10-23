@@ -1,8 +1,8 @@
 // js/main.js — titik masuk aplikasi: daftar rute, penjaga rute, lalu jalankan router
 
 import { rute, mulaiRouter, aturPenjaga, pindah, halamanError } from './router.js';
-import { bukaModal, toast } from './ui.js';
-import { sesiAktif, resetDataDemo } from './store.js';
+import { toast } from './ui.js';
+import { sesiAktif } from './store.js';
 import { renderBeranda } from './pages/beranda.js';
 import { renderTidakDitemukan } from './pages/tidak-ditemukan.js';
 import { renderPeta, renderPetaZona } from './pages/peta.js';
@@ -101,29 +101,6 @@ aturPenjaga(async (path) => {
     return '/guru';
   }
   return null;
-});
-
-// ---------- Reset data demo (tautan di footer) ----------
-document.addEventListener('click', async (e) => {
-  if (!e.target.closest('[data-reset-demo]')) return;
-  const yakin = await bukaModal({
-    judul: 'Reset data demo?',
-    isi: '<p>Semua akun, kelas, dan progres kembali seperti awal. Akun yang baru didaftarkan akan hilang.</p>',
-    pose: 'kaget',
-    tombol: [
-      { teks: 'Batal', nilai: false, varian: 'sekunder' },
-      { teks: 'Ya, Reset', nilai: true, varian: 'bahaya' }
-    ]
-  });
-  if (!yakin) return;
-  try {
-    await resetDataDemo();
-    toast('Data demo sudah kembali seperti awal.', 'sukses');
-    pindah('/');
-  } catch (err) {
-    console.error(err);
-    toast(err.message || 'Reset gagal. Coba muat ulang halaman.', 'peringatan');
-  }
 });
 
 // Tautan "Lewati ke isi" memakai hash, jadi tangani manual agar tidak dianggap rute

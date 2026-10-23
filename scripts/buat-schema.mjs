@@ -2,6 +2,7 @@
 // Data contoh diambil dari versi demo (js/store-lokal.js) agar isinya sama persis,
 // lalu PIN/password di-hash ulang dengan PBKDF2 (server/kripto.js).
 // Jalankan dari folder proyek:  node scripts/buat-schema.mjs
+// Hasil: schema.sql (untuk wrangler d1 execute) dan server/skema.js (isi otomatis oleh worker.js).
 // (Hanya perlu dijalankan ulang jika data contoh atau struktur tabel diubah.)
 
 import { writeFileSync } from 'node:fs';
@@ -229,19 +230,43 @@ const progresBaris = progres.map((p) => [p.siswaId, p.levelId, p.selesai ? 1 : 0
 const aktivitasBaris = [...aktivitas].sort((a, b) => a.waktu.localeCompare(b.waktu))
   .map((a) => [a.waktu, a.siswaId, a.jenis, a.keterangan || '']);
 
-const sql = [
-  STRUKTUR,
-  '-- ===== Data awal =====',
+// Urut dari yang terlama; id aktivitas ditulis eksplisit agar INSERT OR IGNORE aman diulang
+const aktivitasBerId = aktivitasBaris.map((r, i) => [i + 1, ...r]);
+
+const DATA = [
   baris('guru', ['id', 'nama', 'username', 'password_hash', 'peran', 'dibuat_pada'], guruBaris),
   baris('kelas', ['id', 'nama', 'tingkat', 'kode_kelas'], kelas.map((k) => [k.id, k.nama, k.tingkat, k.kodeKelas])),
   baris('guru_kelas', ['guru_id', 'kelas_id'], kelas.flatMap((k) => (k.guruIds || []).map((g) => [g, k.id]))),
   baris('siswa', ['id', 'nama_lengkap', 'nama_panggilan', 'jenis_kelamin', 'avatar', 'kelas_id', 'username', 'pin_hash', 'koin', 'berlian', 'zona_terlihat', 'dibuat_pada'], siswaBaris),
   baris('level', ['id', 'zona', 'urutan', 'jenis', 'judul', 'bawaan', 'terbit', 'pembuat_id', 'pembuat_nama', 'kelas_ids', 'kelas_nonaktif', 'data', 'dibuat_pada', 'diperbarui'], levelBaris),
   baris('progres', ['siswa_id', 'level_id', 'selesai', 'bintang', 'nilai', 'percobaan', 'clue_dibeli', 'kode_terakhir', 'detik', 'selesai_pada', 'diperbarui'], progresBaris),
-  baris('aktivitas', ['waktu', 'siswa_id', 'jenis', 'keterangan'], aktivitasBaris),
+  baris('aktivitas', ['id', 'waktu', 'siswa_id', 'jenis', 'keterangan'], aktivitasBerId),
   baris('pengaturan', ['kunci', 'nilai'], [['harga_clue', '[5,10,20]'], ['koin_awal', '20']])
-].join('\n');
+].filter(Boolean);
 
-const tujuan = fileURLToPath(new URL('../schema.sql', import.meta.url));
-writeFileSync(tujuan, sql);
-console.log(`schema.sql dibuat: ${guru.length} guru, ${kelas.length} kelas, ${siswa.length} siswa, ${level.length} level, ${progres.length} progres, ${aktivitas.length} aktivitas.`);
+const sql = [STRUKTUR, '-- ===== Data awal =====', ...DATA].join('\n');
+writeFileSync(fileURLToPath(new URL('../schema.sql', import.meta.url)), sql);
+
+// ---------- server/skema.js: dipakai Worker untuk mengisi database otomatis ----------
+// Pecah STRUKTUR menjadi perintah tunggal (baris komentar dibuang)
+const perintahStruktur = STRUKTUR.split('\n').filter((b) => !b.trim().startsWith('--')).join('\n')
+  .split(/;\s*\n/).map((x) => x.trim()).filter(Boolean);
+const hapus = perintahStruktur.filter((x) => /^(DROP|PRAGMA)/.test(x));
+const buat = [
+  ...perintahStruktur.filter((x) => /^CREATE/.test(x))
+    .map((x) => x.replace(/^CREATE TABLE /, 'CREATE TABLE IF NOT EXISTS ').replace(/^CREATE INDEX /, 'CREATE INDEX IF NOT EXISTS ')),
+  ...DATA.map((x) => x.trim().replace(/;$/, '').replace(/^INSERT INTO /, 'INSERT OR IGNORE INTO '))
+];
+const js = `// server/skema.js — DIBUAT OTOMATIS oleh scripts/buat-schema.mjs. Jangan diedit manual.
+// Perintah SQL untuk membuat tabel + data contoh (sama dengan schema.sql).
+// Dipakai worker.js: database kosong langsung terisi saat aplikasi pertama kali dibuka.
+
+/** Hapus semua tabel (dipakai Reset data demo oleh admin). */
+export const SKEMA_HAPUS = ${JSON.stringify(hapus, null, 2)};
+
+/** Buat tabel bila belum ada + isi data contoh bila belum ada. */
+export const SKEMA_BUAT = ${JSON.stringify(buat, null, 2)};
+`;
+writeFileSync(fileURLToPath(new URL('../server/skema.js', import.meta.url)), js);
+
+console.log(`schema.sql & server/skema.js dibuat: ${guru.length} guru, ${kelas.length} kelas, ${siswa.length} siswa, ${level.length} level, ${progres.length} progres, ${aktivitas.length} aktivitas.`);

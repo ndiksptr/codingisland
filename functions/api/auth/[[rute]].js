@@ -8,7 +8,7 @@
 //   GET  /api/auth/cek-username?u=&kecuali=
 //   GET  /api/auth/saran-username?panggilan=
 //   GET  /api/auth/akun-demo            hanya jika env.TAMPILKAN_AKUN_DEMO = "1"
-//   POST /api/auth/reset-demo           dinonaktifkan di versi server (pakai schema.sql)
+//   POST /api/auth/reset-demo           admin: kembalikan seluruh database ke data contoh
 //   GET  /api/auth/konteks              konteks dashboard guru
 //   PATCH /api/auth/nama, POST /api/auth/password            akun guru sendiri
 //   GET/PUT /api/auth/pengaturan        pengaturan permainan (PUT: admin)
@@ -23,6 +23,7 @@ import {
 } from '../../../server/data.js';
 import { periksaKolomSiswa } from '../../../js/game/aturan-siswa.js';
 import { ZONA } from '../../../js/data/zona.js';
+import { resetDb } from '../../../server/siapkan-db.js';
 
 // ---------- Batas percobaan login (per username dan per alamat IP) ----------
 const BATAS_USERNAME = 5;        // 5 kali salah ...
@@ -197,8 +198,10 @@ export const onRequest = buatRouter([
     };
   }],
 
-  ['POST', 'reset-demo', async () => {
-    throw new GalatApi(403, 'Di versi server, reset data dilakukan admin lewat perintah wrangler d1 execute dengan schema.sql (lihat README).');
+  ['POST', 'reset-demo', async (ctx) => {
+    wajibAdmin(await aksesGuru(ctx));
+    await resetDb(ctx.env.DB); // tabel sesi ikut dibuat ulang, jadi semua orang keluar
+    return json({ ok: true }, 200, { 'Set-Cookie': await hapusSesi(ctx) });
   }],
 
   // ================= Dashboard guru: konteks & akun sendiri =================

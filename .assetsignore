@@ -1,0 +1,15 @@
+# .assetsignore — berkas yang TIDAK diunggah sebagai berkas statis (khusus server / dokumen)
+.git
+.gitignore
+.wrangler
+node_modules
+.dev.vars
+.assetsignore
+wrangler.toml
+worker.js
+schema.sql
+functions
+server
+scripts
+*.md
+js/store-lokal.js
