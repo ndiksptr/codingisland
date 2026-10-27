@@ -24,7 +24,7 @@ import { hitungStatistik, siswaDalamAkses } from '../../../server/statistik.js';
 import { hashRahasia, acakPin, idBaru, iterasiDari } from '../../../server/kripto.js';
 import { periksaKolomSiswa } from '../../../js/game/aturan-siswa.js';
 import { ZONA } from '../../../js/data/zona.js';
-import { BAHASA_KODE } from '../../../js/game/kamus-perintah.js';
+import { BAHASA_KODE, BAHASA_BAWAAN_SISWA } from '../../../js/game/kamus-perintah.js';
 
 const iterasi = iterasiDari;
 
@@ -60,9 +60,9 @@ async function siswaBaru(ctx, a, data, siap) {
   return {
     id, username: d.username, pin,
     perintah: [
-      perintah(db, `INSERT INTO siswa (id, nama_lengkap, nama_panggilan, jenis_kelamin, avatar, kelas_id, username, pin_hash, koin, berlian, zona_terlihat, dibuat_pada)
-        VALUES (?,?,?,?,?,?,?,?,?,0,?,?)`, id, d.namaLengkap, d.namaPanggilan, d.avatar === 'pria' ? 'L' : 'P', d.avatar, d.kelasId,
-      d.username, await hashRahasia(pin, iterasi(ctx.env)), siap.koinAwal, JSON.stringify([ZONA[0].id]), sekarang()),
+      perintah(db, `INSERT INTO siswa (id, nama_lengkap, nama_panggilan, jenis_kelamin, avatar, kelas_id, username, pin_hash, koin, berlian, zona_terlihat, dibuat_pada, bahasa)
+        VALUES (?,?,?,?,?,?,?,?,?,0,?,?,?)`, id, d.namaLengkap, d.namaPanggilan, d.avatar === 'pria' ? 'L' : 'P', d.avatar, d.kelasId,
+      d.username, await hashRahasia(pin, iterasi(ctx.env)), siap.koinAwal, JSON.stringify([ZONA[0].id]), sekarang(), BAHASA_BAWAAN_SISWA),
       perintahAktivitas(db, id, 'daftar', `Didaftarkan oleh ${a.pelaku.nama}`)
     ]
   };

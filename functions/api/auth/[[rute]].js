@@ -30,6 +30,7 @@ import { dampakZona } from '../../../server/statistik.js';
 import { zonaAktif } from '../../../js/game/kemajuan.js';
 import { periksaKolomSiswa } from '../../../js/game/aturan-siswa.js';
 import { ZONA } from '../../../js/data/zona.js';
+import { BAHASA_BAWAAN_SISWA } from '../../../js/game/kamus-perintah.js';
 import { BATAS, sisaTahanLogin, sisaTahanJendela, catatGagalLogin, catatGagalJendela, hapusBatas, bersihkanKedaluwarsa } from '../../../server/batas.js';
 
 // ---------- Batas percobaan login: semua angka ada di BATAS (server/batas.js) ----------
@@ -173,9 +174,9 @@ export const onRequest = buatRouter([
     const { koinAwal } = await bacaPengaturan(db);
     const id = idBaru('siswa');
     await db.batch([
-      perintah(db, `INSERT INTO siswa (id, nama_lengkap, nama_panggilan, jenis_kelamin, avatar, kelas_id, username, pin_hash, koin, berlian, zona_terlihat, dibuat_pada)
-        VALUES (?,?,?,?,?,?,?,?,?,0,?,?)`, id, d.namaLengkap, d.namaPanggilan, d.avatar === 'pria' ? 'L' : 'P', d.avatar, d.kelasId,
-      d.username, await hashRahasia(d.pin, iterasi(ctx.env)), koinAwal, JSON.stringify([ZONA[0].id]), sekarang()),
+      perintah(db, `INSERT INTO siswa (id, nama_lengkap, nama_panggilan, jenis_kelamin, avatar, kelas_id, username, pin_hash, koin, berlian, zona_terlihat, dibuat_pada, bahasa)
+        VALUES (?,?,?,?,?,?,?,?,?,0,?,?,?)`, id, d.namaLengkap, d.namaPanggilan, d.avatar === 'pria' ? 'L' : 'P', d.avatar, d.kelasId,
+      d.username, await hashRahasia(d.pin, iterasi(ctx.env)), koinAwal, JSON.stringify([ZONA[0].id]), sekarang(), BAHASA_BAWAAN_SISWA),
       perintahAktivitas(db, id, 'daftar', 'Mendaftar di Coding Island')
     ]);
     const setCookie = await buatSesi(ctx.env, 'siswa', id);

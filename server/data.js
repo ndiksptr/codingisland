@@ -3,6 +3,7 @@
 
 import { ZONA } from '../js/data/zona.js';
 import { CLUE } from '../js/game/skor.js';
+import { BAHASA_BAWAAN_SISWA } from '../js/game/kamus-perintah.js';
 
 export const KOIN_AWAL = 20;
 export const sekarang = () => new Date().toISOString();
@@ -28,7 +29,7 @@ export function siswaKeObjek(r) {
     koin: r.koin,
     berlian: r.berlian,
     zonaTerlihat: jsonAman(r.zona_terlihat, [ZONA[0].id]),
-    bahasa: r.bahasa === 'en' ? 'en' : 'id', // bahasa nama perintah koding (migrasi 0005)
+    bahasa: r.bahasa === 'id' || r.bahasa === 'en' ? r.bahasa : BAHASA_BAWAAN_SISWA, // bahasa nama perintah koding (migrasi 0005)
     dibuatPada: r.dibuat_pada
   };
 }

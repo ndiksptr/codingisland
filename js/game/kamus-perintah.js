@@ -6,6 +6,10 @@
 
 export const BAHASA_KODE = ['id', 'en'];
 
+// Bahasa perintah bawaan untuk MURID (baru maupun lama, lihat migrasi 0006). Murid bisa menggantinya di Profil.
+// Alat guru (editor level, coba main, validasi) tetap bahasa Indonesia.
+export const BAHASA_BAWAAN_SISWA = 'en';
+
 // jenis: 'perintah' (pakai kurung, bisa diberi angka), 'syarat' (pakai kurung), 'kunci' (tanpa kurung)
 const DAFTAR = [
   ['maju', 'forward', 'perintah'],
