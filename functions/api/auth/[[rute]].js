@@ -13,10 +13,13 @@
 //   PATCH /api/auth/nama, POST /api/auth/password            akun guru sendiri
 //   GET/PUT /api/auth/pengaturan        pengaturan permainan (PUT: admin)
 //   GET/POST /api/auth/guru, PATCH/DELETE /api/auth/guru/:id, POST /api/auth/guru/:id/reset-password (admin)
+//   POST /api/auth/guru/:id/menyamar    admin masuk sebagai guru itu (sesi baru, admin asli dicatat)
+//   POST /api/auth/akhiri-menyamar      kembali ke akun admin asli
+// Selama menyamar: ubah nama/password dan kelola akun guru/admin ditolak (tolakSaatMenyamar).
 
 import { buatRouter, json, bacaJson, kueri, GalatApi } from '../../../server/http.js';
 import { hashRahasia, cocokRahasia, samarkanWaktu, acakPassword, idBaru, samaKonstan, iterasiDari, perluHashUlang } from '../../../server/kripto.js';
-import { buatSesi, hapusSesi, sesiUntukKlien, aksesGuru, wajibAdmin } from '../../../server/sesi.js';
+import { buatSesi, hapusSesi, sesiUntukKlien, aksesGuru, wajibAdmin, tolakSaatMenyamar } from '../../../server/sesi.js';
 import {
   semua, satu, jalankan, perintah, sekarang, siswaKeObjek, guruKeObjek, semuaKelas, bacaPengaturan,
   perintahAktivitas, sarankanUsernameDb
@@ -71,6 +74,12 @@ function periksaGuru(d) {
   if (!d.nama || d.nama.trim().length < 2) throw new GalatApi(400, 'Nama guru minimal 2 huruf.');
   if (!/^[a-z][a-z0-9._]{2,23}$/.test(d.username || '')) throw new GalatApi(400, 'Username guru 3–24 huruf kecil, angka, titik, atau garis bawah.');
   if (!['admin', 'guru'].includes(d.peran)) throw new GalatApi(400, 'Peran harus admin atau guru.');
+}
+
+/** Kelola akun guru/admin: wajib admin yang masuk dengan akunnya sendiri (bukan sedang menyamar). */
+function wajibAdminAsli(a) {
+  tolakSaatMenyamar(a, 'mengelola akun guru atau admin');
+  wajibAdmin(a);
 }
 
 async function jumlahGuru(db) {
@@ -230,6 +239,8 @@ export const onRequest = buatRouter([
     return {
       guru: guruKeObjek(a.guru, [...a.kelasIds].filter((id) => a.kelas.find((k) => k.id === id && k.guruIds.includes(a.guru.id)))),
       admin: a.admin,
+      // menyamar: { adminNama } bila admin sedang masuk sebagai guru ini; null bila tidak
+      menyamar: a.menyamar ? { adminNama: a.menyamar.adminNama } : null,
       kelas: a.kelas,
       pengaturan: await bacaPengaturan(ctx.env.DB)
     };
@@ -237,6 +248,7 @@ export const onRequest = buatRouter([
 
   ['PATCH', 'nama', async (ctx) => {
     const a = await aksesGuru(ctx);
+    tolakSaatMenyamar(a, 'mengubah nama akun');
     const nama = String((await bacaJson(ctx.request)).nama || '').trim();
     if (nama.length < 2) throw new GalatApi(400, 'Nama guru minimal 2 huruf.');
     await jalankan(ctx.env.DB, 'UPDATE guru SET nama = ? WHERE id = ?', nama.slice(0, 40), a.guru.id);
@@ -245,6 +257,7 @@ export const onRequest = buatRouter([
 
   ['POST', 'password', async (ctx) => {
     const a = await aksesGuru(ctx);
+    tolakSaatMenyamar(a, 'mengganti password');
     const { lama, baru } = await bacaJson(ctx.request);
     if (!(await cocokRahasia(String(lama || ''), a.guru.password_hash))) throw new GalatApi(400, 'Password lama salah.');
     if (String(baru || '').length < 6) throw new GalatApi(400, 'Password baru minimal 6 karakter.');
@@ -270,12 +283,12 @@ export const onRequest = buatRouter([
 
   // ================= Kelola guru (admin) =================
   ['GET', 'guru', async (ctx) => {
-    wajibAdmin(await aksesGuru(ctx));
+    wajibAdminAsli(await aksesGuru(ctx));
     return daftarGuruAdmin(ctx.env.DB);
   }],
 
   ['POST', 'guru', async (ctx) => {
-    wajibAdmin(await aksesGuru(ctx));
+    wajibAdminAsli(await aksesGuru(ctx));
     const db = ctx.env.DB;
     const data = await bacaJson(ctx.request);
     const d = { nama: String(data.nama || '').trim(), username: String(data.username || '').trim().toLowerCase(), peran: data.peran || 'guru' };
@@ -291,7 +304,7 @@ export const onRequest = buatRouter([
 
   ['PATCH', 'guru/:id', async (ctx, { id }) => {
     const a = await aksesGuru(ctx);
-    wajibAdmin(a);
+    wajibAdminAsli(a);
     const db = ctx.env.DB;
     const lama = await satu(db, 'SELECT * FROM guru WHERE id = ?', id);
     if (!lama) throw new GalatApi(404, 'Guru tidak ditemukan.');
@@ -306,34 +319,66 @@ export const onRequest = buatRouter([
     if (lama.peran === 'admin' && baru.peran !== 'admin' && (await jumlahAdmin(db)) <= 1) throw new GalatApi(400, 'Harus ada minimal satu admin.');
     if (await satu(db, 'SELECT id FROM guru WHERE username = ? AND id <> ?', baru.username, id)) throw new GalatApi(409, 'Username guru sudah dipakai.');
     await jalankan(db, 'UPDATE guru SET nama = ?, username = ?, peran = ? WHERE id = ?', baru.nama, baru.username, baru.peran, id);
+    // Peran berubah: akhiri penyamaran yang dibuka oleh atau ke akun ini
+    if (lama.peran !== baru.peran) await jalankan(db, 'DELETE FROM sesi WHERE admin_asli_id = ? OR (pengguna_id = ? AND admin_asli_id IS NOT NULL)', id, id);
     if ('kelasIds' in data) await aturKelasGuru(db, id, data.kelasIds);
     return (await daftarGuruAdmin(db)).find((g) => g.id === id);
   }],
 
   ['DELETE', 'guru/:id', async (ctx, { id }) => {
     const a = await aksesGuru(ctx);
-    wajibAdmin(a);
+    wajibAdminAsli(a);
     if (id === a.guru.id) throw new GalatApi(400, 'Anda tidak bisa menghapus akun sendiri.');
     const db = ctx.env.DB;
     const g = await satu(db, 'SELECT peran FROM guru WHERE id = ?', id);
     if (!g) return { ok: true };
     if (g.peran === 'admin' && (await jumlahAdmin(db)) <= 1) throw new GalatApi(400, 'Admin terakhir tidak bisa dihapus.');
     await db.batch([
-      perintah(db, "DELETE FROM sesi WHERE jenis = 'guru' AND pengguna_id = ?", id),
+      perintah(db, "DELETE FROM sesi WHERE (jenis = 'guru' AND pengguna_id = ?) OR admin_asli_id = ?", id, id),
       perintah(db, 'DELETE FROM guru WHERE id = ?', id)
     ]);
     return { ok: true };
   }],
 
   ['POST', 'guru/:id/reset-password', async (ctx, { id }) => {
-    wajibAdmin(await aksesGuru(ctx));
+    wajibAdminAsli(await aksesGuru(ctx));
     const db = ctx.env.DB;
     if (!(await satu(db, 'SELECT id FROM guru WHERE id = ?', id))) throw new GalatApi(404, 'Guru tidak ditemukan.');
     const password = acakPassword();
     await db.batch([
       perintah(db, 'UPDATE guru SET password_hash = ? WHERE id = ?', await hashRahasia(password, iterasi(ctx.env)), id),
-      perintah(db, "DELETE FROM sesi WHERE jenis = 'guru' AND pengguna_id = ?", id)
+      perintah(db, "DELETE FROM sesi WHERE (jenis = 'guru' AND pengguna_id = ?) OR admin_asli_id = ?", id, id)
     ]);
     return { password };
+  }],
+
+  // ================= Admin masuk sebagai guru (menyamar) =================
+  ['POST', 'guru/:id/menyamar', async (ctx, { id }) => {
+    const a = await aksesGuru(ctx);
+    tolakSaatMenyamar(a, 'masuk sebagai guru lain lagi');
+    wajibAdmin(a);
+    if (id === a.guru.id) throw new GalatApi(400, 'Anda sudah berada di akun sendiri.');
+    const db = ctx.env.DB;
+    const g = await satu(db, 'SELECT id, peran FROM guru WHERE id = ?', id);
+    if (!g) throw new GalatApi(404, 'Guru tidak ditemukan.');
+    if (g.peran !== 'guru') throw new GalatApi(403, 'Hanya bisa masuk sebagai akun guru, bukan admin.');
+    // Sesi admin ditutup; sesi guru baru menyimpan id admin agar bisa kembali
+    await hapusSesi(ctx);
+    const setCookie = await buatSesi(ctx.env, 'guru', g.id, a.guru.id);
+    return json({ ok: true }, 200, { 'Set-Cookie': setCookie });
+  }],
+
+  ['POST', 'akhiri-menyamar', async (ctx) => {
+    const a = await aksesGuru(ctx);
+    if (!a.menyamar) throw new GalatApi(400, 'Anda tidak sedang masuk sebagai guru lain.');
+    const db = ctx.env.DB;
+    const adm = await satu(db, 'SELECT id, peran FROM guru WHERE id = ?', a.menyamar.adminId);
+    if (!adm || adm.peran !== 'admin') {
+      // Akun admin asli sudah tidak ada atau bukan admin lagi: cukup keluar
+      return json({ galat: 'Akun admin asli tidak ditemukan. Silakan masuk lagi.' }, 403, { 'Set-Cookie': await hapusSesi(ctx) });
+    }
+    const setCookie = await buatSesi(ctx.env, 'guru', adm.id);
+    await hapusSesi(ctx); // sesi penyamaran dihapus
+    return json({ ok: true }, 200, { 'Set-Cookie': setCookie });
   }]
 ]);

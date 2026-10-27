@@ -3,11 +3,11 @@
 // filter kelas global, dan tanggal. Halaman dirender ke area isi di kanan.
 //
 // Fungsi render halaman menerima (wadahIsi, konteks) dengan konteks tambahan:
-//   konteks.guru   : { guru, admin, kelas[], pengaturan } dari guruKonteks()
+//   konteks.guru   : { guru, admin, menyamar, kelas[], pengaturan } dari guruKonteks()
 //   konteks.kelasId: kelas yang dipilih di filter global (null = semua kelas)
 
 import { esc, robot, bukaModal, toast } from '../ui.js';
-import { guruKonteks, getPreferensi, simpanPreferensi, keluar } from '../store.js';
+import { guruKonteks, getPreferensi, simpanPreferensi, keluar, kembaliKeAkunAdmin } from '../store.js';
 import { pindah, muatUlang } from '../router.js';
 import { IKON } from './komponen.js';
 
@@ -66,9 +66,22 @@ function sidebarHTML(konteks, aktif) {
     </aside>`;
 }
 
+// Bilah penanda saat admin sedang masuk sebagai guru (konteks.menyamar terisi)
+function bilahMenyamarHTML(konteks) {
+  if (!konteks.menyamar) return '';
+  return `
+    <div class="dg-bilah-menyamar" role="region" aria-label="Sedang masuk sebagai guru lain">
+      ${IKON.masukSebagai}
+      <p>Anda sedang masuk sebagai <strong>${esc(konteks.guru.nama)}</strong>
+        <span class="dg-bilah-menyamar-kecil">(akun admin: ${esc(konteks.menyamar.adminNama)})</span></p>
+      <button type="button" class="tombol tombol-sekunder tombol-kecil" data-kembali-admin>Kembali ke akun admin</button>
+    </div>`;
+}
+
 function topbarHTML(judul, konteks, kelasId) {
   return `
     <header class="dg-topbar">
+      ${bilahMenyamarHTML(konteks)}
       <button type="button" class="dg-hamburger" data-buka-drawer aria-label="Buka menu" aria-controls="dg-sidebar" aria-expanded="false">${IKON.menu}</button>
       <h1 class="dg-judul">${esc(judul)}</h1>
       <div class="dg-topbar-kanan">
@@ -145,6 +158,19 @@ export function denganKerangkaGuru(render, { judul, menu }) {
       await keluar();
       toast('Anda sudah keluar.', 'info');
       pindah('/guru/masuk');
+    });
+
+    // ---------- Kembali dari akun guru ke akun admin ----------
+    halaman.querySelector('[data-kembali-admin]')?.addEventListener('click', async (e) => {
+      e.currentTarget.disabled = true;
+      try {
+        await kembaliKeAkunAdmin();
+        toast('Anda kembali ke akun admin.', 'sukses');
+        pindah('/guru/guru');
+      } catch (err) {
+        toast(err.message, 'peringatan');
+        pindah('/guru/masuk');
+      }
     });
 
     // ---------- Filter kelas global ----------

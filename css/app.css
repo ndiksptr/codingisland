@@ -1443,6 +1443,23 @@ a.kartu-zona:hover .kartu-zona-gambar { transform: scale(1.05); }
 .dg-filter { display: flex; align-items: center; gap: .5rem; }
 .dg-filter select { min-height: 2.5rem; padding: .35rem 2.25rem .35rem .75rem; border: 1px solid #C9DDD8; border-radius: .7rem; background-color: #fff; font-weight: 700; }
 .dg-tanggal { font-size: .875rem; font-weight: 700; color: #4F6B67; }
+/* Bilah "sedang masuk sebagai guru" (admin menyamar): selebar topbar, ikut menempel di atas */
+.dg-bilah-menyamar {
+  order: -1;
+  flex: 1 0 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .5rem .75rem;
+  margin: -.75rem -1.5rem 0;
+  padding: .6rem 1.5rem;
+  background: var(--oranye);
+  color: var(--tinta);
+  font-weight: 700;
+}
+.dg-bilah-menyamar p { margin: 0; flex: 1 1 14rem; }
+.dg-bilah-menyamar strong { font-weight: 800; }
+.dg-bilah-menyamar-kecil { font-size: .85rem; font-weight: 600; }
 .dg-hamburger { display: none; place-items: center; width: 2.75rem; height: 2.75rem; border: 1px solid #C9DDD8; border-radius: .75rem; background: #fff; color: var(--teal-tua); cursor: pointer; }
 .dg-isi { padding: 1.5rem; }
 .dg-tirai { position: fixed; inset: 0; z-index: 44; background: rgba(18, 51, 47, 0.5); }
@@ -1468,6 +1485,7 @@ a.kartu-zona:hover .kartu-zona-gambar { transform: scale(1.05); }
   .dg-tombol-ciut { display: none; }
   .dg-hamburger { display: grid; }
   .dg-topbar { padding: .65rem 1rem; }
+  .dg-bilah-menyamar { margin: -.65rem -1rem 0; padding: .55rem 1rem; }
   .dg-judul { font-size: 1.35rem; }
   .dg-isi { padding: 1rem; }
 }
@@ -1527,6 +1545,7 @@ a.kartu-zona:hover .kartu-zona-gambar { transform: scale(1.05); }
 .dg-lencana[data-jenis="clue"], .dg-lencana[data-jenis="piala"] { background: var(--kuning); color: var(--tinta); }
 .dg-lencana[data-jenis="daftar"] { background: #E5EEFF; color: #2D4E8C; }
 .dg-lencana[data-jenis="pin"] { background: #EDE7F6; color: #4A3880; }
+.dg-lencana[data-jenis="nilai"] { background: #EDE7F6; color: #4A3880; }
 .dg-chip { display: inline-block; margin: .1rem 0; padding: .05rem .5rem; border-radius: .5rem; background: #EEF5F3; font-size: .8rem; font-weight: 700; }
 .dg-kode { padding: .05rem .4rem; border-radius: .4rem; background: #EEF5F3; font-family: var(--font-kode); font-size: .9em; font-weight: 700; }
 .dg-bilah { display: block; height: 12px; overflow: hidden; border-radius: 999px; background: #E6F3EF; }

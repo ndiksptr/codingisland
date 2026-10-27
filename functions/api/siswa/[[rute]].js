@@ -61,7 +61,7 @@ async function siswaBaru(ctx, a, data, siap) {
       perintah(db, `INSERT INTO siswa (id, nama_lengkap, nama_panggilan, jenis_kelamin, avatar, kelas_id, username, pin_hash, koin, berlian, zona_terlihat, dibuat_pada)
         VALUES (?,?,?,?,?,?,?,?,?,0,?,?)`, id, d.namaLengkap, d.namaPanggilan, d.avatar === 'pria' ? 'L' : 'P', d.avatar, d.kelasId,
       d.username, await hashRahasia(pin, iterasi(ctx.env)), siap.koinAwal, JSON.stringify([ZONA[0].id]), sekarang()),
-      perintahAktivitas(db, id, 'daftar', `Didaftarkan oleh ${a.guru.nama}`)
+      perintahAktivitas(db, id, 'daftar', `Didaftarkan oleh ${a.pelaku.nama}`)
     ]
   };
 }
@@ -241,8 +241,8 @@ export const onRequest = buatRouter([
       perintah(db, 'UPDATE siswa SET pin_hash = ? WHERE id = ?', await hashRahasia(pin, iterasi(ctx.env)), id),
       // Semua sesi murid ini dihentikan, jadi yang masuk dengan PIN lama ikut keluar
       perintah(db, "DELETE FROM sesi WHERE jenis = 'siswa' AND pengguna_id = ?", id),
-      // Catatan aktivitas tanpa angka PIN
-      perintahAktivitas(db, id, 'pin', `PIN diganti oleh ${a.admin ? 'admin' : 'guru'} ${a.guru.nama}`)
+      // Catatan aktivitas tanpa angka PIN; saat menyamar yang tercatat admin aslinya
+      perintahAktivitas(db, id, 'pin', `PIN diganti oleh ${a.menyamar ? '' : a.admin ? 'admin ' : 'guru '}${a.pelaku.nama}`)
     ]);
     return { pin }; // dikirim sekali untuk dicatat guru; tidak disimpan sebagai teks di mana pun
   }],
@@ -254,8 +254,8 @@ export const onRequest = buatRouter([
     const waktu = sekarang();
     await jalankan(ctx.env.DB, `INSERT INTO catatan_guru (siswa_id, teks, guru_id, guru_nama, diperbarui) VALUES (?,?,?,?,?)
       ON CONFLICT(siswa_id) DO UPDATE SET teks = excluded.teks, guru_id = excluded.guru_id, guru_nama = excluded.guru_nama, diperbarui = excluded.diperbarui`,
-    id, teks, a.guru.id, a.guru.nama, waktu);
-    return { teks, diperbarui: waktu, guruId: a.guru.id, guruNama: a.guru.nama };
+    id, teks, a.pelaku.id, a.pelaku.nama, waktu);
+    return { teks, diperbarui: waktu, guruId: a.pelaku.id, guruNama: a.pelaku.nama };
   }],
 
   ['DELETE', ':id', async (ctx, { id }) => {

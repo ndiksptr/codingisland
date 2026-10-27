@@ -15,6 +15,7 @@ export const IKON = {
   guru: svg('<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="11" r="2.5"/><path d="M5.5 17c.6-2 2-3 3.5-3s2.9 1 3.5 3M15 10h3M15 14h3"/>'),
   pengaturan: svg('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.6 1.6 0 0 0-1-1.5 1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.6 1.6 0 0 0 1.5-1 1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"/>'),
   keluar: svg('<path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3"/><path d="M10 17l-5-5 5-5"/><path d="M5 12h11"/>'),
+  masukSebagai: svg('<path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4"/><path d="m9 17 5-5-5-5"/><path d="M14 12H3"/>', 18),
   menu: svg('<path d="M4 6h16M4 12h16M4 18h16"/>', 24),
   ciut: svg('<path d="m15 6-6 6 6 6"/>', 20),
   tambah: svg('<path d="M12 5v14M5 12h14"/>', 18),
@@ -101,7 +102,7 @@ export function kartuStat({ label, nilai, ikon, catatan = '' }) {
 
 const LABEL_AKTIVITAS = {
   daftar: 'Daftar', masuk: 'Masuk', coba: 'Mencoba', selesai: 'Selesai',
-  clue: 'Beli clue', piala: 'Piala', juara: 'Juara', keluar: 'Keluar', pin: 'Ganti PIN'
+  clue: 'Beli clue', piala: 'Piala', juara: 'Juara', keluar: 'Keluar', pin: 'Ganti PIN', nilai: 'Nilai'
 };
 export const JENIS_AKTIVITAS = Object.keys(LABEL_AKTIVITAS);
 export const lencanaAktivitas = (jenis) =>

@@ -1,8 +1,9 @@
-// js/guru/guru.js — #/guru/guru (khusus admin): tambah, edit, hapus guru, tetapkan kelas, reset password
+// js/guru/guru.js — #/guru/guru (khusus admin): tambah, edit, hapus guru, tetapkan kelas, reset password,
+// dan masuk sebagai guru (menyamar) tanpa login ulang
 
 import { esc, bukaModal, bukaFormModal, toast } from '../ui.js';
-import { adminDaftarGuru, adminSimpanGuru, adminHapusGuru, adminResetPasswordGuru } from '../store.js';
-import { muatUlang } from '../router.js';
+import { adminDaftarGuru, adminSimpanGuru, adminHapusGuru, adminResetPasswordGuru, adminMasukSebagaiGuru } from '../store.js';
+import { muatUlang, pindah } from '../router.js';
 import { IKON, kosong, tombolAksi } from './komponen.js';
 
 function formGuruHTML(guru, semuaKelas, akunSendiri) {
@@ -30,6 +31,8 @@ function formGuruHTML(guru, semuaKelas, akunSendiri) {
 export async function renderGuru(wadah, { konteks }) {
   const daftar = await adminDaftarGuru();
   const semuaKelas = konteks.kelas; // admin melihat semua kelas
+  // Masuk sebagai guru: hanya admin, hanya ke akun berperan guru, bukan diri sendiri (server memeriksa lagi)
+  const bolehMasukSebagai = (g) => konteks.admin && !konteks.menyamar && g.peran === 'guru' && g.id !== konteks.guru.id;
 
   wadah.innerHTML = `
     <div class="dg-kartu">
@@ -52,6 +55,7 @@ export async function renderGuru(wadah, { konteks }) {
                   <td><span class="dg-lencana" data-jenis="${g.peran === 'admin' ? 'piala' : 'masuk'}">${g.peran === 'admin' ? 'Admin' : 'Guru'}</span></td>
                   <td>${g.peran === 'admin' ? '<span class="text-sm">Semua kelas</span>' : (g.kelas.map((k) => `<span class="dg-chip">${esc(k.nama)}</span>`).join(' ') || '<span class="text-sm text-[#B24E1C] font-bold">Belum ada</span>')}</td>
                   <td class="text-right whitespace-nowrap">
+                    ${bolehMasukSebagai(g) ? tombolAksi(IKON.masukSebagai, `Masuk sebagai ${g.nama}`, `data-aksi="menyamar" data-id="${esc(g.id)}"`) : ''}
                     ${tombolAksi(IKON.edit, `Edit ${g.nama}`, `data-aksi="edit" data-id="${esc(g.id)}"`)}
                     ${tombolAksi(IKON.kunci, `Reset password ${g.nama}`, `data-aksi="sandi" data-id="${esc(g.id)}"`)}
                     ${tombolAksi(IKON.hapus, g.id === konteks.guru.id ? 'Tidak bisa menghapus akun sendiri' : `Hapus ${g.nama}`, `data-aksi="hapus" data-id="${esc(g.id)}" ${g.id === konteks.guru.id ? 'disabled' : ''}`, true)}
@@ -90,6 +94,24 @@ export async function renderGuru(wadah, { konteks }) {
     const guru = daftar.find((g) => g.id === tombol.dataset.id);
 
     if (tombol.dataset.aksi === 'edit') return bukaForm(guru);
+
+    if (tombol.dataset.aksi === 'menyamar') {
+      const ya = await bukaModal({
+        judul: `Masuk sebagai ${guru.nama}?`,
+        isi: `
+          <p>Anda akan melihat dashboard persis seperti <strong>${esc(guru.nama)}</strong>: hanya kelas yang diampunya.</p>
+          <p class="mt-2">Perubahan nilai, PIN, dan catatan tetap tercatat atas nama Anda. Ganti password dan kelola akun guru tidak bisa selama di akun ini.</p>
+          <p class="mt-2">Tekan <strong>Kembali ke akun admin</strong> di bilah atas untuk kembali.</p>`,
+        tombol: [{ teks: 'Batal', nilai: false, varian: 'sekunder' }, { teks: 'Masuk', nilai: true }]
+      });
+      if (!ya) return undefined;
+      try {
+        await adminMasukSebagaiGuru(guru.id);
+        toast(`Anda masuk sebagai ${guru.nama}.`, 'sukses');
+        pindah('/guru');
+      } catch (err) { toast(err.message, 'peringatan'); }
+      return undefined;
+    }
 
     if (tombol.dataset.aksi === 'sandi') {
       const ya = await bukaModal({

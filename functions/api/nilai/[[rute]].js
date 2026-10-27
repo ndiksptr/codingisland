@@ -7,7 +7,7 @@
 
 import { buatRouter, bacaJson, GalatApi } from '../../../server/http.js';
 import { aksesGuru, bolehKelas, ambilSiswaBoleh } from '../../../server/sesi.js';
-import { semua, jalankan, sekarang, semuaLevel, semuaKelas, levelTerlihatUntukKelas } from '../../../server/data.js';
+import { semua, perintah, perintahAktivitas, sekarang, semuaLevel, semuaKelas, levelTerlihatUntukKelas } from '../../../server/data.js';
 import { ZONA } from '../../../js/data/zona.js';
 import { hitungNilaiAkhir } from '../../../js/game/skor.js';
 
@@ -71,17 +71,28 @@ export const onRequest = buatRouter([
     const teks = String(alasan || '').trim();
     if (teks.length < 5) throw new GalatApi(400, 'Tulis alasan penimpaan nilai (minimal 5 huruf).');
     const waktu = sekarang();
-    await jalankan(ctx.env.DB, `INSERT INTO nilai_timpa (siswa_id, kelas_id, nilai, alasan, guru_id, guru_nama, waktu) VALUES (?,?,?,?,?,?,?)
-      ON CONFLICT(siswa_id, kelas_id) DO UPDATE SET nilai = excluded.nilai, alasan = excluded.alasan, guru_id = excluded.guru_id,
-      guru_nama = excluded.guru_nama, waktu = excluded.waktu`, siswaId, kelasId, n, teks.slice(0, 300), a.guru.id, a.guru.nama, waktu);
-    return { nilai: n, alasan: teks.slice(0, 300), guruId: a.guru.id, guruNama: a.guru.nama, waktu };
+    const db = ctx.env.DB;
+    // Pengubah nilai = a.pelaku (admin asli bila sedang menyamar sebagai guru)
+    await db.batch([
+      perintah(db, `INSERT INTO nilai_timpa (siswa_id, kelas_id, nilai, alasan, guru_id, guru_nama, waktu) VALUES (?,?,?,?,?,?,?)
+        ON CONFLICT(siswa_id, kelas_id) DO UPDATE SET nilai = excluded.nilai, alasan = excluded.alasan, guru_id = excluded.guru_id,
+        guru_nama = excluded.guru_nama, waktu = excluded.waktu`, siswaId, kelasId, n, teks.slice(0, 300), a.pelaku.id, a.pelaku.nama, waktu),
+      perintahAktivitas(db, siswaId, 'nilai', `Nilai akhir ditimpa menjadi ${n} oleh ${a.pelaku.nama}`)
+    ]);
+    return { nilai: n, alasan: teks.slice(0, 300), guruId: a.pelaku.id, guruNama: a.pelaku.nama, waktu };
   }],
 
   ['DELETE', ':kelasId/:siswaId', async (ctx, { kelasId, siswaId }) => {
     const a = await aksesGuru(ctx);
     bolehKelas(a, kelasId);
     await ambilSiswaBoleh(ctx, a, siswaId);
-    await jalankan(ctx.env.DB, 'DELETE FROM nilai_timpa WHERE siswa_id = ? AND kelas_id = ?', siswaId, kelasId);
+    const db = ctx.env.DB;
+    await db.batch([
+      perintah(db, 'DELETE FROM nilai_timpa WHERE siswa_id = ? AND kelas_id = ?', siswaId, kelasId),
+      // Dicatat hanya bila memang ada nilai timpa yang dihapus
+      perintah(db, `INSERT INTO aktivitas (waktu, siswa_id, jenis, keterangan) SELECT ?, ?, 'nilai', ? WHERE changes() = 1`,
+        sekarang(), siswaId, `Nilai akhir dikembalikan ke nilai otomatis oleh ${a.pelaku.nama}`)
+    ]);
     return { ok: true };
   }]
 ]);

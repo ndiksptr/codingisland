@@ -519,6 +519,25 @@ export async function adminResetPasswordGuru(guruId) {
   return (await api(`auth/guru/${enc(guruId)}/reset-password`, { metode: 'POST' })).password;
 }
 
+// ---------- Admin masuk sebagai guru (menyamar) ----------
+/** Admin masuk ke akun guru tanpa login ulang. Sesi admin diganti sesi guru itu. */
+export async function adminMasukSebagaiGuru(guruId) {
+  try { await api(`auth/guru/${enc(guruId)}/menyamar`, { metode: 'POST' }); } finally {
+    lupakanSesi();
+    beritahu('sesi');
+  }
+  return true;
+}
+
+/** Kembali dari akun guru ke akun admin asli. */
+export async function kembaliKeAkunAdmin() {
+  try { await api('auth/akhiri-menyamar', { metode: 'POST' }); } finally {
+    lupakanSesi();
+    beritahu('sesi');
+  }
+  return true;
+}
+
 // ---------- Level & soal ----------
 export async function guruDaftarLevel() {
   return api('level/guru');
