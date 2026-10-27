@@ -1526,6 +1526,7 @@ a.kartu-zona:hover .kartu-zona-gambar { transform: scale(1.05); }
 .dg-lencana[data-jenis="coba"] { background: #FFE9DC; color: #9A4316; }
 .dg-lencana[data-jenis="clue"], .dg-lencana[data-jenis="piala"] { background: var(--kuning); color: var(--tinta); }
 .dg-lencana[data-jenis="daftar"] { background: #E5EEFF; color: #2D4E8C; }
+.dg-lencana[data-jenis="pin"] { background: #EDE7F6; color: #4A3880; }
 .dg-chip { display: inline-block; margin: .1rem 0; padding: .05rem .5rem; border-radius: .5rem; background: #EEF5F3; font-size: .8rem; font-weight: 700; }
 .dg-kode { padding: .05rem .4rem; border-radius: .4rem; background: #EEF5F3; font-family: var(--font-kode); font-size: .9em; font-weight: 700; }
 .dg-bilah { display: block; height: 12px; overflow: hidden; border-radius: 999px; background: #E6F3EF; }

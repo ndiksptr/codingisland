@@ -10,7 +10,7 @@
 //   POST   /api/siswa/impor               buat akun dari baris CSV yang valid
 //   GET    /api/siswa/:id                 detail + progres per level + catatan guru
 //   PATCH  /api/siswa/:id                 ubah nama/avatar/username/kelas
-//   POST   /api/siswa/:id/reset-pin       PIN baru acak
+//   POST   /api/siswa/:id/reset-pin       { pin } PIN baru 4 angka dari guru (kosong = acak)
 //   PUT    /api/siswa/:id/catatan         { teks }
 //   DELETE /api/siswa/:id
 
@@ -225,16 +225,26 @@ export const onRequest = buatRouter([
     return siswaKeObjek(await satu(db, 'SELECT * FROM siswa WHERE id = ?', id));
   }],
 
+  // Guru/admin menetapkan PIN murid. { pin } kosong atau tidak dikirim = PIN acak dari sistem.
+  // PIN wajib tepat 4 angka; tidak ada aturan lain (1111 atau 1234 boleh).
   ['POST', ':id/reset-pin', async (ctx, { id }) => {
     const a = await aksesGuru(ctx);
     await ambilSiswaBoleh(ctx, a, id);
-    const pin = acakPin();
+    const ada = Number(ctx.request.headers.get('Content-Length') || 0) > 0;
+    const masukan = ada ? (await bacaJson(ctx.request)).pin : undefined;
+    const pin = masukan == null || masukan === '' ? acakPin() : String(masukan);
+    // Diperiksa apa adanya (tanpa dipotong spasi): yang di-hash harus persis 4 angka yang diketik murid
+    if (!/^[0-9]{4}$/.test(pin)) throw new GalatApi(400, 'PIN harus tepat 4 angka (0–9), tanpa huruf atau spasi.');
     const db = ctx.env.DB;
     await db.batch([
+      // Hanya hash yang disimpan, dengan iterasi ITERASI_PBKDF2 dari environment
       perintah(db, 'UPDATE siswa SET pin_hash = ? WHERE id = ?', await hashRahasia(pin, iterasi(ctx.env)), id),
-      perintah(db, "DELETE FROM sesi WHERE jenis = 'siswa' AND pengguna_id = ?", id)
+      // Semua sesi murid ini dihentikan, jadi yang masuk dengan PIN lama ikut keluar
+      perintah(db, "DELETE FROM sesi WHERE jenis = 'siswa' AND pengguna_id = ?", id),
+      // Catatan aktivitas tanpa angka PIN
+      perintahAktivitas(db, id, 'pin', `PIN diganti oleh ${a.admin ? 'admin' : 'guru'} ${a.guru.nama}`)
     ]);
-    return { pin };
+    return { pin }; // dikirim sekali untuk dicatat guru; tidak disimpan sebagai teks di mana pun
   }],
 
   ['PUT', ':id/catatan', async (ctx, { id }) => {

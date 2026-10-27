@@ -87,22 +87,39 @@ export async function aksiPindahKelas(siswa, konteks) {
   return !!hasil;
 }
 
+// 4 angka acak (boleh diubah guru sebelum disimpan)
+const pinAcak = () => String(crypto.getRandomValues(new Uint32Array(1))[0] % 10000).padStart(4, '0');
+
+/** Guru/admin mengetik PIN baru murid (atau menekan Acak). PIN ditampilkan sekali setelah tersimpan. */
 export async function aksiResetPin(siswa) {
-  const ya = await bukaModal({
-    judul: `Reset PIN ${siswa.namaPanggilan}?`,
-    isi: '<p>PIN lama tidak bisa dipakai lagi. PIN baru 4 angka akan ditampilkan sekali untuk Anda catat.</p>',
-    tombol: [{ teks: 'Batal', nilai: false, varian: 'sekunder' }, { teks: 'Reset PIN', nilai: true }]
+  const hasil = await bukaFormModal({
+    judul: `Ganti PIN ${siswa.namaPanggilan}`,
+    isi: `
+      <p class="mb-3">PIN lama tidak bisa dipakai lagi, dan ${esc(siswa.namaPanggilan)} akan keluar dari semua perangkat. PIN baru ditampilkan sekali untuk Anda catat.</p>
+      <label for="pin-baru" class="dg-label">PIN baru (4 angka)</label>
+      <div class="flex gap-2 mt-1">
+        <input id="pin-baru" name="pin" class="dg-input font-kode tracking-[.3em]" inputmode="numeric" maxlength="8" autocomplete="off" placeholder="0000">
+        <button type="button" class="tombol tombol-sekunder tombol-kecil shrink-0" data-acak-pin>Acak</button>
+      </div>`,
+    teksSimpan: 'Simpan PIN',
+    saatBuka: (form) => {
+      const kolom = form.querySelector('[name="pin"]');
+      form.querySelector('[data-acak-pin]').addEventListener('click', () => {
+        kolom.value = pinAcak();
+        kolom.focus();
+      });
+    },
+    saatSimpan: async (fd) => {
+      const pin = String(fd.get('pin') || '').trim();
+      // Tepat 4 angka 0–9, tanpa aturan lain (1111 atau 1234 boleh). Server memeriksa ulang.
+      if (!/^[0-9]{4}$/.test(pin)) return { galat: 'PIN harus tepat 4 angka (0–9), tanpa huruf atau spasi.' };
+      return { pin: await guruResetPin(siswa.id, pin) };
+    }
   });
-  if (!ya) return false;
-  try {
-    const pin = await guruResetPin(siswa.id);
-    toast(`PIN ${siswa.namaPanggilan} berhasil direset.`, 'sukses');
-    await tampilkanAkunBaru({ judul: 'PIN baru', nama: siswa.namaLengkap, username: siswa.username, pin });
-    return true;
-  } catch (err) {
-    toast(err.message, 'peringatan');
-    return false;
-  }
+  if (!hasil) return false;
+  toast(`PIN ${siswa.namaPanggilan} berhasil diganti.`, 'sukses');
+  await tampilkanAkunBaru({ judul: 'PIN baru', nama: siswa.namaLengkap, username: siswa.username, pin: hasil.pin });
+  return true;
 }
 
 export async function aksiHapusSiswa(siswa) {
@@ -351,7 +368,7 @@ export async function renderSiswa(wadah, { konteks, kelasId }) {
                   <a class="dg-tombol-ikon" href="#/guru/siswa/${esc(s.id)}" aria-label="Lihat detail ${esc(s.namaLengkap)}" title="Lihat detail">${IKON.lihat}</a>
                   ${tombolAksi(IKON.edit, `Edit ${s.namaLengkap}`, `data-aksi="edit" data-id="${esc(s.id)}"`)}
                   ${tombolAksi(IKON.pindah, `Pindah kelas ${s.namaLengkap}`, `data-aksi="pindah" data-id="${esc(s.id)}"`)}
-                  ${tombolAksi(IKON.kunci, `Reset PIN ${s.namaLengkap}`, `data-aksi="pin" data-id="${esc(s.id)}"`)}
+                  ${tombolAksi(IKON.kunci, `Ganti PIN ${s.namaLengkap}`, `data-aksi="pin" data-id="${esc(s.id)}"`)}
                   ${tombolAksi(IKON.hapus, `Hapus ${s.namaLengkap}`, `data-aksi="hapus" data-id="${esc(s.id)}"`, true)}
                 </td>
               </tr>`).join('')}

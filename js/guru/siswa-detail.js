@@ -38,7 +38,7 @@ export async function renderDetailSiswa(wadah, { params, konteks }) {
         <div class="mt-4 flex flex-wrap gap-2">
           <button type="button" class="tombol tombol-sekunder tombol-kecil" data-aksi="edit">${IKON.edit}<span>Edit</span></button>
           <button type="button" class="tombol tombol-sekunder tombol-kecil" data-aksi="pindah">${IKON.pindah}<span>Pindah kelas</span></button>
-          <button type="button" class="tombol tombol-sekunder tombol-kecil" data-aksi="pin">${IKON.kunci}<span>Reset PIN</span></button>
+          <button type="button" class="tombol tombol-sekunder tombol-kecil" data-aksi="pin">${IKON.kunci}<span>Ganti PIN</span></button>
           <button type="button" class="tombol tombol-bahaya tombol-kecil" data-aksi="hapus">${IKON.hapus}<span>Hapus</span></button>
         </div>
       </section>

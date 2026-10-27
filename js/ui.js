@@ -365,7 +365,7 @@ export function pasangKotakPin(fieldset, { saatUbah = null, saatLengkap = null }
  *   - melempar Error juga menampilkan pesannya
  *   - nilai lain menutup modal dan menjadi hasil Promise (null jika dibatalkan)
  */
-export function bukaFormModal({ judul, isi, teksSimpan = 'Simpan', varianSimpan = 'utama', lebar = false, saatSimpan }) {
+export function bukaFormModal({ judul, isi, teksSimpan = 'Simpan', varianSimpan = 'utama', lebar = false, saatSimpan, saatBuka = null }) {
   return bukaModal({
     judul,
     lebar,
@@ -403,6 +403,8 @@ export function bukaFormModal({ judul, isi, teksSimpan = 'Simpan', varianSimpan 
       });
       // Fokus ke kolom pertama setelah modal tampil
       setTimeout(() => form.querySelector('input:not([type="hidden"]), select, textarea')?.focus(), 0);
+      // Pemanggil boleh memasang perilaku tambahan pada isi form (mis. tombol Acak PIN)
+      if (saatBuka) saatBuka(form);
     }
   });
 }

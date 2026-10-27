@@ -22,7 +22,8 @@ export async function hitungStatistik(db, daftarSiswa, cache = {}) {
     cache.levels || semuaLevel(db),
     cache.kelas || semuaKelas(db),
     semua(db, 'SELECT * FROM progres'),
-    semua(db, 'SELECT siswa_id, MAX(waktu) AS waktu FROM aktivitas GROUP BY siswa_id')
+    // Ganti PIN dilakukan guru, bukan murid, jadi tidak dihitung sebagai "terakhir aktif"
+    semua(db, "SELECT siswa_id, MAX(waktu) AS waktu FROM aktivitas WHERE jenis <> 'pin' GROUP BY siswa_id")
   ]);
   const terakhir = new Map(terakhirAktivitas.map((r) => [r.siswa_id, r.waktu]));
   const progresPerSiswa = new Map();

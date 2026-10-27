@@ -443,8 +443,9 @@ export async function guruPindahKelas(siswaId, kelasId) {
   return guruUbahSiswa(siswaId, { kelasId });
 }
 
-export async function guruResetPin(siswaId) {
-  return (await api(`siswa/${enc(siswaId)}/reset-pin`, { metode: 'POST' })).pin;
+/** Tetapkan PIN murid. pin kosong = PIN acak dari server. Hasil: PIN yang berlaku (tampilkan sekali). */
+export async function guruResetPin(siswaId, pin = '') {
+  return (await api(`siswa/${enc(siswaId)}/reset-pin`, { metode: 'POST', data: { pin } })).pin;
 }
 
 export async function guruHapusSiswa(siswaId) {
