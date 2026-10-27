@@ -1,8 +1,30 @@
 // server/statistik.js — statistik per siswa untuk dashboard guru
 // Nilai siswa = rata-rata nilai level yang sudah selesai.
+// Level dari zona yang dinonaktifkan guru tidak dihitung (levelBerlaku), sama seperti halaman Nilai.
 // Terakhir aktif = waktu terbaru dari aktivitas, progres, atau tanggal daftar.
 
-import { semua, semuaKelas, semuaLevel, siswaKeObjek, progresKeObjek, levelTerlihatUntukKelas } from './data.js';
+import { semua, semuaKelas, semuaLevel, siswaKeObjek, progresKeObjek, levelBerlaku, levelTerlihatUntukKelas, bacaZonaNonaktif } from './data.js';
+import { ZONA } from '../js/data/zona.js';
+
+/**
+ * Dampak menonaktifkan tiap zona, untuk kotak konfirmasi di Pengaturan (semua kelas, karena berlaku untuk semua):
+ * jumlahLevel  = level terbit di zona itu
+ * belumSelesai = murid yang masih punya level zona itu (terlihat di kelasnya) yang belum selesai
+ * totalMurid   = semua murid
+ */
+export async function dampakZona(db) {
+  const [levels, siswa, selesai] = await Promise.all([
+    semuaLevel(db),
+    semua(db, 'SELECT id, kelas_id FROM siswa'),
+    semua(db, 'SELECT siswa_id, level_id FROM progres WHERE selesai = 1')
+  ]);
+  const sudah = new Set(selesai.map((p) => `${p.siswa_id}|${p.level_id}`));
+  return ZONA.map((z) => {
+    const lvZ = levels.filter((l) => l.zona === z.id && l.terbit !== false);
+    const belumSelesai = siswa.filter((s) => lvZ.some((l) => levelTerlihatUntukKelas(l, s.kelas_id) && !sudah.has(`${s.id}|${l.id}`))).length;
+    return { id: z.id, jumlahLevel: lvZ.length, belumSelesai, totalMurid: siswa.length };
+  });
+}
 
 export const rataRata = (angka) => (angka.length ? Math.round(angka.reduce((n, x) => n + x, 0) / angka.length) : 0);
 
@@ -18,12 +40,13 @@ export async function siswaDalamAkses(db, a, kelasId = null) {
  */
 export async function hitungStatistik(db, daftarSiswa, cache = {}) {
   if (!daftarSiswa.length) return [];
-  const [levels, kelas, progresSemua, terakhirAktivitas] = await Promise.all([
+  const [levels, kelas, progresSemua, terakhirAktivitas, zonaNonaktif] = await Promise.all([
     cache.levels || semuaLevel(db),
     cache.kelas || semuaKelas(db),
     semua(db, 'SELECT * FROM progres'),
-    // Ganti PIN dilakukan guru, bukan murid, jadi tidak dihitung sebagai "terakhir aktif"
-    semua(db, "SELECT siswa_id, MAX(waktu) AS waktu FROM aktivitas WHERE jenis NOT IN ('pin', 'nilai') GROUP BY siswa_id")
+    // Ganti PIN, nilai, dan zona dilakukan guru, bukan murid, jadi tidak dihitung sebagai "terakhir aktif"
+    semua(db, "SELECT siswa_id, MAX(waktu) AS waktu FROM aktivitas WHERE jenis NOT IN ('pin', 'nilai', 'zona') GROUP BY siswa_id"),
+    cache.zonaNonaktif || bacaZonaNonaktif(db)
   ]);
   const terakhir = new Map(terakhirAktivitas.map((r) => [r.siswa_id, r.waktu]));
   const progresPerSiswa = new Map();
@@ -34,7 +57,8 @@ export async function hitungStatistik(db, daftarSiswa, cache = {}) {
 
   return daftarSiswa.map((baris) => {
     const s = siswaKeObjek(baris);
-    const lv = levels.filter((l) => levelTerlihatUntukKelas(l, s.kelasId));
+    // Progres di zona nonaktif tetap tersimpan, hanya tidak ikut dihitung
+    const lv = levels.filter((l) => levelBerlaku(l, s.kelasId, zonaNonaktif));
     const ids = new Set(lv.map((l) => l.id));
     const pr = (progresPerSiswa.get(s.id) || []).filter((p) => ids.has(p.levelId));
     const selesai = pr.filter((p) => p.selesai);

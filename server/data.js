@@ -102,11 +102,27 @@ export function perintahSimpanLevel(db, l) {
   dibuatPada || sekarang(), diperbarui || sekarang());
 }
 
+// Zona nonaktif: kunci pengaturan zona_nonaktif berisi JSON array id zona, mis. ["salju"].
+// Baris belum ada atau isinya rusak = semua zona aktif. Id yang tidak dikenal diabaikan.
+const saringZonaNonaktif = (nilai) => (Array.isArray(nilai) ? ZONA.map((z) => z.id).filter((id) => nilai.includes(id)) : []);
+
 export async function bacaPengaturan(db) {
   const baris = await semua(db, 'SELECT kunci, nilai FROM pengaturan');
   const peta = Object.fromEntries(baris.map((b) => [b.kunci, jsonAman(b.nilai, null)]));
   const harga = Array.isArray(peta.harga_clue) && peta.harga_clue.length === 3 ? peta.harga_clue : CLUE.map((c) => c.harga);
-  return { hargaClue: harga, koinAwal: Number.isInteger(peta.koin_awal) ? peta.koin_awal : KOIN_AWAL };
+  return {
+    hargaClue: harga,
+    koinAwal: Number.isInteger(peta.koin_awal) ? peta.koin_awal : KOIN_AWAL,
+    zonaNonaktif: saringZonaNonaktif(peta.zona_nonaktif)
+  };
+}
+
+/** Id zona nonaktif dari baris pengaturan zona_nonaktif (boleh null/undefined bila baris belum ada). */
+export const zonaNonaktifDariBaris = (baris) => saringZonaNonaktif(jsonAman(baris?.nilai, null));
+
+/** Daftar id zona yang sedang dinonaktifkan. */
+export async function bacaZonaNonaktif(db) {
+  return zonaNonaktifDariBaris(await satu(db, "SELECT nilai FROM pengaturan WHERE kunci = 'zona_nonaktif'"));
 }
 
 export const perintahAktivitas = (db, siswaId, jenis, keterangan) =>
@@ -116,6 +132,15 @@ export const perintahAktivitas = (db, siswaId, jenis, keterangan) =>
 /** Level terlihat oleh siswa di kelas ini? (terbit, kelas tujuan cocok, tidak dinonaktifkan untuk kelas itu) */
 export function levelTerlihatUntukKelas(l, kelasId) {
   return l.terbit !== false && (!l.kelasIds || l.kelasIds.includes(kelasId)) && !(l.kelasNonaktif || []).includes(kelasId);
+}
+
+/**
+ * Level berlaku untuk kelas ini: terlihat (aturan di atas) DAN zonanya tidak dinonaktifkan.
+ * Dipakai peta murid, level yang boleh dimainkan, nilai akhir, dan statistik dashboard,
+ * supaya keempatnya selalu memakai daftar level yang sama.
+ */
+export function levelBerlaku(l, kelasId, zonaNonaktif = []) {
+  return levelTerlihatUntukKelas(l, kelasId) && !zonaNonaktif.includes(l.zona);
 }
 
 /** Urutkan ulang level satu zona menjadi 1..n dengan boss selalu di akhir. Mengembalikan level yang berubah. */

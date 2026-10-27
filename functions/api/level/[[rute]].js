@@ -2,6 +2,7 @@
 // Untuk siswa:
 //   GET /api/level/terbit?zona=        level terbit untuk kelas siswa. Solusi tidak dikirim, dan clue
 //                                      hanya yang sudah dibeli (agar tidak bisa diintip tanpa membayar).
+//                                      Level dari zona yang dinonaktifkan guru tidak dikirim sama sekali.
 //   GET /api/level/harga-clue          harga Clue 1–3
 // Alat pengembang (guru, atau siswa jika env.MODE_DEV = "1"):
 //   GET /api/level/semua, GET /api/level/:id
@@ -16,8 +17,8 @@
 import { buatRouter, bacaJson, kueri, GalatApi } from '../../../server/http.js';
 import { ambilSesi, wajibSiswa, aksesGuru } from '../../../server/sesi.js';
 import {
-  semua, satu, perintah, sekarang, semuaKelas, semuaLevel, bacaPengaturan, perintahSimpanLevel,
-  levelTerlihatUntukKelas, rapikanUrutan, levelKeObjek
+  semua, satu, perintah, sekarang, semuaKelas, semuaLevel, bacaPengaturan, bacaZonaNonaktif, perintahSimpanLevel,
+  levelBerlaku, rapikanUrutan, levelKeObjek
 } from '../../../server/data.js';
 import { tokenAcak } from '../../../server/kripto.js';
 import { alasanBelumSiap } from '../../../js/game/validasi-level.js';
@@ -186,9 +187,11 @@ export const onRequest = buatRouter([
     const siswa = await wajibSiswa(ctx);
     const db = ctx.env.DB;
     const { zona } = kueri(ctx.request);
-    const progres = await semua(db, 'SELECT level_id, clue_dibeli FROM progres WHERE siswa_id = ?', siswa.id);
+    const [progres, levels, zonaNonaktif] = await Promise.all([
+      semua(db, 'SELECT level_id, clue_dibeli FROM progres WHERE siswa_id = ?', siswa.id), semuaLevel(db), bacaZonaNonaktif(db)
+    ]);
     const clueDibeli = new Map(progres.map((p) => [p.level_id, p.clue_dibeli || 0]));
-    return urutkan((await semuaLevel(db)).filter((l) => levelTerlihatUntukKelas(l, siswa.kelas_id) && (!zona || l.zona === zona)))
+    return urutkan(levels.filter((l) => levelBerlaku(l, siswa.kelas_id, zonaNonaktif) && (!zona || l.zona === zona)))
       .map(({ solusi, clue, pembuat, kelasNonaktif, ...l }) => ({
         ...l,
         // Clue yang belum dibeli dikosongkan; teksnya dikirim saat dibeli

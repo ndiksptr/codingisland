@@ -4,7 +4,7 @@
 
 import { buatRouter, kueri, GalatApi } from '../../../server/http.js';
 import { aksesGuru, saringKelas } from '../../../server/sesi.js';
-import { semua, semuaLevel, levelTerlihatUntukKelas } from '../../../server/data.js';
+import { semua, semuaLevel, levelBerlaku, bacaZonaNonaktif } from '../../../server/data.js';
 import { hitungStatistik, siswaDalamAkses, rataRata } from '../../../server/statistik.js';
 import { ZONA } from '../../../js/data/zona.js';
 
@@ -43,12 +43,12 @@ export const onRequest = buatRouter([
     const db = ctx.env.DB;
     const k = saringKelas(a, kueri(ctx.request).kelasId || null);
     const kelasDipakai = k ? a.kelas.filter((x) => x.id === k) : a.kelas;
-    const levels = await semuaLevel(db);
-    const stat = await hitungStatistik(db, await siswaDalamAkses(db, a, k), { levels });
+    const [levels, zonaNonaktif] = await Promise.all([semuaLevel(db), bacaZonaNonaktif(db)]);
+    const stat = await hitungStatistik(db, await siswaDalamAkses(db, a, k), { levels, zonaNonaktif });
     const sekarangMs = Date.now();
     const batas7 = sekarangMs - 7 * HARI_MS;
 
-    const levelTerbit = levels.filter((l) => kelasDipakai.some((kk) => levelTerlihatUntukKelas(l, kk.id))).length;
+    const levelTerbit = levels.filter((l) => kelasDipakai.some((kk) => levelBerlaku(l, kk.id, zonaNonaktif))).length;
 
     // Siswa yang perlu bantuan: macet (>= 5 percobaan tanpa selesai) atau tidak aktif 7 hari
     const perluBantuan = [];
@@ -66,7 +66,7 @@ export const onRequest = buatRouter([
     }
     perluBantuan.sort((p, q) => Number(q.macet) - Number(p.macet) || q.hariDiam - p.hariDiam);
 
-    const progresZona = ZONA.map((z) => ({
+    const progresZona = ZONA.filter((z) => !zonaNonaktif.includes(z.id)).map((z) => ({
       id: z.id, nama: z.nama, warna: z.warna,
       persen: rataRata(stat.map((x) => {
         const lvZ = x.levels.filter((l) => l.zona === z.id);

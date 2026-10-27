@@ -1,13 +1,43 @@
 // js/guru/pengaturan.js — #/guru/pengaturan: nama & password sendiri;
+// guru & admin: zona aktif/nonaktif (berlaku untuk semua kelas);
 // khusus admin: harga clue dan koin awal siswa baru.
 
-import { esc, toast } from '../ui.js';
-import { guruUbahNama, guruUbahPassword, adminSimpanPengaturan } from '../store.js';
+import { esc, toast, bukaModal } from '../ui.js';
+import { guruUbahNama, guruUbahPassword, adminSimpanPengaturan, guruDaftarZona, guruAturZona } from '../store.js';
 import { muatUlang } from '../router.js';
 import { CLUE } from '../game/skor.js';
 
+function zonaHTML(z) {
+  return `
+    <li class="dg-zona-baris">
+      <span class="dg-zona-warna" style="background:${esc(z.warna)}" aria-hidden="true"></span>
+      <span class="min-w-0 flex-1">
+        <span class="block font-bold">${esc(z.nama)}</span>
+        <span class="block text-sm">${esc(z.konsep)} · ${z.jumlahLevel} level</span>
+      </span>
+      <label class="sakelar">
+        <input type="checkbox" role="switch" data-zona="${esc(z.id)}" ${z.aktif ? 'checked' : ''} aria-label="Zona ${esc(z.nama)} aktif">
+        <span class="sakelar-jalur" aria-hidden="true"></span>
+        <span>${z.aktif ? 'Aktif' : 'Nonaktif'}</span>
+      </label>
+    </li>`;
+}
+
+/** Isi kotak konfirmasi menonaktifkan zona, dengan angka dari data terbaru. */
+function isiKonfirmasiZona(z) {
+  const murid = z.totalMurid
+    ? `, dan <strong>${z.belumSelesai} dari ${z.totalMurid} murid</strong> belum menyelesaikannya`
+    : '. Belum ada murid yang terdaftar';
+  return `
+    <p>Zona ${esc(z.nama)} berisi <strong>${z.jumlahLevel} level</strong>${murid}.
+      Level tersebut tidak akan dihitung lagi dalam nilai akhir mereka. Lanjutkan?</p>
+    <p class="mt-2 text-sm">Zona ini disembunyikan dari peta murid di <strong>semua kelas</strong>. Progres, bintang, koin,
+      dan berlian murid tidak dihapus, dan muncul kembali bila zona diaktifkan lagi. Nilai yang sudah ditimpa guru tidak berubah.</p>`;
+}
+
 export async function renderPengaturan(wadah, { konteks }) {
   const { guru, admin, pengaturan } = konteks;
+  const daftarZona = await guruDaftarZona();
 
   wadah.innerHTML = `
     <div class="grid grid-cols-1 gap-5 xl:grid-cols-2">
@@ -29,6 +59,12 @@ export async function renderPengaturan(wadah, { konteks }) {
         <p class="pesan-kolom pesan-galat" data-galat></p>
         <button type="submit" class="tombol tombol-utama tombol-kecil">Ganti password</button>
       </form>
+
+      <section class="dg-kartu" aria-labelledby="judul-zona">
+        <h2 class="dg-subjudul" id="judul-zona">Zona permainan</h2>
+        <p class="text-sm mb-3">Berlaku untuk semua kelas. Zona nonaktif tidak tampil di peta murid dan levelnya tidak dihitung dalam nilai.</p>
+        <ul class="dg-daftar-zona" data-daftar-zona>${daftarZona.map(zonaHTML).join('')}</ul>
+      </section>
 
       ${admin ? `
         <form class="dg-kartu" data-form-permainan novalidate>
@@ -79,6 +115,33 @@ export async function renderPengaturan(wadah, { konteks }) {
     await guruUbahPassword(String(fd.get('lama') || ''), String(fd.get('baru') || ''));
     form.reset();
     toast('Password berhasil diganti.', 'sukses');
+  });
+
+  // Zona: menonaktifkan perlu konfirmasi berisi angka sebenarnya; mengaktifkan langsung
+  wadah.querySelector('[data-daftar-zona]').addEventListener('change', async (e) => {
+    const sakelar = e.target.closest('[data-zona]');
+    if (!sakelar) return;
+    const aktif = sakelar.checked;
+    sakelar.checked = !aktif; // tampilan baru berubah setelah tersimpan
+    sakelar.disabled = true;
+    try {
+      const z = (await guruDaftarZona()).find((x) => x.id === sakelar.dataset.zona);
+      if (!aktif) {
+        const ya = await bukaModal({
+          judul: `Nonaktifkan ${z.nama}?`,
+          isi: isiKonfirmasiZona(z),
+          tombol: [{ teks: 'Batal', nilai: false, varian: 'sekunder' }, { teks: 'Nonaktifkan', nilai: true, varian: 'bahaya' }]
+        });
+        if (!ya) return;
+      }
+      await guruAturZona(z.id, aktif);
+      toast(`Zona ${z.nama} ${aktif ? 'diaktifkan' : 'dinonaktifkan'}.`, 'sukses');
+      muatUlang();
+    } catch (err) {
+      toast(err.message, 'peringatan');
+    } finally {
+      sakelar.disabled = false;
+    }
   });
 
   pasangForm('[data-form-permainan]', async (fd) => {

@@ -12,6 +12,8 @@
 //   GET  /api/auth/konteks              konteks dashboard guru
 //   PATCH /api/auth/nama, POST /api/auth/password            akun guru sendiri
 //   GET/PUT /api/auth/pengaturan        pengaturan permainan (PUT: admin)
+//   GET /api/auth/zona                  status aktif + dampak tiap zona (guru & admin)
+//   PUT /api/auth/zona/:id              { aktif } aktifkan/nonaktifkan zona (guru & admin), dicatat di aktivitas
 //   GET/POST /api/auth/guru, PATCH/DELETE /api/auth/guru/:id, POST /api/auth/guru/:id/reset-password (admin)
 //   POST /api/auth/guru/:id/menyamar    admin masuk sebagai guru itu (sesi baru, admin asli dicatat)
 //   POST /api/auth/akhiri-menyamar      kembali ke akun admin asli
@@ -22,8 +24,10 @@ import { hashRahasia, cocokRahasia, samarkanWaktu, acakPassword, idBaru, samaKon
 import { buatSesi, hapusSesi, sesiUntukKlien, aksesGuru, wajibAdmin, tolakSaatMenyamar } from '../../../server/sesi.js';
 import {
   semua, satu, jalankan, perintah, sekarang, siswaKeObjek, guruKeObjek, semuaKelas, bacaPengaturan,
-  perintahAktivitas, sarankanUsernameDb
+  perintahAktivitas, sarankanUsernameDb, bacaZonaNonaktif, zonaNonaktifDariBaris
 } from '../../../server/data.js';
+import { dampakZona } from '../../../server/statistik.js';
+import { zonaAktif } from '../../../js/game/kemajuan.js';
 import { periksaKolomSiswa } from '../../../js/game/aturan-siswa.js';
 import { ZONA } from '../../../js/data/zona.js';
 import { BATAS, sisaTahanLogin, sisaTahanJendela, catatGagalLogin, catatGagalJendela, hapusBatas, bersihkanKedaluwarsa } from '../../../server/batas.js';
@@ -279,6 +283,46 @@ export const onRequest = buatRouter([
     const simpan = (k, v) => perintah(db, 'INSERT INTO pengaturan (kunci, nilai) VALUES (?,?) ON CONFLICT(kunci) DO UPDATE SET nilai = excluded.nilai', k, JSON.stringify(v));
     await db.batch([simpan('harga_clue', harga), simpan('koin_awal', koin)]);
     return bacaPengaturan(db);
+  }],
+
+  // ================= Zona aktif/nonaktif (guru & admin) =================
+  // Disimpan di pengaturan.zona_nonaktif (JSON array id zona). Progres, bintang, koin, dan berlian
+  // murid di zona itu TIDAK dihapus; zona yang diaktifkan lagi kembali seperti semula.
+  ['GET', 'zona', async (ctx) => {
+    await aksesGuru(ctx);
+    const db = ctx.env.DB;
+    const [zonaNonaktif, dampak] = await Promise.all([bacaZonaNonaktif(db), dampakZona(db)]);
+    return ZONA.map((z) => ({
+      id: z.id, nama: z.nama, konsep: z.konsep, warna: z.warna,
+      aktif: !zonaNonaktif.includes(z.id),
+      ...dampak.find((d) => d.id === z.id)
+    }));
+  }],
+
+  ['PUT', 'zona/:id', async (ctx, { id }) => {
+    const a = await aksesGuru(ctx);
+    const zona = ZONA.find((z) => z.id === id);
+    if (!zona) throw new GalatApi(404, 'Zona tidak ditemukan.');
+    const { aktif } = await bacaJson(ctx.request);
+    if (typeof aktif !== 'boolean') throw new GalatApi(400, 'Pilih aktif atau nonaktif.');
+    const db = ctx.env.DB;
+    const baris = await satu(db, "SELECT nilai FROM pengaturan WHERE kunci = 'zona_nonaktif'");
+    const lama = zonaNonaktifDariBaris(baris);
+    const baru = ZONA.map((z) => z.id).filter((x) => (x === id ? !aktif : lama.includes(x)));
+    if (!zonaAktif(baru).length) throw new GalatApi(400, 'Minimal satu zona harus tetap aktif.');
+    if (baru.length === lama.length && baru.every((x) => lama.includes(x))) return { zonaNonaktif: lama };
+
+    // Simpan hanya jika belum diubah orang lain sejak dibaca; aktivitas ditulis hanya bila tersimpan.
+    // Satu baris aktivitas per murid (tabel aktivitas per murid), karena zona berlaku untuk semua kelas.
+    const [simpan] = await db.batch([
+      baris
+        ? perintah(db, "UPDATE pengaturan SET nilai = ? WHERE kunci = 'zona_nonaktif' AND nilai = ?", JSON.stringify(baru), baris.nilai)
+        : perintah(db, "INSERT INTO pengaturan (kunci, nilai) VALUES ('zona_nonaktif', ?) ON CONFLICT(kunci) DO NOTHING", JSON.stringify(baru)),
+      perintah(db, "INSERT INTO aktivitas (waktu, siswa_id, jenis, keterangan) SELECT ?, id, 'zona', ? FROM siswa WHERE changes() = 1",
+        sekarang(), `Zona ${zona.nama} ${aktif ? 'diaktifkan' : 'dinonaktifkan'} oleh ${a.pelaku.nama}`)
+    ]);
+    if (!simpan.meta?.changes) throw new GalatApi(409, 'Pengaturan zona baru saja diubah guru lain. Muat ulang halaman lalu coba lagi.');
+    return { zonaNonaktif: baru };
   }],
 
   // ================= Kelola guru (admin) =================

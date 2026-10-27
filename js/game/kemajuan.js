@@ -3,22 +3,35 @@
 // (cukup salah satu boss, agar boss tambahan buatan guru tidak mengunci pulau yang sudah terbuka).
 // Level terbuka jika level sebelumnya (dalam zona yang sama) selesai. Jika boss zona sudah
 // selesai, semua level di zona itu terbuka — termasuk level baru yang disisipkan guru.
+// Zona yang dinonaktifkan guru dilewati sepenuhnya: tidak tampil, dan zona sesudahnya
+// cukup menunggu boss zona aktif sebelumnya. Nomor pulau diurutkan ulang dari 1.
 
 import { ZONA } from '../data/zona.js';
+
+/** Zona yang aktif (urutan tetap seperti ZONA). */
+export const zonaAktif = (zonaNonaktif = []) => ZONA.filter((z) => !zonaNonaktif.includes(z.id));
+
+/** Zona aktif terakhir: boss-nya menjadikan murid Juara Coding Island. */
+export const zonaTerakhir = (zonaNonaktif = []) => {
+  const aktif = zonaAktif(zonaNonaktif);
+  return aktif[aktif.length - 1] || null;
+};
 
 /**
  * Hitung status seluruh peta.
  * levels : daftar level yang terbit untuk siswa
  * progres: daftar progres siswa
+ * zonaNonaktif: id zona yang dinonaktifkan guru (tidak ikut dalam hasil)
  * Hasil  : array per zona { zona, terbuka, tuntas, levels[], selesai, total, bintang, bintangMaks, syarat }
  *          tiap level mendapat { nomor, status: 'terkunci'|'terbuka'|'selesai', bintang, nilai }
  */
-export function hitungPeta(levels, progres) {
+export function hitungPeta(levels, progres, zonaNonaktif = []) {
   const petaProgres = new Map(progres.map((p) => [p.levelId, p]));
   let bossSebelumSelesai = true;
   let zonaSebelum = null;
 
-  return ZONA.map((zona, i) => {
+  return zonaAktif(zonaNonaktif).map((zonaAsli, i) => {
+    const zona = { ...zonaAsli, nomor: i + 1 };
     const terbuka = i === 0 || bossSebelumSelesai;
     const urut = levels.filter((l) => l.zona === zona.id).sort((a, b) => (a.urutan ?? 0) - (b.urutan ?? 0));
     const bossLulus = urut.some((l) => l.jenis === 'boss' && petaProgres.get(l.id)?.selesai);

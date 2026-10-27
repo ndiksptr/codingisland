@@ -6,6 +6,7 @@
 //                                         yang sama, lalu menghitung berhasil, bintang, nilai, koin, berlian
 //   POST /api/progres/:levelId/clue       { nomor } — beli clue berurutan; teks clue dikirim setelah dibeli
 //   POST /api/progres/:levelId/lama       { detik } — tambah lama bermain
+// Level dari zona yang dinonaktifkan guru ditolak 403 (progres lamanya tetap tersimpan, tidak dihapus).
 // Alat pengembang (hanya jika env.MODE_DEV = "1"):
 //   PUT /api/progres/:levelId, DELETE /api/progres
 
@@ -13,15 +14,15 @@ import { buatRouter, bacaJson, GalatApi } from '../../../server/http.js';
 import { wajibSiswa } from '../../../server/sesi.js';
 import {
   semua, satu, jalankan, perintah, sekarang, siswaKeObjek, progresKeObjek, levelKeObjek, semuaLevel,
-  bacaPengaturan, perintahAktivitas, levelTerlihatUntukKelas, semuaKelas
+  bacaPengaturan, bacaZonaNonaktif, zonaNonaktifDariBaris, perintahAktivitas, levelTerlihatUntukKelas, levelBerlaku, semuaKelas
 } from '../../../server/data.js';
 import { jalankanKode } from '../../../js/game/interpreter.js';
 import { hitungBintang, hitungKoin, NILAI_BINTANG, BERLIAN_BOSS, CLUE, KOIN_SELESAI_PERTAMA, KOIN_PER_BINTANG_BARU } from '../../../js/game/skor.js';
-import { ZONA } from '../../../js/data/zona.js';
-import { hitungPeta } from '../../../js/game/kemajuan.js';
+import { hitungPeta, zonaAktif, zonaTerakhir } from '../../../js/game/kemajuan.js';
 
 const MAKS_KODE = 5000;
 const MAKS_DETIK = 600;
+const PESAN_ZONA_TUTUP = 'Pulau ini sedang ditutup oleh gurumu. Ayo main di pulau lain dulu ya!';
 
 async function ambilProgres(db, siswaId, levelId) {
   const r = await satu(db, 'SELECT * FROM progres WHERE siswa_id = ? AND level_id = ?', siswaId, levelId);
@@ -30,9 +31,10 @@ async function ambilProgres(db, siswaId, levelId) {
 
 /** Level yang boleh dimainkan siswa ini. */
 async function levelUntukSiswa(db, siswa, levelId) {
-  const r = await satu(db, 'SELECT * FROM level WHERE id = ?', levelId);
+  const [r, zonaNonaktif] = await Promise.all([satu(db, 'SELECT * FROM level WHERE id = ?', levelId), bacaZonaNonaktif(db)]);
   const l = r ? levelKeObjek(r) : null;
   if (!l || !levelTerlihatUntukKelas(l, siswa.kelas_id)) throw new GalatApi(404, 'Level tidak ditemukan.');
+  if (zonaNonaktif.includes(l.zona)) throw new GalatApi(403, PESAN_ZONA_TUTUP);
   return l;
 }
 
@@ -41,17 +43,20 @@ async function levelUntukSiswa(db, siswa, levelId) {
  * dengan aturan yang sama dengan peta (js/game/kemajuan.js): level/pulau terkunci ditolak 403.
  */
 async function levelDanProgres(db, siswa, levelId) {
-  const [rl, rp] = await db.batch([
+  const [rl, rp, rz] = await db.batch([
     perintah(db, 'SELECT * FROM level'),
-    perintah(db, 'SELECT * FROM progres WHERE siswa_id = ?', siswa.id)
+    perintah(db, 'SELECT * FROM progres WHERE siswa_id = ?', siswa.id),
+    perintah(db, "SELECT nilai FROM pengaturan WHERE kunci = 'zona_nonaktif'")
   ]);
+  const zonaNonaktif = zonaNonaktifDariBaris(rz.results?.[0]);
   const terlihat = (rl.results || []).map(levelKeObjek).filter((x) => levelTerlihatUntukKelas(x, siswa.kelas_id));
   const l = terlihat.find((x) => x.id === levelId);
   if (!l) throw new GalatApi(404, 'Level tidak ditemukan.');
+  if (zonaNonaktif.includes(l.zona)) throw new GalatApi(403, PESAN_ZONA_TUTUP);
   const semuaProgres = (rp.results || []).map(progresKeObjek);
-  const status = hitungPeta(terlihat, semuaProgres).flatMap((z) => z.levels).find((x) => x.id === levelId)?.status;
+  const status = hitungPeta(terlihat, semuaProgres, zonaNonaktif).flatMap((z) => z.levels).find((x) => x.id === levelId)?.status;
   if (status === 'terkunci') throw new GalatApi(403, 'Level ini masih terkunci. Selesaikan level sebelumnya dulu ya.');
-  return { level: l, progres: semuaProgres.find((p) => p.levelId === levelId) || null };
+  return { level: l, progres: semuaProgres.find((p) => p.levelId === levelId) || null, zonaNonaktif };
 }
 
 const pastikanBarisProgres = (db, siswaId, levelId) =>
@@ -67,11 +72,13 @@ export const onRequest = buatRouter([
     return (await semua(ctx.env.DB, 'SELECT * FROM progres WHERE siswa_id = ?', s.id)).map(progresKeObjek);
   }],
 
+  // Juara = boss zona AKTIF terakhir selesai. Bintang dihitung dari level zona aktif saja.
   ['GET', 'juara', async (ctx) => {
     const s = await wajibSiswa(ctx);
     const db = ctx.env.DB;
-    const zonaAkhir = ZONA[ZONA.length - 1].id;
-    const levels = (await semuaLevel(db)).filter((l) => levelTerlihatUntukKelas(l, s.kelas_id));
+    const zonaNonaktif = await bacaZonaNonaktif(db);
+    const zonaAkhir = zonaTerakhir(zonaNonaktif)?.id;
+    const levels = (await semuaLevel(db)).filter((l) => levelBerlaku(l, s.kelas_id, zonaNonaktif));
     const progres = (await semua(db, 'SELECT * FROM progres WHERE siswa_id = ?', s.id)).map(progresKeObjek);
     const bossAkhir = progres.find((p) => p.selesai && levels.some((l) => l.id === p.levelId && l.zona === zonaAkhir && l.jenis === 'boss'));
     if (!bossAkhir) return null;
@@ -82,6 +89,7 @@ export const onRequest = buatRouter([
       kelas: kelas?.nama || '-',
       totalBintang: progres.filter((p) => p.selesai && ids.has(p.levelId)).reduce((n, p) => n + (p.bintang || 0), 0),
       maksBintang: levels.length * 3,
+      pulau: zonaAktif(zonaNonaktif).map((z) => z.nama), // pulau yang ditaklukkan (zona aktif)
       tanggal: bossAkhir.selesaiPada || bossAkhir.diperbarui
     };
   }],
@@ -121,7 +129,7 @@ export const onRequest = buatRouter([
   ['POST', ':levelId/percobaan', async (ctx, { levelId }) => {
     const siswa = await wajibSiswa(ctx);
     const db = ctx.env.DB;
-    const { level, progres: awal } = await levelDanProgres(db, siswa, levelId);
+    const { level, progres: awal, zonaNonaktif } = await levelDanProgres(db, siswa, levelId);
     const body = await bacaJson(ctx.request);
     const kode = String(body.kode ?? '').slice(0, MAKS_KODE);
     const detik = Math.min(MAKS_DETIK, Math.max(0, Math.round(Number(body.detik) || 0)));
@@ -132,7 +140,7 @@ export const onRequest = buatRouter([
     const nilai = NILAI_BINTANG[bintang];
     const ok = hasil.berhasil ? 1 : 0;
     const boss = level.jenis === 'boss' ? 1 : 0;
-    const bossAkhir = boss && level.zona === ZONA[ZONA.length - 1].id ? 1 : 0;
+    const bossAkhir = boss && level.zona === zonaTerakhir(zonaNonaktif)?.id ? 1 : 0;
     const waktu = sekarang();
     const dari = 'FROM progres WHERE siswa_id = ? AND level_id = ?';
     const kunci = [siswa.id, levelId];

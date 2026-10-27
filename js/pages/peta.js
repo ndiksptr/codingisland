@@ -1,9 +1,9 @@
 // js/pages/peta.js — peta pulau untuk siswa
-// #/peta        : ringkasan 4 pulau
+// #/peta        : ringkasan pulau (zona yang dinonaktifkan guru tidak ditampilkan sama sekali)
 // #/peta/:zona  : peta satu pulau dengan jalur berkelok dan lingkaran level
 
 import { esc, robot, gambarRobot, tombol, bukaModal, toast, pramuatGambar } from '../ui.js';
-import { sesiAktif, daftarLevelTerbit, getSemuaProgres, aturZonaTerlihat, getRingkasanJuara } from '../store.js';
+import { sesiAktif, daftarLevelTerbit, getSemuaProgres, aturZonaTerlihat, getRingkasanJuara, getZonaNonaktif } from '../store.js';
 import { pindah } from '../router.js';
 import { ZONA } from '../data/zona.js';
 import { LABEL_JENIS } from '../data/levels.js';
@@ -37,11 +37,12 @@ const tipsAcak = (kecuali = '') => {
 export async function muatPeta() {
   const sesi = await sesiAktif();
   const siswa = sesi.pengguna;
-  const [levels, progres] = await Promise.all([
+  const [levels, progres, zonaNonaktif] = await Promise.all([
     daftarLevelTerbit({ kelasId: siswa.kelasId }),
-    getSemuaProgres({ siswaId: siswa.id })
+    getSemuaProgres({ siswaId: siswa.id }),
+    getZonaNonaktif()
   ]);
-  return { siswa, status: hitungPeta(levels, progres) };
+  return { siswa, status: hitungPeta(levels, progres, zonaNonaktif) };
 }
 
 /** Putar animasi sekali jika ada zona yang baru terbuka sejak terakhir dilihat. */

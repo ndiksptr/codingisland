@@ -294,6 +294,11 @@ export async function getHargaClue() {
   return bacaTersimpan('level/harga-clue');
 }
 
+/** Id zona yang sedang dinonaktifkan guru (tidak tampil di peta murid). */
+export async function getZonaNonaktif() {
+  return (await bacaTersimpan('auth/pengaturan')).zonaNonaktif || [];
+}
+
 // =====================================================================
 // Progres (selalu milik siswa yang sedang masuk)
 // =====================================================================
@@ -499,6 +504,16 @@ export async function guruUbahPassword(passwordLama, passwordBaru) {
 // ---------- Khusus admin ----------
 export async function adminSimpanPengaturan({ hargaClue, koinAwal }) {
   return api('auth/pengaturan', { metode: 'PUT', data: { hargaClue, koinAwal } });
+}
+
+// ---------- Zona aktif/nonaktif (guru & admin) ----------
+/** Tiap zona: { id, nama, konsep, warna, aktif, jumlahLevel, belumSelesai, totalMurid } (selalu data terbaru). */
+export async function guruDaftarZona() {
+  return api('auth/zona');
+}
+
+export async function guruAturZona(zonaId, aktif) {
+  return api(`auth/zona/${enc(zonaId)}`, { metode: 'PUT', data: { aktif } });
 }
 
 export async function adminDaftarGuru() {
