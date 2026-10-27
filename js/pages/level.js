@@ -4,7 +4,7 @@
 
 import { esc, robot, tombol, bukaModal, toast, gambarRobot, goyangkan } from '../ui.js';
 import {
-  getKelas, getProgres, getDrafKode, simpanDrafKode, getPreferensi, simpanPreferensi,
+  getKelas, getProgres, getPreferensi, simpanPreferensi,
   catatPercobaan, tambahLamaBermain, beliClue, getSiswa, getHargaClue
 } from '../store.js';
 import { pindah } from '../router.js';
@@ -124,10 +124,9 @@ export async function renderLevel(halaman, { params }) {
   }
 
   // ---------- Data pendukung ----------
-  const [kelas, progresAwal, draf, pref] = await Promise.all([
+  const [kelas, progresAwal, pref] = await Promise.all([
     getKelas(siswa.kelasId),
     getProgres(siswa.id, level.id),
-    getDrafKode(siswa.id, level.id),
     getPreferensi()
   ]);
   const tingkat = kelas?.tingkat ?? 3;
@@ -138,7 +137,10 @@ export async function renderLevel(halaman, { params }) {
   let progres = progresAwal;
   const perintah = level.perintahTersedia || Object.keys(TEMPLAT);
   const daftarTujuan = (level.tujuanTeks || []).map(normalkanTujuan);
-  const kodeMula = draf ?? progres?.kodeTerakhir ?? level.kodeAwal ?? '';
+  // Editor SELALU dimulai dari kerangka awal level (kosong bila tidak ada).
+  // Kode terakhir murid tetap tersimpan di server (progres.kodeTerakhir) untuk dilihat guru,
+  // tetapi tidak dimuat lagi ke editor. Bintang, nilai, dan koin tersimpan terpisah dari kode.
+  const kodeMula = level.kodeAwal || '';
 
   const lencana = level.jenis === 'debug'
     ? `${ikonBug(16)} ${LABEL_JENIS.debug}`
@@ -245,14 +247,7 @@ export async function renderLevel(halaman, { params }) {
   panggung.tampilPetak(tampilPetakAwal);
   panggung.bicara(progres?.selesai ? 'Mau coba dapat bintang lebih banyak?' : 'Hai! Tulis kodenya, lalu tekan Jalankan.');
 
-  // ---------- Editor + simpan otomatis ----------
-  let timerDraf = null;
-  let drafTertunda = null;
-  const simpanDraf = () => {
-    if (drafTertunda === null) return;
-    simpanDrafKode(siswa.id, level.id, drafTertunda);
-    drafTertunda = null;
-  };
+  // ---------- Editor ----------
   const perbaruiInfoBaris = (kode) => {
     const n = String(kode).split('\n').filter((b) => { const t = b.replace(/\/\/.*$/, '').trim(); return t && !/^[}\s]+$/.test(t); }).length;
     infoBaris.textContent = level.batasBaris ? `${n} baris · target ⭐3: ≤ ${level.batasBaris}` : `${n} baris`;
@@ -262,14 +257,16 @@ export async function renderLevel(halaman, { params }) {
     nilai: kodeMula,
     saranKata: perintah,
     label: `Editor kode level ${level.judul}`,
-    saatUbah: (kode) => {
-      drafTertunda = kode;
-      perbaruiInfoBaris(kode);
-      clearTimeout(timerDraf);
-      timerDraf = setTimeout(simpanDraf, 600);
-    }
+    saatUbah: (kode) => perbaruiInfoBaris(kode)
   });
   perbaruiInfoBaris(kodeMula);
+
+  // Kembalikan editor ke kerangka awal level (dipakai tombol Main lagi & Kembalikan kode awal)
+  const isiKerangkaAwal = () => {
+    editor.setNilai(kodeMula);
+    perbaruiInfoBaris(kodeMula);
+    editor.bersihkanSorotan();
+  };
 
   // ---------- Chip perintah (bantu ketik) ----------
   const aturChip = () => {
@@ -311,12 +308,7 @@ export async function renderLevel(halaman, { params }) {
       ]
     });
     if (!ya) return;
-    const awal = level.kodeAwal || '';
-    editor.setNilai(awal);
-    drafTertunda = awal;
-    simpanDraf();
-    perbaruiInfoBaris(awal);
-    editor.bersihkanSorotan();
+    isiKerangkaAwal();
     panggung.reset();
     resetTujuan();
     toast('Kode awal dikembalikan. Cari bug-nya ya!', 'info');
@@ -510,7 +502,6 @@ export async function renderLevel(halaman, { params }) {
       }
     }
     const saran = saranDaftar.join(' ');
-    const masihBisa = bintang < bintangMaksimal(clueDibeli);
 
     // Boss pertama kali kalah: kembali ke peta (memicu animasi pulau baru) atau ke sertifikat juara
     let lanjut = await tujuanLanjut();
@@ -535,16 +526,19 @@ export async function renderLevel(halaman, { params }) {
                <img src="image/item/berlian.png" alt="" class="w-9 h-9 object-contain"> +${berlianDidapat} berlian</div>`
           : ''}
         ${saran ? `<p class="mt-3 rounded-2xl bg-mint p-3 font-bold">${esc(saran)}</p>` : ''}`,
+      // Satu tombol Main lagi (selalu mulai dari kerangka awal) + tombol pindah ke level/peta berikutnya
       tombol: [
-        { teks: masihBisa ? 'Coba lagi untuk 3 bintang' : 'Main lagi', nilai: 'ulang', varian: 'sekunder' },
+        { teks: 'Main lagi', nilai: 'ulang', varian: 'sekunder' },
         { teks: teksLanjut, nilai: 'lanjut', ikon: juara ? 'image/item/piala.png' : 'image/item/roket.png' }
       ]
     });
     if (pilihan === 'lanjut') pindah(lanjut.path);
     else {
+      // Main lagi (atau modal ditutup): editor kembali ke kerangka awal, robot ke posisi awal.
+      // Bintang, nilai, dan koin yang sudah didapat tetap tersimpan di server.
       panggung.reset();
       resetTujuan();
-      editor.bersihkanSorotan();
+      isiKerangkaAwal();
       editor.fokus();
     }
   }
@@ -586,7 +580,6 @@ export async function renderLevel(halaman, { params }) {
     const token = { batal: false };
     tokenJalan = token;
     try {
-      simpanDraf();
       panggung.reset();
       resetTujuan();
       editor.bersihkanSorotan();
@@ -688,8 +681,6 @@ export async function renderLevel(halaman, { params }) {
   return () => {
     if (tokenJalan) tokenJalan.batal = true;
     document.removeEventListener('keydown', pintasan);
-    clearTimeout(timerDraf);
-    simpanDraf();
     jalankanCatat().catch(() => {}); // halaman sudah ditinggal: cukup dicoba kirim
     tambahLamaBermain(siswa.id, level.id, ambilDetik()).catch(() => {});
     panggung.hancurkan();
