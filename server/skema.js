@@ -1,7 +1,7 @@
 // server/skema.js — DIBUAT OTOMATIS oleh scripts/buat-schema.mjs. Jangan diedit manual.
 // Perintah SQL gabungan migrations/*.sql (tanpa pembersihan data), dipakai worker.js
 // untuk mengisi database yang masih kosong: struktur tabel, pengaturan bawaan, dan level bawaan.
-// Migrasi: 0001_struktur_awal.sql, 0002_hapus_data_demo.sql, 0003_indeks.sql, 0004_sesi_penyamaran.sql
+// Migrasi: 0001_struktur_awal.sql, 0002_hapus_data_demo.sql, 0003_indeks.sql, 0004_sesi_penyamaran.sql, 0005_siswa_bahasa.sql
 
 export const SKEMA_BUAT = [
   "CREATE TABLE IF NOT EXISTS guru (\n  id            TEXT PRIMARY KEY,\n  nama          TEXT NOT NULL,\n  username      TEXT NOT NULL UNIQUE,\n  password_hash TEXT NOT NULL,\n  peran         TEXT NOT NULL DEFAULT 'guru' CHECK (peran IN ('guru', 'admin')),\n  dibuat_pada   TEXT NOT NULL\n)",
@@ -32,5 +32,6 @@ export const SKEMA_BUAT = [
   "CREATE INDEX IF NOT EXISTS idx_percobaan_login_diperbarui ON percobaan_login(diperbarui)",
   "CREATE INDEX IF NOT EXISTS idx_aktivitas_jenis ON aktivitas(jenis, waktu)",
   "CREATE INDEX IF NOT EXISTS idx_nilai_timpa_kelas ON nilai_timpa(kelas_id)",
-  "ALTER TABLE sesi ADD COLUMN admin_asli_id TEXT REFERENCES guru(id) ON DELETE CASCADE"
+  "ALTER TABLE sesi ADD COLUMN admin_asli_id TEXT REFERENCES guru(id) ON DELETE CASCADE",
+  "ALTER TABLE siswa ADD COLUMN bahasa TEXT NOT NULL DEFAULT 'id' CHECK (bahasa IN ('id', 'en'))"
 ];

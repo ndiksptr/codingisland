@@ -608,3 +608,10 @@ export async function ubahAvatarSaya(avatar) {
   beritahu('siswa');
   return siswa;
 }
+
+/** Bahasa nama perintah koding: 'id' (Indonesia) atau 'en' (Inggris). */
+export async function ubahBahasaSaya(bahasa) {
+  const siswa = await api('siswa/saya/bahasa', { metode: 'PATCH', data: { bahasa } });
+  beritahu('siswa');
+  return siswa;
+}

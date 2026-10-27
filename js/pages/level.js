@@ -13,6 +13,8 @@ import { ikonGembok, ikonBug, ikonPanah } from '../game/ikon.js';
 import { buatEditor } from '../game/editor.js';
 import { buatPanggung } from '../game/panggung.js';
 import { jalankanKodeSiswa } from '../game/runner.js';
+import { SEMUA_PERINTAH } from '../game/interpreter.js';
+import { bahasaSah, namaDalam, terjemahkanKode, terjemahkanTeks } from '../game/kamus-perintah.js';
 import { hitungBintang, NILAI_BINTANG, CLUE, bintangMaksimal } from '../game/skor.js';
 import { kurangiGerak } from '../game/efek.js';
 import { muatPeta } from './peta.js';
@@ -22,24 +24,16 @@ const KECEPATAN = { pelan: 700, normal: 400, cepat: 160 };
 const URL_CONFETTI = '../vendor/confetti.js'; // canvas-confetti dibundel lokal (npm run build:vendor)
 const BATAS_DETIK_SEGMEN = 600; // jeda lama tanpa aktivitas tidak dihitung lebih dari 10 menit
 
-// Teks yang disisipkan chip perintah ('|' = posisi kursor)
+// Teks yang disisipkan chip struktur ('|' = posisi kursor); perintah & syarat lain cukup nama().
+// Ditulis dalam bahasa Indonesia, lalu diterjemahkan ke bahasa pilihan murid saat disisipkan.
 const TEMPLAT = {
-  maju: 'maju()',
-  belok_kiri: 'belok_kiri()',
-  belok_kanan: 'belok_kanan()',
-  ambil: 'ambil()',
-  lompat: 'lompat()',
   ulangi: 'ulangi 2 {\n  |\n}',
   jika: 'jika ada_rintangan() {\n  |\n}',
   selama: 'selama bukan sampai_tujuan() {\n  |\n}',
-  buat: 'buat langkah = 2',
-  ada_rintangan: 'ada_rintangan()',
-  ada_jurang: 'ada_jurang()',
-  ada_koin: 'ada_koin()',
-  sampai_tujuan: 'sampai_tujuan()'
+  buat: 'buat langkah = 2'
 };
-const STRUKTUR = ['ulangi', 'jika', 'selama', 'buat'];
-const labelChip = (p) => (STRUKTUR.includes(p) ? p : `${p}()`);
+const labelChip = (p, bahasa) => (TEMPLAT[p] ? namaDalam(p, bahasa) : `${namaDalam(p, bahasa)}()`);
+const templatChip = (p, bahasa) => terjemahkanKode(TEMPLAT[p] || `${p}()`, bahasa);
 
 function kartuInfo(isi) {
   return `
@@ -48,9 +42,9 @@ function kartuInfo(isi) {
     </section>`;
 }
 
-// Tulis nama perintah di instruksi sebagai kode, mis. maju(4)
-export function formatInstruksi(teks) {
-  return esc(teks).replace(/\b([a-z_]+\(\d*\))/g, '<code class="kode-inline">$1</code>');
+// Tulis nama perintah di instruksi sebagai kode, mis. maju(4) — dalam bahasa pilihan murid
+export function formatInstruksi(teks, bahasa = 'id') {
+  return esc(terjemahkanTeks(teks, bahasa)).replace(/\b([a-z_]+\(\d*\))/g, '<code class="kode-inline">$1</code>');
 }
 
 // tujuanTeks boleh berupa objek {teks, jenis, jumlah} atau teks biasa
@@ -135,12 +129,14 @@ export async function renderLevel(halaman, { params }) {
   let kecepatan = KECEPATAN[pref.kecepatan] ? pref.kecepatan : 'normal';
   const tampilPetakAwal = pref.tampilPetak !== false;
   let progres = progresAwal;
-  const perintah = level.perintahTersedia || Object.keys(TEMPLAT);
+  const perintah = level.perintahTersedia || SEMUA_PERINTAH; // nama Indonesia, seperti di database
+  // Bahasa nama perintah pilihan murid: kerangka, chip, saran editor, clue, dan bantuan ikut berganti
+  const bahasaKode = bahasaSah(siswa.bahasa);
   const daftarTujuan = (level.tujuanTeks || []).map(normalkanTujuan);
   // Editor SELALU dimulai dari kerangka awal level (kosong bila tidak ada).
   // Kode terakhir murid tetap tersimpan di server (progres.kodeTerakhir) untuk dilihat guru,
   // tetapi tidak dimuat lagi ke editor. Bintang, nilai, dan koin tersimpan terpisah dari kode.
-  const kodeMula = level.kodeAwal || '';
+  const kodeMula = terjemahkanKode(level.kodeAwal || '', bahasaKode);
 
   const lencana = level.jenis === 'debug'
     ? `${ikonBug(16)} ${LABEL_JENIS.debug}`
@@ -167,11 +163,11 @@ export async function renderLevel(halaman, { params }) {
               <h1 class="flex-1 font-judul text-3xl sm:text-4xl font-extrabold text-teal-tua leading-tight">${esc(level.judul)}</h1>
               ${level.jenis === 'boss' ? '<img src="image/item/piala.png" alt="Piala boss" class="piala-soal melayang">' : ''}
             </div>
-            <p class="mt-2 text-lg">${formatInstruksi(level.instruksi || level.ringkasan || '')}</p>
+            <p class="mt-2 text-lg">${formatInstruksi(level.instruksi || level.ringkasan || '', bahasaKode)}</p>
             ${tingkat >= 5 && level.tantanganBonus ? `
               <p class="tantangan-bonus mt-3">
                 <img src="image/item/berlian.png" alt="" class="w-7 h-7 object-contain shrink-0">
-                <span><strong>Tantangan bonus:</strong> ${formatInstruksi(level.tantanganBonus)}</span>
+                <span><strong>Tantangan bonus:</strong> ${formatInstruksi(level.tantanganBonus, bahasaKode)}</span>
               </p>` : ''}
             ${daftarTujuan.length ? `
               <h2 class="mt-4 font-judul text-xl font-extrabold">Tujuan</h2>
@@ -189,7 +185,7 @@ export async function renderLevel(halaman, { params }) {
                 : sakelar('Bantu ketik', 'data-sakelar-bantu', bantuKetik)}
             </div>
             <div class="mt-2 flex flex-wrap gap-2" data-chips>
-              ${perintah.map((p) => `<button type="button" class="chip-perintah" data-chip="${esc(p)}">${esc(labelChip(p))}</button>`).join('')}
+              ${perintah.map((p) => `<button type="button" class="chip-perintah" data-chip="${esc(p)}">${esc(labelChip(p, bahasaKode))}</button>`).join('')}
             </div>
           </div>
 
@@ -256,6 +252,7 @@ export async function renderLevel(halaman, { params }) {
   const editor = await buatEditor($('[data-editor]'), {
     nilai: kodeMula,
     saranKata: perintah,
+    bahasa: bahasaKode,
     label: `Editor kode level ${level.judul}`,
     saatUbah: (kode) => perbaruiInfoBaris(kode)
   });
@@ -272,7 +269,7 @@ export async function renderLevel(halaman, { params }) {
   const aturChip = () => {
     halaman.querySelectorAll('[data-chip]').forEach((c) => {
       c.setAttribute('aria-disabled', String(!bantuKetik));
-      c.title = bantuKetik ? `Tambahkan ${labelChip(c.dataset.chip)}` : 'Nyalakan "Bantu ketik" untuk menambahkan dengan klik';
+      c.title = bantuKetik ? `Tambahkan ${labelChip(c.dataset.chip, bahasaKode)}` : 'Nyalakan "Bantu ketik" untuk menambahkan dengan klik';
     });
   };
   aturChip();
@@ -280,7 +277,7 @@ export async function renderLevel(halaman, { params }) {
     const chip = e.target.closest('[data-chip]');
     if (!chip) return;
     if (!bantuKetik) { toast('Nyalakan "Bantu ketik" dulu, atau ketik sendiri ya.', 'info'); return; }
-    editor.sisipkan(TEMPLAT[chip.dataset.chip] || `${chip.dataset.chip}()`);
+    editor.sisipkan(templatChip(chip.dataset.chip, bahasaKode));
   });
   $('[data-sakelar-bantu]')?.addEventListener('change', (e) => {
     bantuKetik = e.target.checked;
@@ -333,7 +330,7 @@ export async function renderLevel(halaman, { params }) {
               : `<span class="chip-clue-harga"><img src="image/item/koin.png" alt="">${hargaClue[c.nomor - 1]} koin</span>`}
           </div>
           ${dibeli
-            ? `<pre class="isi-clue">${esc(level.clue?.[c.nomor - 1] || 'Clue belum tersedia.')}</pre>`
+            ? `<pre class="isi-clue">${esc(terjemahkanTeks(level.clue?.[c.nomor - 1], bahasaKode) || 'Clue belum tersedia.')}</pre>`
             : bisaBeli
               ? `<p class="text-sm mt-1">${catatanClue[c.nomor]}</p>
                  <button type="button" class="tombol tombol-utama tombol-kecil mt-2" data-beli-clue="${c.nomor}">Beli Clue ${c.nomor} (${hargaClue[c.nomor - 1]} koin)</button>`
@@ -422,7 +419,7 @@ export async function renderLevel(halaman, { params }) {
     });
   }
   $('[data-clue]').addEventListener('click', bukaTokoClue);
-  $('[data-bantuan]').addEventListener('click', () => bukaBantuan(perintah));
+  $('[data-bantuan]').addEventListener('click', () => bukaBantuan(perintah, bahasaKode));
 
   // ---------- Daftar tujuan bercentang ----------
   let jumlahAmbil = 0;
@@ -587,7 +584,7 @@ export async function renderLevel(halaman, { params }) {
       panggung.bicara('Hmm, aku baca kodenya dulu...');
 
       const kode = editor.getNilai();
-      const hasil = await jalankanKodeSiswa(kode, level.dunia, { perintahTersedia: level.perintahTersedia });
+      const hasil = await jalankanKodeSiswa(kode, level.dunia, { perintahTersedia: level.perintahTersedia, bahasa: bahasaKode });
       if (token.batal) return;
 
       const clueDibeli = progres?.clueDibeli || 0;

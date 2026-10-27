@@ -1,11 +1,19 @@
 // js/pages/profil.js — #/profil: profil siswa (dibuka dari header)
 // Avatar & nama, total bintang, koin, berlian, koleksi piala per zona, progres per zona,
-// riwayat 10 level terakhir, dan pilihan avatar.
+// riwayat 10 level terakhir, pilihan avatar, dan pilihan bahasa perintah koding.
 
 import { esc, tombol, toast } from '../ui.js';
-import { getSemuaProgres, ubahAvatarSaya, getKelas } from '../store.js';
+import { getSemuaProgres, ubahAvatarSaya, ubahBahasaSaya, getKelas } from '../store.js';
 import { deretBintang } from '../game/ikon.js';
+import { bahasaSah, namaDalam } from '../game/kamus-perintah.js';
 import { muatPeta } from './peta.js';
+
+const PILIHAN_BAHASA = [
+  { id: 'id', nama: 'Bahasa Indonesia' },
+  { id: 'en', nama: 'Bahasa Inggris' }
+];
+// Contoh nama perintah di kartu pilihan bahasa
+const contohPerintah = (bahasa) => [`${namaDalam('maju', bahasa)}()`, namaDalam('ulangi', bahasa), namaDalam('jika', bahasa)];
 
 const formatTanggal = (iso) => {
   const d = new Date(iso);
@@ -102,6 +110,24 @@ export async function renderProfil(halaman) {
             </label>`).join('')}
         </fieldset>
       </section>
+
+      <section class="kartu mt-6" aria-labelledby="judul-bahasa">
+        <h2 id="judul-bahasa" class="font-judul text-2xl font-extrabold text-teal-tua">Bahasa Perintah Robot</h2>
+        <p class="mb-3">Kamu boleh menulis perintah robot dalam bahasa Indonesia atau bahasa Inggris. Robot mengerti keduanya!
+          Pilihan ini hanya mengganti nama perintah. Tulisan lain tetap bahasa Indonesia.</p>
+        <fieldset class="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-xl">
+          <legend class="sr-only">Pilih bahasa perintah robot</legend>
+          ${PILIHAN_BAHASA.map((b) => `
+            <label class="pilih-avatar">
+              <input type="radio" name="bahasa" value="${b.id}" ${bahasaSah(siswa.bahasa) === b.id ? 'checked' : ''}>
+              <span class="tanda-pilih" aria-hidden="true">✓</span>
+              <span class="font-judul text-xl font-extrabold">${b.nama}</span>
+              <span class="flex flex-wrap justify-center gap-1.5">
+                ${contohPerintah(b.id).map((k) => `<code class="kode-inline">${esc(k)}</code>`).join('')}
+              </span>
+            </label>`).join('')}
+        </fieldset>
+      </section>
     </section>`;
 
   halaman.querySelectorAll('[name="avatar"]').forEach((r) => r.addEventListener('change', async () => {
@@ -110,6 +136,18 @@ export async function renderProfil(halaman) {
       halaman.querySelector('[data-avatar-besar]').src = `image/profile/${baru.avatar}.png`;
       toast('Avatar berhasil diganti!', 'sukses');
     } catch (err) {
+      toast(err.message, 'peringatan');
+    }
+  }));
+
+  halaman.querySelectorAll('[name="bahasa"]').forEach((r) => r.addEventListener('change', async () => {
+    try {
+      const baru = await ubahBahasaSaya(r.value);
+      siswa.bahasa = baru.bahasa;
+      toast(`Sekarang perintah robot memakai ${PILIHAN_BAHASA.find((b) => b.id === baru.bahasa)?.nama}. Contoh: ${contohPerintah(baru.bahasa)[0]}`, 'sukses');
+    } catch (err) {
+      // Kembalikan pilihan semula bila gagal tersimpan
+      halaman.querySelector(`[name="bahasa"][value="${bahasaSah(siswa.bahasa)}"]`).checked = true;
       toast(err.message, 'peringatan');
     }
   }));

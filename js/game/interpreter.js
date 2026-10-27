@@ -1,6 +1,10 @@
 // js/game/interpreter.js — interpreter mini-bahasa Coding Island
 // Alur: kode teks -> tokenisasi() -> Parser (AST bernomor baris) -> evaluator -> jejak peristiwa.
 // Tidak memakai eval / new Function. Modul ini murni (tanpa DOM), dijalankan di Web Worker.
+// Dua bahasa: nama perintah boleh Indonesia atau Inggris, boleh dicampur (forward() di satu baris,
+// belok_kanan() di baris lain). Setelah tokenisasi, setiap kata dinormalkan ke bentuk Indonesia
+// (js/game/kamus-perintah.js), jadi parser & evaluator di bawah hanya mengenal nama Indonesia.
+// Pesan galat tetap kalimat Indonesia, tetapi nama perintah di dalamnya memakai opsi.bahasa murid.
 //
 // Contoh bahasa:
 //   // komentar
@@ -10,19 +14,16 @@
 //   }
 //   selama bukan sampai_tujuan() { maju() }
 
+import { NAMA_PERINTAH, NAMA_SYARAT, NAMA_KUNCI, keIndonesia, namaDalam, semuaBentuk, bahasaSah } from './kamus-perintah.js';
+
 export const MAKS_LANGKAH = 1000;
 export const PESAN_KELELAHAN = 'Robot kelelahan! Sepertinya perulanganmu tidak pernah berhenti.';
 
-// Perintah gerak: arg = boleh diberi angka di dalam kurung
-const PERINTAH = {
-  maju: { arg: true },
-  belok_kiri: { arg: false },
-  belok_kanan: { arg: false },
-  ambil: { arg: false },
-  lompat: { arg: false }
-};
-const SYARAT = ['ada_rintangan', 'ada_jurang', 'ada_koin', 'sampai_tujuan'];
-const KATA_KUNCI = ['ulangi', 'jika', 'lainnya', 'selama', 'buat', 'bukan'];
+// Perintah gerak: arg = boleh diberi angka di dalam kurung (hanya maju)
+const PERINTAH = Object.fromEntries(NAMA_PERINTAH.map((nama) => [nama, { arg: nama === 'maju' }]));
+const SYARAT = NAMA_SYARAT;
+// "kali" (ulangi 3 kali) bukan kata terlarang: tetap boleh dipakai sebagai nama variabel
+const KATA_KUNCI = NAMA_KUNCI.filter((k) => k !== 'kali');
 
 /** Semua nama yang bisa dimasukkan ke perintahTersedia sebuah level. */
 export const SEMUA_PERINTAH = [...Object.keys(PERINTAH), 'ulangi', 'jika', 'selama', 'buat', ...SYARAT];
@@ -56,15 +57,18 @@ export function jarakLevenshtein(a, b) {
   return sebelum[n];
 }
 
-// Bentuk tampilan: perintah & syarat memakai (), kata kunci tidak
-const tampil = (nama) => (PERINTAH[nama] || SYARAT.includes(nama) ? `${nama}()` : nama);
+// Bentuk tampilan dalam bahasa murid: perintah & syarat memakai (), kata kunci tidak
+const tampil = (nama, bahasa) => (PERINTAH[nama] || SYARAT.includes(nama) ? `${namaDalam(nama, bahasa)}()` : namaDalam(nama, bahasa));
 
+// Dibandingkan dengan bentuk Indonesia DAN Inggris; hasilnya nama Indonesia (ditampilkan lewat tampil)
 function saranEjaan(kata, kandidat = [...Object.keys(PERINTAH), ...SYARAT, ...KATA_KUNCI]) {
   let terbaik = null;
   let jarakTerbaik = Infinity;
   for (const k of kandidat) {
-    const j = jarakLevenshtein(kata, k);
-    if (j < jarakTerbaik) { jarakTerbaik = j; terbaik = k; }
+    for (const bentuk of semuaBentuk(k)) {
+      const j = jarakLevenshtein(kata, bentuk);
+      if (j < jarakTerbaik) { jarakTerbaik = j; terbaik = k; }
+    }
   }
   const batas = Math.min(3, Math.max(1, Math.floor(kata.length / 3)));
   return jarakTerbaik <= batas ? terbaik : null;
@@ -116,6 +120,11 @@ export function tokenisasi(kode) {
   return token;
 }
 
+/** Tahap sesudah tokenisasi: nama perintah Inggris diganti bentuk Indonesia (asli tetap disimpan). */
+function normalkanBahasa(token) {
+  return token.map((tk) => (tk.t === 'ident' ? { ...tk, v: keIndonesia(tk.v) } : tk));
+}
+
 // =====================================================================
 // 2. Parser -> AST
 // =====================================================================
@@ -132,10 +141,13 @@ const namaToken = (tk) => (tk.t === 'ident' ? tk.asli : tk.t === 'angka' ? Strin
 const akhirBaris = (tk) => tk.t === 'baris_baru' || tk.t === 'akhir';
 
 class Parser {
-  constructor(token, perintahTersedia) {
+  constructor(token, perintahTersedia, bahasa = 'id') {
     this.token = token;
     this.i = 0;
     this.tersedia = perintahTersedia ? new Set(perintahTersedia.map((p) => String(p).toLowerCase())) : null;
+    // Nama perintah di pesan galat mengikuti bahasa pilihan murid
+    this.n = (nama) => namaDalam(nama, bahasa);
+    this.tampil = (nama) => tampil(nama, bahasa);
   }
 
   lihat(k = 0) { return this.token[Math.min(this.i + k, this.token.length - 1)]; }
@@ -150,7 +162,7 @@ class Parser {
 
   cekTersedia(nama, baris) {
     if (this.tersedia && !this.tersedia.has(nama)) {
-      throw new GalatKode(baris, `${tampil(nama)} belum bisa dipakai. Perintah ini belum dibuka di pulau ini.`);
+      throw new GalatKode(baris, `${this.tampil(nama)} belum bisa dipakai. Perintah ini belum dibuka di pulau ini.`);
     }
   }
 
@@ -184,8 +196,9 @@ class Parser {
 
   pernyataan() {
     const tk = this.lihat();
-    if (tk.t === 'angka') throw new GalatKode(tk.baris, `angka ${tk.v} harus berada di dalam perintah, contoh: maju(${tk.v}).`);
-    if (tk.t === '{') throw new GalatKode(tk.baris, 'kurung kurawal { harus ditulis setelah ulangi, jika, atau selama.');
+    const { n } = this;
+    if (tk.t === 'angka') throw new GalatKode(tk.baris, `angka ${tk.v} harus berada di dalam perintah, contoh: ${n('maju')}(${tk.v}).`);
+    if (tk.t === '{') throw new GalatKode(tk.baris, `kurung kurawal { harus ditulis setelah ${n('ulangi')}, ${n('jika')}, atau ${n('selama')}.`);
     if (tk.t === ')') throw new GalatKode(tk.baris, 'ada kurung tutup ) yang tidak punya pasangan (.');
     if (tk.t !== 'ident') throw new GalatKode(tk.baris, `tanda ${namaToken(tk)} di awal baris membuat robot bingung.`);
 
@@ -194,13 +207,14 @@ class Parser {
       case 'jika': return this.jika();
       case 'selama': return this.selama();
       case 'buat': return this.buat();
-      case 'lainnya': throw new GalatKode(tk.baris, 'lainnya harus ditulis tepat setelah blok jika.');
-      case 'bukan': throw new GalatKode(tk.baris, 'bukan dipakai di depan syarat, contoh: jika bukan ada_rintangan() {');
+      case 'lainnya': throw new GalatKode(tk.baris, `${n('lainnya')} harus ditulis tepat setelah blok ${n('jika')}.`);
+      case 'bukan':
+        throw new GalatKode(tk.baris, `${n('bukan')} dipakai di depan syarat, contoh: ${n('jika')} ${n('bukan')} ${this.tampil('ada_rintangan')} {`);
       default: break;
     }
     if (PERINTAH[tk.v]) return this.perintah();
     if (SYARAT.includes(tk.v)) {
-      throw new GalatKode(tk.baris, `${tk.v}() adalah syarat. Pakai bersama jika atau selama, contoh: jika ${tk.v}() {`);
+      throw new GalatKode(tk.baris, `${this.tampil(tk.v)} adalah syarat. Pakai bersama ${n('jika')} atau ${n('selama')}, contoh: ${n('jika')} ${this.tampil(tk.v)} {`);
     }
     if (this.lihat(1).t === '=') return this.atur();
     throw this.galatTakDikenal(tk);
@@ -211,14 +225,14 @@ class Parser {
     const t1 = this.lihat(1);
     const t2 = this.lihat(2);
     let gabung = null;
-    if (t1.t === 'ident') gabung = `${tk.v}_${t1.v}`;
-    else if ((t1.t === '-') && t2.t === 'ident') gabung = `${tk.v}_${t2.v}`;
+    if (t1.t === 'ident') gabung = keIndonesia(`${tk.v}_${t1.v}`);
+    else if ((t1.t === '-') && t2.t === 'ident') gabung = keIndonesia(`${tk.v}_${t2.v}`);
     if (gabung && (PERINTAH[gabung] || SYARAT.includes(gabung))) {
-      return new GalatKode(tk.baris, `Robot belum kenal ${tk.asli}. Maksudmu ${gabung}()? Pakai garis bawah _ ya.`);
+      return new GalatKode(tk.baris, `Robot belum kenal ${tk.asli}. Maksudmu ${this.tampil(gabung)}? Pakai garis bawah _ ya.`);
     }
     const saran = saranEjaan(tk.v);
     return new GalatKode(tk.baris, saran
-      ? `Robot belum kenal ${tk.asli}. Maksudmu ${tampil(saran)}?`
+      ? `Robot belum kenal ${tk.asli}. Maksudmu ${this.tampil(saran)}?`
       : `Robot belum kenal ${tk.asli}.`);
   }
 
@@ -226,17 +240,18 @@ class Parser {
     const tk = this.ambil();
     this.cekTersedia(tk.v, tk.baris);
     const def = PERINTAH[tk.v];
+    const nama = this.n(tk.v);
     const buka = this.lihat();
     if (buka.t !== '(') {
-      const contoh = def.arg && buka.t === 'angka' ? `${tk.v}(${buka.v})` : `${tk.v}()`;
-      throw new GalatKode(tk.baris, `perintah ${tk.v} perlu tanda kurung, contoh: ${contoh}`);
+      const contoh = def.arg && buka.t === 'angka' ? `${nama}(${buka.v})` : `${nama}()`;
+      throw new GalatKode(tk.baris, `perintah ${nama} perlu tanda kurung, contoh: ${contoh}`);
     }
     this.i++;
     let arg = null;
     const isi = this.lihat();
     if (akhirBaris(isi)) throw new GalatKode(isi.baris, 'kurung tutup ) sepertinya hilang.');
     if (isi.t !== ')') {
-      if (!def.arg) throw new GalatKode(isi.baris, `${tk.v}() tidak perlu isi di dalam kurung.`);
+      if (!def.arg) throw new GalatKode(isi.baris, `${nama}() tidak perlu isi di dalam kurung.`);
       arg = this.ekspresi('(');
     }
     this.harap(')', 'kurung tutup ) sepertinya hilang.');
@@ -249,7 +264,7 @@ class Parser {
     while (this.token[j].t === 'baris_baru') j++;
     if (this.token[j].t === '{') this.i = j;
     const tk = this.lihat();
-    if (tk.t !== '{') throw new GalatKode(tk.baris, `kurung kurawal buka { sepertinya hilang setelah ${kata}.`);
+    if (tk.t !== '{') throw new GalatKode(tk.baris, `kurung kurawal buka { sepertinya hilang setelah ${this.n(kata)}.`);
     this.i++;
     return this.daftarPernyataan(tk);
   }
@@ -259,7 +274,7 @@ class Parser {
     this.cekTersedia('ulangi', tk.baris);
     const sesudah = this.lihat();
     if (sesudah.t === '{' || akhirBaris(sesudah)) {
-      throw new GalatKode(tk.baris, 'tulis berapa kali mengulang, contoh: ulangi 3 {');
+      throw new GalatKode(tk.baris, `tulis berapa kali mengulang, contoh: ${this.n('ulangi')} 3 {`);
     }
     const jumlah = this.ekspresi('ulangi');
     if (this.lihat().t === 'ident' && this.lihat().v === 'kali') this.i++; // "ulangi 3 kali {" juga boleh
@@ -268,25 +283,28 @@ class Parser {
   }
 
   syarat(kata) {
+    const { n } = this;
     let tk = this.lihat();
     let bukan = false;
     if (tk.t === 'ident' && tk.v === 'bukan') { this.i++; bukan = true; tk = this.lihat(); }
-    if (tk.t !== 'ident') throw new GalatKode(tk.baris, `${kata} perlu syarat, contoh: ${kata} ada_rintangan() {`);
+    if (tk.t !== 'ident') throw new GalatKode(tk.baris, `${n(kata)} perlu syarat, contoh: ${n(kata)} ${this.tampil('ada_rintangan')} {`);
     if (!SYARAT.includes(tk.v)) {
-      if (PERINTAH[tk.v]) throw new GalatKode(tk.baris, `${tk.v}() adalah perintah, bukan syarat. Coba ada_rintangan().`);
+      if (PERINTAH[tk.v]) {
+        throw new GalatKode(tk.baris, `${this.tampil(tk.v)} adalah perintah, bukan syarat. Coba ${this.tampil('ada_rintangan')}.`);
+      }
       const saran = saranEjaan(tk.v, SYARAT);
       throw new GalatKode(tk.baris, saran
-        ? `Robot belum kenal syarat ${tk.asli}. Maksudmu ${saran}()?`
-        : `Robot belum kenal syarat ${tk.asli}. Contoh syarat: ada_rintangan()`);
+        ? `Robot belum kenal syarat ${tk.asli}. Maksudmu ${this.tampil(saran)}?`
+        : `Robot belum kenal syarat ${tk.asli}. Contoh syarat: ${this.tampil('ada_rintangan')}`);
     }
     this.i++;
     this.cekTersedia(tk.v, tk.baris);
-    if (this.lihat().t !== '(') throw new GalatKode(tk.baris, `syarat ${tk.v} perlu tanda kurung: ${tk.v}()`);
+    if (this.lihat().t !== '(') throw new GalatKode(tk.baris, `syarat ${n(tk.v)} perlu tanda kurung: ${this.tampil(tk.v)}`);
     this.i++;
     const isi = this.lihat();
     if (isi.t !== ')') {
       if (akhirBaris(isi) || isi.t === '{') throw new GalatKode(isi.baris, 'kurung tutup ) sepertinya hilang.');
-      throw new GalatKode(isi.baris, `${tk.v}() tidak perlu isi di dalam kurung.`);
+      throw new GalatKode(isi.baris, `${this.tampil(tk.v)} tidak perlu isi di dalam kurung.`);
     }
     this.i++;
     return { nama: tk.v, bukan, baris: tk.baris };
@@ -326,10 +344,11 @@ class Parser {
     const tk = this.ambil();
     this.cekTersedia('buat', tk.baris);
     const nama = this.lihat();
-    if (nama.t !== 'ident') throw new GalatKode(tk.baris, 'tulis nama variabel setelah buat, contoh: buat langkah = 3');
+    const buat = this.n('buat');
+    if (nama.t !== 'ident') throw new GalatKode(tk.baris, `tulis nama variabel setelah ${buat}, contoh: ${buat} langkah = 3`);
     this.cekNamaVariabel(nama);
     this.i++;
-    this.harap('=', `tanda = sepertinya hilang, contoh: buat ${nama.asli} = 3`);
+    this.harap('=', `tanda = sepertinya hilang, contoh: ${buat} ${nama.asli} = 3`);
     const nilai = this.ekspresi('=');
     return { tipe: 'buat', nama: nama.v, nilai, baris: tk.baris };
   }
@@ -375,14 +394,14 @@ class Parser {
       return { tipe: 'var', nama: tk.v, baris: tk.baris };
     }
     throw new GalatKode(tk.baris, setelah
-      ? `setelah ${setelah} harus ada angka atau variabel.`
+      ? `setelah ${this.n(setelah)} harus ada angka atau variabel.`
       : 'di sini harus ada angka atau variabel.');
   }
 }
 
-/** Ubah kode menjadi AST. Melempar GalatKode jika ada salah tulis. */
-export function urai(kode, perintahTersedia = null) {
-  return new Parser(tokenisasi(kode), perintahTersedia).program();
+/** Ubah kode (Indonesia, Inggris, atau campuran) menjadi AST. Melempar GalatKode jika ada salah tulis. */
+export function urai(kode, perintahTersedia = null, bahasa = 'id') {
+  return new Parser(normalkanBahasa(tokenisasi(kode)), perintahTersedia, bahasa).program();
 }
 
 /** Jumlah baris berisi perintah (tanpa baris kosong, komentar, atau baris yang hanya berisi }). */
@@ -420,7 +439,8 @@ function siapkanDunia(d) {
   };
 }
 
-function evaluasi(ast, duniaAwal, maksLangkah) {
+function evaluasi(ast, duniaAwal, maksLangkah, bahasa = 'id') {
+  const n = (nama) => namaDalam(nama, bahasa);
   const dunia = siapkanDunia(duniaAwal);
   const robot = dunia.robot;
   const jejak = [];
@@ -467,7 +487,7 @@ function evaluasi(ast, duniaAwal, maksLangkah) {
     robot.y = tujuan.y;
     if (p.jurang) {
       catat('jatuh', baris);
-      throw new Henti(`Baris ${baris}: Robot jatuh ke jurang! Pakai lompat() untuk melewatinya.`, baris, 'jatuh');
+      throw new Henti(`Baris ${baris}: Robot jatuh ke jurang! Pakai ${n('lompat')}() untuk melewatinya.`, baris, 'jatuh');
     }
     catat(jenisGerak, baris);
   }
@@ -476,7 +496,7 @@ function evaluasi(ast, duniaAwal, maksLangkah) {
     if (e.tipe === 'angka') return e.nilai;
     if (e.tipe === 'var') {
       if (!variabel.has(e.nama)) {
-        throw new Henti(`Baris ${e.baris}: variabel ${e.nama} belum dibuat. Tulis dulu: buat ${e.nama} = 0`, e.baris, 'galat');
+        throw new Henti(`Baris ${e.baris}: variabel ${e.nama} belum dibuat. Tulis dulu: ${n('buat')} ${e.nama} = 0`, e.baris, 'galat');
       }
       return variabel.get(e.nama);
     }
@@ -516,10 +536,10 @@ function evaluasi(ast, duniaAwal, maksLangkah) {
     switch (st.tipe) {
       case 'perintah': return jalankanPerintah(st);
       case 'ulangi': {
-        const n = nilai(st.jumlah);
-        if (n < 0) throw new Henti(`Baris ${st.baris}: jumlah ulangi tidak boleh kurang dari 0.`, st.baris, 'galat');
+        const jumlah = nilai(st.jumlah);
+        if (jumlah < 0) throw new Henti(`Baris ${st.baris}: jumlah ${n('ulangi')} tidak boleh kurang dari 0.`, st.baris, 'galat');
         tumpukanUlang.push(st.baris);
-        for (let k = 0; k < n; k++) {
+        for (let k = 0; k < jumlah; k++) {
           hitung(st.baris);
           jalankanDaftar(st.isi);
         }
@@ -543,7 +563,7 @@ function evaluasi(ast, duniaAwal, maksLangkah) {
         return undefined;
       case 'atur':
         if (!variabel.has(st.nama)) {
-          throw new Henti(`Baris ${st.baris}: variabel ${st.nama} belum dibuat. Tulis dulu: buat ${st.nama} = 0`, st.baris, 'galat');
+          throw new Henti(`Baris ${st.baris}: variabel ${st.nama} belum dibuat. Tulis dulu: ${n('buat')} ${st.nama} = 0`, st.baris, 'galat');
         }
         variabel.set(st.nama, nilai(st.nilai));
         return undefined;
@@ -556,9 +576,9 @@ function evaluasi(ast, duniaAwal, maksLangkah) {
     const b = st.baris;
     switch (st.nama) {
       case 'maju': {
-        const n = st.arg ? nilai(st.arg) : 1;
-        if (n < 0) throw new Henti(`Baris ${b}: angka di maju() tidak boleh kurang dari 0.`, b, 'galat');
-        for (let k = 0; k < n; k++) {
+        const jarak = st.arg ? nilai(st.arg) : 1;
+        if (jarak < 0) throw new Henti(`Baris ${b}: angka di ${n('maju')}() tidak boleh kurang dari 0.`, b, 'galat');
+        for (let k = 0; k < jarak; k++) {
           if (k > 0) hitung(b);
           pindahKe(depan(), b, 'gerak');
         }
@@ -635,16 +655,18 @@ function evaluasi(ast, duniaAwal, maksLangkah) {
 
 /**
  * Jalankan kode siswa di atas dunia level.
- * opsi: { perintahTersedia: string[] | null, maksLangkah: number }
+ * opsi: { perintahTersedia: string[] | null, maksLangkah: number, bahasa: 'id' | 'en' }
+ *   bahasa hanya mengatur nama perintah di pesan galat; kode selalu boleh ditulis dalam kedua bahasa.
  * Hasil: { berhasil, alasan, galat, jejak, jumlahBaris, jumlahLangkah, posisiAkhir, itemDiambil }
  *   jumlahLangkah = banyaknya langkah eksekusi (perintah, putaran, dan gerak) yang dijalankan.
  */
 export function jalankanKode(kode, dunia, opsi = {}) {
   const teks = String(kode ?? '');
   const jumlahBaris = hitungJumlahBaris(teks);
+  const bahasa = bahasaSah(opsi.bahasa);
   let ast;
   try {
-    ast = urai(teks, opsi.perintahTersedia || null);
+    ast = urai(teks, opsi.perintahTersedia || null, bahasa);
   } catch (err) {
     if (!(err instanceof GalatKode)) throw err;
     return {
@@ -659,5 +681,5 @@ export function jalankanKode(kode, dunia, opsi = {}) {
     };
   }
   const maks = opsi.maksLangkah ?? MAKS_LANGKAH;
-  return { ...evaluasi(ast, dunia, maks), jumlahBaris };
+  return { ...evaluasi(ast, dunia, maks, bahasa), jumlahBaris };
 }

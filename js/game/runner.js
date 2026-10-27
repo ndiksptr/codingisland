@@ -21,7 +21,7 @@ function hasilGagal(kode, pesan, jenis) {
 
 /**
  * Jalankan kode siswa di Web Worker.
- * opsi: { perintahTersedia, maksLangkah, batasWaktuMs }
+ * opsi: { perintahTersedia, maksLangkah, batasWaktuMs, bahasa } — bahasa ('id'|'en') untuk nama perintah di pesan galat
  * Selalu resolve (tidak pernah reject) dengan objek hasil interpreter.
  */
 export function jalankanKodeSiswa(kode, dunia, opsi = {}) {
@@ -61,7 +61,8 @@ export function jalankanKodeSiswa(kode, dunia, opsi = {}) {
       dunia: JSON.parse(JSON.stringify(dunia)), // pastikan data polos
       opsi: {
         perintahTersedia: opsi.perintahTersedia ?? null,
-        maksLangkah: opsi.maksLangkah ?? MAKS_LANGKAH
+        maksLangkah: opsi.maksLangkah ?? MAKS_LANGKAH,
+        bahasa: opsi.bahasa ?? 'id'
       }
     });
   });

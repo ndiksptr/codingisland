@@ -3,13 +3,16 @@
 // otomatis memakai textarea dengan nomor baris. Keduanya punya API yang sama:
 //   { jenis, getNilai, setNilai, sisipkan, sorotBaris, tandaiGalat, bersihkanSorotan, fokus, hancurkan }
 
+import { NAMA_PERINTAH, NAMA_SYARAT, NAMA_KUNCI, kataDikenal, namaDalam, terjemahkanKode } from './kamus-perintah.js';
+
 // Bundel lokal berisi state, view, commands, language, autocomplete, dan @lezer/highlight
 // (versi dipin di package.json; dibuat ulang dengan npm run build:vendor)
 const URL_CM = '../vendor/codemirror.js';
 const BATAS_MUAT_MS = 6000;
 
-const STRUKTUR = new Set(['ulangi', 'jika', 'lainnya', 'selama', 'buat', 'bukan', 'kali']);
-const PERINTAH = new Set(['maju', 'belok_kiri', 'belok_kanan', 'ambil', 'lompat', 'ada_rintangan', 'ada_jurang', 'ada_koin', 'sampai_tujuan']);
+// Nama Indonesia (sumber: kamus-perintah.js). Perintah & syarat memakai kurung.
+const BERKURUNG = new Set([...NAMA_PERINTAH, ...NAMA_SYARAT]);
+const TEMPLAT_SARAN = { ulangi: 'ulangi 2 {', jika: 'jika ', selama: 'selama ', buat: 'buat ' };
 
 // Tempatkan kursor di posisi '|' pada templat
 function pecahTemplat(teks) {
@@ -31,7 +34,9 @@ function muatCodeMirror() {
 
 /**
  * Buat editor di dalam `wadah`.
- * opsi: { nilai, saatUbah(teks), saranKata: ['maju', ...], label }
+ * opsi: { nilai, saatUbah(teks), saranKata: ['maju', ...], label, bahasa }
+ *   saranKata selalu nama Indonesia; bahasa 'en' menampilkan saran dalam bahasa Inggris dan mewarnai
+ *   kata kunci kedua bahasa (murid boleh mencampur). Tanpa bahasa (editor guru) = Indonesia saja.
  */
 export async function buatEditor(wadah, opsi = {}) {
   try {
@@ -46,7 +51,7 @@ export async function buatEditor(wadah, opsi = {}) {
 // =====================================================================
 // CodeMirror 6
 // =====================================================================
-function editorCodeMirror(cm, wadah, { nilai = '', saatUbah = null, saranKata = [], label = 'Editor kode' }) {
+function editorCodeMirror(cm, wadah, { nilai = '', saatUbah = null, saranKata = [], label = 'Editor kode', bahasa: bahasaKode = 'id' }) {
   const { EditorState, StateEffect, StateField } = cm.state;
   const { EditorView, Decoration, keymap, lineNumbers, highlightActiveLineGutter, drawSelection } = cm.view;
   const { defaultKeymap, history, historyKeymap } = cm.commands;
@@ -55,6 +60,8 @@ function editorCodeMirror(cm, wadah, { nilai = '', saatUbah = null, saranKata = 
   const { tags } = cm.highlight;
 
   // Pewarnaan sederhana: perintah, kata kunci, angka, komentar
+  const STRUKTUR = kataDikenal(NAMA_KUNCI, bahasaKode);
+  const PERINTAH = kataDikenal([...BERKURUNG], bahasaKode);
   const bahasa = StreamLanguage.define({
     token(stream) {
       if (stream.eatSpace()) return null;
@@ -77,11 +84,12 @@ function editorCodeMirror(cm, wadah, { nilai = '', saatUbah = null, saranKata = 
     { tag: tags.comment, color: '#6E8F8A', fontStyle: 'italic' }
   ]);
 
-  // Autocomplete nama perintah yang tersedia
+  // Autocomplete nama perintah yang tersedia, dalam bahasa pilihan murid
   const pilihan = saranKata.map((k) => {
-    const templat = { ulangi: 'ulangi 2 {', jika: 'jika ', selama: 'selama ', buat: 'buat ' }[k];
-    const pakaiKurung = PERINTAH.has(k);
-    return { label: k, type: pakaiKurung ? 'function' : 'keyword', apply: templat || (pakaiKurung ? `${k}()` : k) };
+    const nama = namaDalam(k, bahasaKode);
+    const templat = TEMPLAT_SARAN[k] && terjemahkanKode(TEMPLAT_SARAN[k], bahasaKode);
+    const pakaiKurung = BERKURUNG.has(k);
+    return { label: nama, type: pakaiKurung ? 'function' : 'keyword', apply: templat || (pakaiKurung ? `${nama}()` : nama) };
   });
   const sumberSaran = (ctx) => {
     const kata = ctx.matchBefore(/[a-zA-Z_]+/);

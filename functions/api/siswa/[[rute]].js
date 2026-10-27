@@ -2,6 +2,7 @@
 // Untuk siswa yang masuk:
 //   GET   /api/siswa/saya                 data diri (tanpa hash PIN)
 //   PATCH /api/siswa/saya/avatar          { avatar }
+//   PATCH /api/siswa/saya/bahasa          { bahasa: 'id' | 'en' } bahasa nama perintah koding
 //   POST  /api/siswa/saya/zona-terlihat   { zonaIds }
 // Untuk guru (dibatasi kelas yang diampu; admin semua):
 //   GET    /api/siswa?kelasId=            daftar + statistik
@@ -23,6 +24,7 @@ import { hitungStatistik, siswaDalamAkses } from '../../../server/statistik.js';
 import { hashRahasia, acakPin, idBaru, iterasiDari } from '../../../server/kripto.js';
 import { periksaKolomSiswa } from '../../../js/game/aturan-siswa.js';
 import { ZONA } from '../../../js/data/zona.js';
+import { BAHASA_KODE } from '../../../js/game/kamus-perintah.js';
 
 const iterasi = iterasiDari;
 
@@ -112,6 +114,15 @@ export const onRequest = buatRouter([
     const { avatar } = await bacaJson(ctx.request);
     if (!['pria', 'wanita'].includes(avatar)) throw new GalatApi(400, 'Pilih salah satu gambar ya.');
     await jalankan(ctx.env.DB, 'UPDATE siswa SET avatar = ?, jenis_kelamin = ? WHERE id = ?', avatar, avatar === 'pria' ? 'L' : 'P', s.id);
+    return siswaKeObjek(await satu(ctx.env.DB, 'SELECT * FROM siswa WHERE id = ?', s.id));
+  }],
+
+  // Hanya nama perintah koding yang berganti; kode yang sudah tersimpan tidak diterjemahkan
+  ['PATCH', 'saya/bahasa', async (ctx) => {
+    const s = await wajibSiswa(ctx);
+    const { bahasa } = await bacaJson(ctx.request);
+    if (!BAHASA_KODE.includes(bahasa)) throw new GalatApi(400, 'Pilih bahasa Indonesia atau Inggris ya.');
+    await jalankan(ctx.env.DB, 'UPDATE siswa SET bahasa = ? WHERE id = ?', bahasa, s.id);
     return siswaKeObjek(await satu(ctx.env.DB, 'SELECT * FROM siswa WHERE id = ?', s.id));
   }],
 

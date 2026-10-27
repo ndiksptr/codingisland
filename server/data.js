@@ -28,6 +28,7 @@ export function siswaKeObjek(r) {
     koin: r.koin,
     berlian: r.berlian,
     zonaTerlihat: jsonAman(r.zona_terlihat, [ZONA[0].id]),
+    bahasa: r.bahasa === 'en' ? 'en' : 'id', // bahasa nama perintah koding (migrasi 0005)
     dibuatPada: r.dibuat_pada
   };
 }

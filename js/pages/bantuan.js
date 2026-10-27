@@ -1,7 +1,10 @@
 // js/pages/bantuan.js — #/bantuan: daftar perintah dengan contoh
 // Isi yang sama juga dibuka sebagai modal dari tombol "?" di layar level.
+// Nama perintah & contoh kode mengikuti bahasa pilihan murid; penjelasannya tetap bahasa Indonesia.
 
 import { esc, robot, bukaModal } from '../ui.js';
+import { sesiAktif } from '../store.js';
+import { bahasaSah, namaDalam, terjemahkanKode } from '../game/kamus-perintah.js';
 
 const KELOMPOK = [
   {
@@ -54,9 +57,10 @@ const TIPS = [
 
 /**
  * HTML isi bantuan.
- * tersedia: daftar perintah yang terbuka di level ini (opsional) — perintah lain ditandai "belum dibuka".
+ * tersedia: daftar perintah yang terbuka di level ini (opsional, nama Indonesia) — perintah lain ditandai "belum dibuka".
+ * bahasa  : 'id' | 'en' — bahasa nama perintah pilihan murid.
  */
-export function bantuanHTML({ tersedia = null } = {}) {
+export function bantuanHTML({ tersedia = null, bahasa = 'id' } = {}) {
   const terbuka = tersedia ? new Set(tersedia) : null;
   const bolehDipakai = (nama) => !terbuka || terbuka.has(nama) || (nama === 'bukan' && (terbuka.has('jika') || terbuka.has('selama')));
   return `
@@ -68,11 +72,11 @@ export function bantuanHTML({ tersedia = null } = {}) {
             ${k.perintah.map((p) => `
               <article class="bantuan-kartu ${bolehDipakai(p.nama) ? '' : 'belum-terbuka'}">
                 <div class="flex flex-wrap items-center justify-between gap-2">
-                  <h3 class="font-kode text-lg font-bold">${esc(p.nama)}</h3>
+                  <h3 class="font-kode text-lg font-bold">${esc(namaDalam(p.nama, bahasa))}</h3>
                   ${terbuka ? (bolehDipakai(p.nama) ? '<span class="bantuan-chip bisa">Bisa dipakai di sini</span>' : '<span class="bantuan-chip">Belum dibuka</span>') : ''}
                 </div>
                 <p class="mt-1">${esc(p.teks)}</p>
-                <pre class="bantuan-contoh">${esc(p.contoh)}</pre>
+                <pre class="bantuan-contoh">${esc(terjemahkanKode(p.contoh, bahasa))}</pre>
               </article>`).join('')}
           </div>
         </section>`).join('')}
@@ -84,17 +88,20 @@ export function bantuanHTML({ tersedia = null } = {}) {
 }
 
 /** Buka bantuan sebagai modal (dari tombol "?" di layar level). */
-export function bukaBantuan(tersedia = null) {
+export function bukaBantuan(tersedia = null, bahasa = 'id') {
   return bukaModal({
     judul: 'Bantuan Perintah',
     pose: 'berpikir',
     lebar: true,
-    isi: bantuanHTML({ tersedia }),
+    isi: bantuanHTML({ tersedia, bahasa }),
     tombol: [{ teks: 'Mengerti!', nilai: true }]
   });
 }
 
-export function renderBantuan(halaman) {
+export async function renderBantuan(halaman) {
+  // Murid melihat nama perintah dalam bahasa pilihannya; pengunjung lain dalam bahasa Indonesia
+  const sesi = await sesiAktif().catch(() => null);
+  const bahasa = sesi?.jenis === 'siswa' ? bahasaSah(sesi.pengguna.bahasa) : 'id';
   halaman.innerHTML = `
     <section class="mx-auto max-w-5xl px-4 py-8 sm:py-12">
       <div class="flex flex-wrap items-center gap-4 mb-6">
@@ -105,7 +112,7 @@ export function renderBantuan(halaman) {
         </div>
         <button type="button" class="tombol tombol-sekunder" data-kembali>← Kembali</button>
       </div>
-      <div class="kartu">${bantuanHTML()}</div>
+      <div class="kartu">${bantuanHTML({ bahasa })}</div>
     </section>`;
   halaman.querySelector('[data-kembali]').addEventListener('click', () => {
     if (history.length > 1) history.back();

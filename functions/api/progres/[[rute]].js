@@ -137,8 +137,10 @@ export const onRequest = buatRouter([
     const kode = String(body.kode ?? '').slice(0, MAKS_KODE);
     const detik = Math.min(MAKS_DETIK, Math.max(0, Math.round(Number(body.detik) || 0)));
 
-    // Jalankan ulang kode siswa (interpreter dibatasi 1000 langkah): hasil dari browser tidak dipercaya
-    const hasil = jalankanKode(kode, level.dunia, { perintahTersedia: level.perintahTersedia });
+    // Jalankan ulang kode siswa (interpreter dibatasi 1000 langkah): hasil dari browser tidak dipercaya.
+    // Interpreter yang sama dengan browser: perintah bahasa Indonesia, Inggris, atau campuran sama-sama
+    // diterima, jadi bintang & nilainya sama persis. Kode disimpan apa adanya (tidak diterjemahkan).
+    const hasil = jalankanKode(kode, level.dunia, { perintahTersedia: level.perintahTersedia, bahasa: siswa.bahasa });
     const bintang = hitungBintang({ berhasil: hasil.berhasil, clueDibeli: awal?.clueDibeli || 0, jumlahBaris: hasil.jumlahBaris, batasBaris: level.batasBaris });
     const nilai = NILAI_BINTANG[bintang];
     const ok = hasil.berhasil ? 1 : 0;
