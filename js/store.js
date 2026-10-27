@@ -507,7 +507,7 @@ export async function adminSimpanPengaturan({ hargaClue, koinAwal }) {
 }
 
 // ---------- Zona aktif/nonaktif (guru & admin) ----------
-/** Tiap zona: { id, nama, konsep, warna, aktif, jumlahLevel, belumSelesai, totalMurid } (selalu data terbaru). */
+/** Tiap zona: { id, nama, konsep, warna, aktif, jumlahLevel, nilaiTurun, totalMurid } (selalu data terbaru). */
 export async function guruDaftarZona() {
   return api('auth/zona');
 }

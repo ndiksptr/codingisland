@@ -1,5 +1,6 @@
 // js/pages/peta.js — peta pulau untuk siswa
-// #/peta        : ringkasan pulau (zona yang dinonaktifkan guru tidak ditampilkan sama sekali)
+// #/peta        : ringkasan pulau (zona yang dinonaktifkan guru tidak ditampilkan sama sekali;
+//                 bila tidak ada pulau yang terbuka, tampil pesan "Belum ada pulau yang dibuka")
 // #/peta/:zona  : peta satu pulau dengan jalur berkelok dan lingkaran level
 
 import { esc, robot, gambarRobot, tombol, bukaModal, toast, pramuatGambar } from '../ui.js';
@@ -42,7 +43,8 @@ export async function muatPeta() {
     getSemuaProgres({ siswaId: siswa.id }),
     getZonaNonaktif()
   ]);
-  return { siswa, status: hitungPeta(levels, progres, zonaNonaktif) };
+  // Zona nonaktif tetap dihitung (mengunci zona sesudahnya), tetapi tidak ditampilkan ke murid
+  return { siswa, status: hitungPeta(levels, progres, zonaNonaktif).filter((z) => z.aktif) };
 }
 
 /** Putar animasi sekali jika ada zona yang baru terbuka sejak terakhir dilihat. */
@@ -116,6 +118,7 @@ export async function renderPeta(halaman) {
   const maksBintang = status.reduce((n, z) => n + z.bintangMaks, 0);
   const totalSelesai = status.reduce((n, z) => n + z.selesai, 0);
   const totalLevel = status.reduce((n, z) => n + z.total, 0);
+  const adaTerbuka = status.some((z) => z.terbuka);
 
   halaman.innerHTML = `
     <section class="mx-auto max-w-6xl px-4 sm:px-6 py-6 sm:py-10">
@@ -127,10 +130,11 @@ export async function renderPeta(halaman) {
             <p class="text-lg font-bold mt-1">Pilih pulau dan mulai bertualang, ${esc(siswa.namaPanggilan)}!</p>
           </div>
         </div>
-        <div class="sm:ml-auto flex flex-wrap gap-2">
-          <span class="chip-uang chip-koin"><img src="image/item/bintang.png" alt="">${totalBintang}/${maksBintang} bintang</span>
-          <span class="chip-uang chip-berlian"><img src="image/item/benar.png" alt="">${totalSelesai}/${totalLevel} level</span>
-        </div>
+        ${adaTerbuka ? `
+          <div class="sm:ml-auto flex flex-wrap gap-2">
+            <span class="chip-uang chip-koin"><img src="image/item/bintang.png" alt="">${totalBintang}/${maksBintang} bintang</span>
+            <span class="chip-uang chip-berlian"><img src="image/item/benar.png" alt="">${totalSelesai}/${totalLevel} level</span>
+          </div>` : ''}
       </div>
 
       ${juara ? `
@@ -142,9 +146,15 @@ export async function renderPeta(halaman) {
           </span>
         </a>` : ''}
 
-      <ol class="mt-6 sm:mt-8 grid gap-5 sm:gap-6 md:grid-cols-2">
-        ${status.map(kartuZonaHTML).join('')}
-      </ol>
+      ${adaTerbuka ? `
+        <ol class="mt-6 sm:mt-8 grid gap-5 sm:gap-6 md:grid-cols-2">
+          ${status.map(kartuZonaHTML).join('')}
+        </ol>` : `
+        <div class="kartu muncul mt-6 sm:mt-8 mx-auto max-w-lg flex flex-col items-center text-center gap-3">
+          ${robot('melamun', { kelas: 'w-28 h-auto', alt: '' })}
+          <h2 class="font-judul text-3xl font-extrabold text-teal-tua">Belum ada pulau yang dibuka</h2>
+          <p class="text-lg">Tunggu gurumu ya! Begitu pulau dibuka, petualanganmu bisa dimulai lagi.</p>
+        </div>`}
     </section>`;
 
   halaman.addEventListener('click', (e) => {

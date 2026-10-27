@@ -54,7 +54,10 @@ async function levelDanProgres(db, siswa, levelId) {
   if (!l) throw new GalatApi(404, 'Level tidak ditemukan.');
   if (zonaNonaktif.includes(l.zona)) throw new GalatApi(403, PESAN_ZONA_TUTUP);
   const semuaProgres = (rp.results || []).map(progresKeObjek);
-  const status = hitungPeta(terlihat, semuaProgres, zonaNonaktif).flatMap((z) => z.levels).find((x) => x.id === levelId)?.status;
+  const sz = hitungPeta(terlihat, semuaProgres, zonaNonaktif).find((z) => z.zona.id === l.zona);
+  // Pulau terkunci karena pulau sebelumnya dimatikan guru: murid tidak bisa membukanya sendiri
+  if (sz && !sz.terbuka && sz.ditutupGuru) throw new GalatApi(403, PESAN_ZONA_TUTUP);
+  const status = sz?.levels.find((x) => x.id === levelId)?.status;
   if (status === 'terkunci') throw new GalatApi(403, 'Level ini masih terkunci. Selesaikan level sebelumnya dulu ya.');
   return { level: l, progres: semuaProgres.find((p) => p.levelId === levelId) || null, zonaNonaktif };
 }

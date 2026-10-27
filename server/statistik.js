@@ -7,22 +7,27 @@ import { semua, semuaKelas, semuaLevel, siswaKeObjek, progresKeObjek, levelBerla
 import { ZONA } from '../js/data/zona.js';
 
 /**
- * Dampak menonaktifkan tiap zona, untuk kotak konfirmasi di Pengaturan (semua kelas, karena berlaku untuk semua):
- * jumlahLevel  = level terbit di zona itu
- * belumSelesai = murid yang masih punya level zona itu (terlihat di kelasnya) yang belum selesai
- * totalMurid   = semua murid
+ * Dampak MENYALAKAN tiap zona, untuk kotak konfirmasi di halaman Level & Soal (semua kelas, karena berlaku untuk semua).
+ * Begitu menyala, level zona itu masuk pembagi nilai akhir sebagai 0 sampai diselesaikan.
+ * jumlahLevel = level terbit di zona itu
+ * nilaiTurun  = murid yang masih punya level zona itu (terlihat di kelasnya) yang belum selesai,
+ *               kecuali murid yang nilai akhirnya sudah ditimpa guru (nilai_timpa tetap menang)
+ * totalMurid  = semua murid
  */
 export async function dampakZona(db) {
-  const [levels, siswa, selesai] = await Promise.all([
+  const [levels, siswa, selesai, timpa] = await Promise.all([
     semuaLevel(db),
     semua(db, 'SELECT id, kelas_id FROM siswa'),
-    semua(db, 'SELECT siswa_id, level_id FROM progres WHERE selesai = 1')
+    semua(db, 'SELECT siswa_id, level_id FROM progres WHERE selesai = 1'),
+    semua(db, 'SELECT siswa_id, kelas_id FROM nilai_timpa')
   ]);
   const sudah = new Set(selesai.map((p) => `${p.siswa_id}|${p.level_id}`));
+  const ditimpa = new Set(timpa.map((t) => `${t.siswa_id}|${t.kelas_id}`));
   return ZONA.map((z) => {
     const lvZ = levels.filter((l) => l.zona === z.id && l.terbit !== false);
-    const belumSelesai = siswa.filter((s) => lvZ.some((l) => levelTerlihatUntukKelas(l, s.kelas_id) && !sudah.has(`${s.id}|${l.id}`))).length;
-    return { id: z.id, jumlahLevel: lvZ.length, belumSelesai, totalMurid: siswa.length };
+    const nilaiTurun = siswa.filter((s) => !ditimpa.has(`${s.id}|${s.kelas_id}`) &&
+      lvZ.some((l) => levelTerlihatUntukKelas(l, s.kelas_id) && !sudah.has(`${s.id}|${l.id}`))).length;
+    return { id: z.id, jumlahLevel: lvZ.length, nilaiTurun, totalMurid: siswa.length };
   });
 }
 

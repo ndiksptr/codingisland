@@ -285,9 +285,10 @@ export const onRequest = buatRouter([
     return bacaPengaturan(db);
   }],
 
-  // ================= Zona aktif/nonaktif (guru & admin) =================
+  // ================= Zona aktif/nonaktif (guru & admin; sakelarnya di halaman Level & Soal) =================
   // Disimpan di pengaturan.zona_nonaktif (JSON array id zona). Progres, bintang, koin, dan berlian
   // murid di zona itu TIDAK dihapus; zona yang diaktifkan lagi kembali seperti semula.
+  // Zona nonaktif juga mengunci zona sesudahnya (js/game/kemajuan.js). GET menyertakan dampakZona untuk konfirmasi.
   ['GET', 'zona', async (ctx) => {
     await aksesGuru(ctx);
     const db = ctx.env.DB;
