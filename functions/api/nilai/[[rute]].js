@@ -9,7 +9,8 @@
 
 import { buatRouter, bacaJson, GalatApi } from '../../../server/http.js';
 import { aksesGuru, bolehKelas, ambilSiswaBoleh } from '../../../server/sesi.js';
-import { semua, perintah, perintahAktivitas, sekarang, semuaLevel, semuaKelas, levelBerlaku } from '../../../server/data.js';
+import { semua, perintah, perintahAktivitas, sekarang, semuaLevel, semuaKelas, levelBerlaku, petaKelasSiswa } from '../../../server/data.js';
+import { kelasDiikuti } from '../../../server/statistik.js';
 import { ZONA } from '../../../js/data/zona.js';
 import { hitungNilaiAkhir } from '../../../js/game/skor.js';
 
@@ -18,12 +19,13 @@ export const onRequest = buatRouter([
     const a = await aksesGuru(ctx);
     bolehKelas(a, kelasId);
     const db = ctx.env.DB;
-    const [levelsSemua, kelasSemua, siswaBaris, progres, timpaBaris] = await Promise.all([
+    const [levelsSemua, kelasSemua, siswaBaris, progres, timpaBaris, anggota] = await Promise.all([
       semuaLevel(db),
       semuaKelas(db),
       semua(db, 'SELECT s.* FROM siswa_kelas sk JOIN siswa s ON s.id = sk.siswa_id WHERE sk.kelas_id = ? ORDER BY s.nama_lengkap', kelasId),
       semua(db, 'SELECT * FROM progres WHERE kelas_id = ?', kelasId),
-      semua(db, 'SELECT * FROM nilai_timpa WHERE kelas_id = ?', kelasId)
+      semua(db, 'SELECT * FROM nilai_timpa WHERE kelas_id = ?', kelasId),
+      petaKelasSiswa(db)
     ]);
     const kelas = kelasSemua.find((k) => k.id === kelasId);
     const zonaIds = kelas?.zonaIds || [];
@@ -56,6 +58,7 @@ export const onRequest = buatRouter([
           namaLengkap: s.nama_lengkap,
           namaPanggilan: s.nama_panggilan,
           avatar: s.avatar,
+          semuaKelas: kelasDiikuti(kelasSemua, anggota, s.id), // tampilan & CSV: semua kelas yang diikuti
           sel,
           nilaiOtomatis,
           nilaiAkhir: t ? t.nilai : nilaiOtomatis,

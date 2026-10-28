@@ -18,7 +18,7 @@ const KOLOM = [
   { id: 'avatar', teks: '', urut: false },
   { id: 'namaLengkap', teks: 'Nama lengkap' },
   { id: 'namaPanggilan', teks: 'Panggilan' },
-  { id: 'kelasNama', teks: 'Kelas yang diikuti' },
+  { id: 'kelasDiikuti', teks: 'Kelas yang diikuti' },
   { id: 'username', teks: 'Username' },
   { id: 'levelSelesai', teks: 'Level selesai', angka: true },
   { id: 'totalBintang', teks: 'Bintang', angka: true },
@@ -74,6 +74,8 @@ export async function aksiEditSiswa(siswa, konteks) {
   return !!hasil;
 }
 
+// Kelas yang diikuti murid dibaca dari semuaKelas (lengkap, tanpa saringan akses). Pilihan kelas yang bisa
+// DIKELOLA tetap dibatasi konteks.kelas (kelas yang diampu) di aksi Tambahkan / Keluarkan di bawah.
 const daftarNamaKelas = (kelas) => (kelas || []).map((k) => `<strong>${esc(k.nama)}</strong>`).join(', ') || 'belum ada';
 const chipKelas = (kelas) => (kelas?.length
   ? kelas.map((k) => `<span class="dg-chip">${esc(k.nama)}</span>`).join(' ')
@@ -81,13 +83,13 @@ const chipKelas = (kelas) => (kelas?.length
 
 /** Tambahkan siswa ini ke kelas lain yang Anda ampu (tanpa memindahkan dari kelas lamanya). */
 export async function aksiTambahKeKelas(siswa, konteks) {
-  const sudah = new Set((siswa.kelas || []).map((k) => k.id));
+  const sudah = new Set((siswa.semuaKelas || []).map((k) => k.id));
   const pilihan = konteks.kelas.filter((k) => !sudah.has(k.id));
   if (!pilihan.length) { toast(`${siswa.namaPanggilan} sudah menjadi anggota semua kelas yang Anda ampu.`, 'info'); return false; }
   const hasil = await bukaFormModal({
     judul: `Tambahkan ${siswa.namaPanggilan} ke kelas lain`,
     isi: `
-      <p class="mb-3">Kelas sekarang: ${daftarNamaKelas(siswa.kelas)}. ${esc(siswa.namaPanggilan)} tetap di kelas itu, dan akun,
+      <p class="mb-3">Kelas sekarang: ${daftarNamaKelas(siswa.semuaKelas)}. ${esc(siswa.namaPanggilan)} tetap di kelas itu, dan akun,
         koin, serta kemajuannya tidak berubah. Di kelas baru, kemajuannya dimulai dari awal.</p>
       <label class="dg-label">Kelas yang ditambahkan
         <select name="kelasId" class="dg-input">${pilihanKelas(pilihan, '')}</select>
@@ -102,7 +104,7 @@ export async function aksiTambahKeKelas(siswa, konteks) {
 /** KELUARKAN dari satu kelas — bukan hapus akun. Akun & kemajuan di kelas lain tetap utuh. */
 export async function aksiKeluarkanDariKelas(siswa, konteks, kelasTerpilih = null) {
   const boleh = new Set(konteks.kelas.map((k) => k.id));
-  const pilihan = (siswa.kelas || []).filter((k) => boleh.has(k.id));
+  const pilihan = (siswa.semuaKelas || []).filter((k) => boleh.has(k.id));
   if (!pilihan.length) { toast(`${siswa.namaPanggilan} bukan anggota kelas yang Anda ampu.`, 'info'); return false; }
   const hasil = await bukaFormModal({
     judul: `Keluarkan ${siswa.namaPanggilan} dari kelas?`,
@@ -187,7 +189,7 @@ export async function aksiHapusSiswa(siswa) {
     varianSimpan: 'bahaya',
     teksSimpan: 'Hapus akun permanen',
     isi: `
-      <p>Akun ini akan <strong>dihapus permanen dari semua kelas</strong> (${daftarNamaKelas(siswa.kelas)}), beserta koin, berlian,
+      <p>Akun ini akan <strong>dihapus permanen dari semua kelas</strong> (${daftarNamaKelas(siswa.semuaKelas)}), beserta koin, berlian,
         seluruh kemajuan, dan aktivitasnya. Tindakan ini tidak bisa dibatalkan.</p>
       <p class="mt-2 text-sm">Kalau siswa ini hanya perlu keluar dari satu kelas, batalkan dan pakai <strong>Keluarkan dari kelas</strong>.</p>
       <label class="dg-label mt-3">Ketik <code class="dg-kode">${esc(siswa.username)}</code> untuk konfirmasi
@@ -341,6 +343,8 @@ async function aksiImporCSV(konteks) {
 // =====================================================================
 export async function renderSiswa(wadah, { konteks, kelasId }) {
   const semua = await guruDaftarSiswa({ kelasId });
+  // Kunci urut kolom "Kelas yang diikuti" (urutan nama mengikuti daftar kelas: ekskul dulu)
+  semua.forEach((s) => { s.kelasDiikuti = (s.semuaKelas || []).map((k) => k.nama).join(', '); });
   const status = { cari: '', urut: 'namaLengkap', arah: 1, halaman: 1 };
 
   wadah.innerHTML = `
@@ -420,7 +424,7 @@ export async function renderSiswa(wadah, { konteks, kelasId }) {
                 <td>${avatarSiswa(s.avatar)}</td>
                 <td class="font-bold"><a class="dg-tautan" href="#/guru/siswa/${esc(s.id)}">${esc(s.namaLengkap)}</a></td>
                 <td>${esc(s.namaPanggilan)}</td>
-                <td>${chipKelas(s.kelas)}</td>
+                <td>${chipKelas(s.semuaKelas)}</td>
                 <td><code class="dg-kode">${esc(s.username)}</code></td>
                 <td class="text-right">${s.levelSelesai}/${s.totalLevel}</td>
                 <td class="text-right">${s.totalBintang}</td>

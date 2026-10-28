@@ -24,7 +24,8 @@ export function labelLevelNilai(levels) {
 
 /**
  * Tabel CSV nilai satu kelas dari hasil API GET /api/nilai/:kelasId.
- * Kolom: Nama lengkap, Kelas, Tingkat ("Ekskul" atau "Kelas 4"), satu kolom per level ("P1 Judul"), Nilai akhir, Ditimpa, Alasan.
+ * Kolom: Nama lengkap, Kelas (SEMUA kelas yang diikuti murid, mis. "Robotik, Kelas 4B"),
+ * Tingkat (kelas rekap ini: "Ekskul" atau "Kelas 4"), satu kolom per level ("P1 Judul"), Nilai akhir, Ditimpa, Alasan.
  */
 export function csvNilai(data) {
   const labelLevel = labelLevelNilai(data.levels);
@@ -32,7 +33,7 @@ export function csvNilai(data) {
   const kolom = ['Nama lengkap', 'Kelas', 'Tingkat', ...kolomLevel, 'Nilai akhir', 'Ditimpa', 'Alasan'];
   const baris = data.siswa.map((s) => ({
     'Nama lengkap': s.namaLengkap,
-    Kelas: data.kelas.nama,
+    Kelas: (s.semuaKelas?.length ? s.semuaKelas : [data.kelas]).map((k) => k.nama).join(', '),
     Tingkat: labelTingkatKelas(data.kelas),
     ...Object.fromEntries(data.levels.map((l, i) => [kolomLevel[i], s.sel[l.id].nilai])),
     'Nilai akhir': s.nilaiAkhir,

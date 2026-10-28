@@ -25,7 +25,7 @@ export async function renderDetailSiswa(wadah, { params, konteks, query = {} }) 
           <div class="min-w-0">
             <h2 class="font-judul text-2xl font-extrabold text-teal-tua leading-tight">${esc(s.namaLengkap)}</h2>
             <p class="text-sm">Panggilan <strong>${esc(s.namaPanggilan)}</strong></p>
-            <p class="text-sm">Kelas: ${s.kelas.length ? s.kelas.map((k) => `<span class="dg-chip">${esc(k.nama)}</span>`).join(' ') : '<strong>belum punya kelas</strong>'}</p>
+            <p class="text-sm">Kelas: ${s.semuaKelas.length ? s.semuaKelas.map((k) => `<span class="dg-chip">${esc(k.nama)}</span>`).join(' ') : '<strong>belum punya kelas</strong>'}</p>
             <p class="text-sm">Username <code class="dg-kode">${esc(s.username)}</code></p>
           </div>
         </div>

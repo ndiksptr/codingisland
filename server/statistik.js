@@ -10,6 +10,17 @@ import { semua, semuaKelas, semuaLevel, siswaKeObjek, progresKeObjek, levelBerla
 export const rataRata = (angka) => (angka.length ? Math.round(angka.reduce((n, x) => n + x, 0) / angka.length) : 0);
 
 /**
+ * Semua kelas yang diikuti satu murid, KHUSUS UNTUK TAMPILAN: tanpa saringan hak akses dan tanpa filter
+ * kelas, jadi guru ekskul tetap melihat bahwa muridnya juga anggota kelas reguler (tetapi tidak bisa
+ * mengelolanya). kelasLengkap: SEMUA kelas sekolah, sudah urut (ekskul dulu, lalu reguler menurut tingkat).
+ * anggota: hasil petaKelasSiswa. Hasil: [{ id, nama, jenis }] — kosong bila murid belum punya kelas.
+ */
+export function kelasDiikuti(kelasLengkap, anggota, siswaId) {
+  const ids = new Set(anggota.get(siswaId) || []);
+  return kelasLengkap.filter((k) => ids.has(k.id)).map((k) => ({ id: k.id, nama: k.nama, jenis: k.jenis }));
+}
+
+/**
  * Keanggotaan yang boleh dilihat guru. Hasil: [{ baris (baris siswa D1), kelasId }].
  * kelasId diisi: hanya kelas itu. Tanpa kelasId: semua kelas yang diampu (admin: semua kelas,
  * ditambah murid yang belum punya kelas dengan kelasId null).
@@ -33,9 +44,12 @@ export async function keanggotaanDalamAkses(db, a, kelasId = null) {
  */
 export async function hitungStatistik(db, keanggotaan, cache = {}) {
   if (!keanggotaan.length) return [];
-  const [levels, kelas, progresSemua, terakhirAktivitas, anggota] = await Promise.all([
+  // cache.kelas boleh berisi kelas yang diampu saja; daftar kelas tampilan (semuaKelas) selalu dari daftar lengkap
+  const muatKelasLengkap = semuaKelas(db);
+  const [levels, kelas, kelasLengkap, progresSemua, terakhirAktivitas, anggota] = await Promise.all([
     cache.levels || semuaLevel(db),
-    cache.kelas || semuaKelas(db),
+    cache.kelas || muatKelasLengkap,
+    muatKelasLengkap,
     semua(db, 'SELECT * FROM progres'),
     // Ganti PIN, nilai, kelas, dan zona dilakukan guru, bukan murid, jadi tidak dihitung sebagai "terakhir aktif"
     semua(db, "SELECT siswa_id, MAX(waktu) AS waktu FROM aktivitas WHERE jenis NOT IN ('pin', 'nilai', 'zona', 'kelas') GROUP BY siswa_id"),
@@ -59,9 +73,6 @@ export async function hitungStatistik(db, keanggotaan, cache = {}) {
     const pr = k ? (progresPer.get(`${s.id}|${k.id}`) || []).filter((p) => ids.has(p.levelId)) : [];
     const selesai = pr.filter((p) => p.selesai);
     const waktu = [terakhir.get(s.id), s.dibuatPada, ...pr.map((p) => p.diperbarui)].filter(Boolean).sort();
-    // Urutan sama dengan daftar kelas (ekskul di atas, lalu reguler menurut tingkat)
-    const idAnggota = anggota.get(s.id) || [];
-    const kelasMurid = kelas.filter((x) => idAnggota.includes(x.id)).map((x) => ({ id: x.id, nama: x.nama, jenis: x.jenis, tingkat: x.tingkat }));
     return {
       siswa: s,
       kelasId: k?.id || null,
@@ -73,9 +84,10 @@ export async function hitungStatistik(db, keanggotaan, cache = {}) {
         namaPanggilan: s.namaPanggilan,
         avatar: s.avatar,
         jenisKelamin: s.jenisKelamin,
+        // Kelas baris statistik ini (dibatasi akses & filter). Untuk TAMPILAN kelas murid pakai semuaKelas.
         kelasId: k?.id || null,
         kelasNama: k?.nama || 'Tanpa kelas',
-        kelas: kelasMurid, // semua kelas yang diikuti murid ini
+        semuaKelas: kelasDiikuti(kelasLengkap, anggota, s.id), // semua kelas yang diikuti murid, tanpa saringan
         username: s.username,
         koin: s.koin || 0,
         berlian: s.berlian || 0,
