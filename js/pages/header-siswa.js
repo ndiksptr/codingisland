@@ -65,7 +65,7 @@ export async function buatHeaderSiswa() {
     });
     if (!yakin) return;
     await keluar();
-    toast('Sampai jumpa lagi!', 'info');
+    toast('Sampai jumpa lagi!', 'sukses');
     pindah('/');
   });
 

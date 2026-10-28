@@ -255,7 +255,7 @@ export const onRequest = buatRouter([
     const a = await aksesGuru(ctx);
     tolakSaatMenyamar(a, 'mengubah nama akun');
     const nama = String((await bacaJson(ctx.request)).nama || '').trim();
-    if (nama.length < 2) throw new GalatApi(400, 'Nama guru minimal 2 huruf.');
+    if (nama.length < 2) throw new GalatApi(400, 'Nama tampilan minimal 2 huruf.');
     await jalankan(ctx.env.DB, 'UPDATE guru SET nama = ? WHERE id = ?', nama.slice(0, 40), a.guru.id);
     return { ok: true };
   }],
@@ -304,14 +304,14 @@ export const onRequest = buatRouter([
   ['PUT', 'zona/:id', async (ctx, { id }) => {
     const a = await aksesGuru(ctx);
     const zona = ZONA.find((z) => z.id === id);
-    if (!zona) throw new GalatApi(404, 'Zona tidak ditemukan.');
+    if (!zona) throw new GalatApi(404, 'Pulau tidak ditemukan. Muat ulang halaman, lalu coba lagi.');
     const { aktif } = await bacaJson(ctx.request);
     if (typeof aktif !== 'boolean') throw new GalatApi(400, 'Pilih aktif atau nonaktif.');
     const db = ctx.env.DB;
     const baris = await satu(db, "SELECT nilai FROM pengaturan WHERE kunci = 'zona_nonaktif'");
     const lama = zonaNonaktifDariBaris(baris);
     const baru = ZONA.map((z) => z.id).filter((x) => (x === id ? !aktif : lama.includes(x)));
-    if (!zonaAktif(baru).length) throw new GalatApi(400, 'Minimal satu zona harus tetap aktif.');
+    if (!zonaAktif(baru).length) throw new GalatApi(400, 'Minimal satu pulau harus tetap aktif. Nyalakan pulau lain dulu sebelum mematikan pulau ini.');
     if (baru.length === lama.length && baru.every((x) => lama.includes(x))) return { zonaNonaktif: lama };
 
     // Simpan hanya jika belum diubah orang lain sejak dibaca; aktivitas ditulis hanya bila tersimpan.
@@ -323,7 +323,7 @@ export const onRequest = buatRouter([
       perintah(db, "INSERT INTO aktivitas (waktu, siswa_id, jenis, keterangan) SELECT ?, id, 'zona', ? FROM siswa WHERE changes() = 1",
         sekarang(), `Zona ${zona.nama} ${aktif ? 'diaktifkan' : 'dinonaktifkan'} oleh ${a.pelaku.nama}`)
     ]);
-    if (!simpan.meta?.changes) throw new GalatApi(409, 'Pengaturan zona baru saja diubah guru lain. Muat ulang halaman lalu coba lagi.');
+    if (!simpan.meta?.changes) throw new GalatApi(409, 'Pengaturan pulau baru saja diubah oleh guru lain. Muat ulang halaman, lalu coba lagi.');
     return { zonaNonaktif: baru };
   }],
 
@@ -340,7 +340,7 @@ export const onRequest = buatRouter([
     const d = { nama: String(data.nama || '').trim(), username: String(data.username || '').trim().toLowerCase(), peran: data.peran || 'guru' };
     periksaGuru(d);
     if (!data.password || String(data.password).length < 6) throw new GalatApi(400, 'Password minimal 6 karakter.');
-    if (await satu(db, 'SELECT id FROM guru WHERE username = ?', d.username)) throw new GalatApi(409, 'Username guru sudah dipakai.');
+    if (await satu(db, 'SELECT id FROM guru WHERE username = ?', d.username)) throw new GalatApi(409, 'Username ini sudah dipakai akun guru lain. Pilih username lain.');
     const id = idBaru('guru');
     await jalankan(db, 'INSERT INTO guru (id, nama, username, password_hash, peran, dibuat_pada) VALUES (?,?,?,?,?,?)',
       id, d.nama, d.username, await hashRahasia(String(data.password), iterasi(ctx.env)), d.peran, sekarang());
@@ -353,7 +353,7 @@ export const onRequest = buatRouter([
     wajibAdminAsli(a);
     const db = ctx.env.DB;
     const lama = await satu(db, 'SELECT * FROM guru WHERE id = ?', id);
-    if (!lama) throw new GalatApi(404, 'Guru tidak ditemukan.');
+    if (!lama) throw new GalatApi(404, 'Akun guru ini tidak ditemukan, mungkin sudah dihapus. Muat ulang halaman.');
     const data = await bacaJson(ctx.request);
     const baru = {
       nama: 'nama' in data ? String(data.nama).trim() : lama.nama,
@@ -363,7 +363,7 @@ export const onRequest = buatRouter([
     periksaGuru(baru);
     if (id === a.guru.id && baru.peran !== 'admin') throw new GalatApi(400, 'Anda tidak bisa menurunkan peran akun sendiri.');
     if (lama.peran === 'admin' && baru.peran !== 'admin' && (await jumlahAdmin(db)) <= 1) throw new GalatApi(400, 'Harus ada minimal satu admin.');
-    if (await satu(db, 'SELECT id FROM guru WHERE username = ? AND id <> ?', baru.username, id)) throw new GalatApi(409, 'Username guru sudah dipakai.');
+    if (await satu(db, 'SELECT id FROM guru WHERE username = ? AND id <> ?', baru.username, id)) throw new GalatApi(409, 'Username ini sudah dipakai akun guru lain. Pilih username lain.');
     await jalankan(db, 'UPDATE guru SET nama = ?, username = ?, peran = ? WHERE id = ?', baru.nama, baru.username, baru.peran, id);
     // Peran berubah: akhiri penyamaran yang dibuka oleh atau ke akun ini
     if (lama.peran !== baru.peran) await jalankan(db, 'DELETE FROM sesi WHERE admin_asli_id = ? OR (pengguna_id = ? AND admin_asli_id IS NOT NULL)', id, id);
@@ -389,7 +389,7 @@ export const onRequest = buatRouter([
   ['POST', 'guru/:id/reset-password', async (ctx, { id }) => {
     wajibAdminAsli(await aksesGuru(ctx));
     const db = ctx.env.DB;
-    if (!(await satu(db, 'SELECT id FROM guru WHERE id = ?', id))) throw new GalatApi(404, 'Guru tidak ditemukan.');
+    if (!(await satu(db, 'SELECT id FROM guru WHERE id = ?', id))) throw new GalatApi(404, 'Akun guru ini tidak ditemukan, mungkin sudah dihapus. Muat ulang halaman.');
     const password = acakPassword();
     await db.batch([
       perintah(db, 'UPDATE guru SET password_hash = ? WHERE id = ?', await hashRahasia(password, iterasi(ctx.env)), id),
@@ -406,7 +406,7 @@ export const onRequest = buatRouter([
     if (id === a.guru.id) throw new GalatApi(400, 'Anda sudah berada di akun sendiri.');
     const db = ctx.env.DB;
     const g = await satu(db, 'SELECT id, peran FROM guru WHERE id = ?', id);
-    if (!g) throw new GalatApi(404, 'Guru tidak ditemukan.');
+    if (!g) throw new GalatApi(404, 'Akun guru ini tidak ditemukan, mungkin sudah dihapus. Muat ulang halaman.');
     if (g.peran !== 'guru') throw new GalatApi(403, 'Hanya bisa masuk sebagai akun guru, bukan admin.');
     // Sesi admin ditutup; sesi guru baru menyimpan id admin agar bisa kembali
     await hapusSesi(ctx);

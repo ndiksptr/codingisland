@@ -68,7 +68,7 @@ export async function aksiEditSiswa(siswa, konteks) {
       avatar: fd.get('avatar')
     })
   });
-  if (hasil) toast(`Data ${hasil.namaPanggilan} disimpan.`, 'sukses');
+  if (hasil) toast(`Data ${hasil.namaPanggilan} berhasil disimpan.`, 'sukses');
   return !!hasil;
 }
 
@@ -83,7 +83,7 @@ export async function aksiPindahKelas(siswa, konteks) {
     teksSimpan: 'Pindahkan',
     saatSimpan: (fd) => (fd.get('kelasId') ? guruPindahKelas(siswa.id, fd.get('kelasId')) : { galat: 'Belum ada kelas lain yang bisa dipilih.' })
   });
-  if (hasil) toast(`${siswa.namaPanggilan} dipindahkan.`, 'sukses');
+  if (hasil) toast(`${siswa.namaPanggilan} berhasil dipindahkan ke kelas lain.`, 'sukses');
   return !!hasil;
 }
 
@@ -133,12 +133,12 @@ export async function aksiHapusSiswa(siswa) {
         <input name="konfirmasi" class="dg-input font-kode" autocomplete="off">
       </label>`,
     saatSimpan: async (fd) => {
-      if (String(fd.get('konfirmasi') || '').trim().toLowerCase() !== siswa.username) return { galat: 'Username belum sama.' };
+      if (String(fd.get('konfirmasi') || '').trim().toLowerCase() !== siswa.username) return { galat: `Username yang diketik belum sama dengan ${siswa.username}.` };
       await guruHapusSiswa(siswa.id);
       return true;
     }
   });
-  if (hasil) toast(`${siswa.namaLengkap} dihapus.`, 'sukses');
+  if (hasil) toast(`Akun ${siswa.namaLengkap} berhasil dihapus.`, 'sukses');
   return !!hasil;
 }
 
@@ -169,7 +169,7 @@ async function aksiTambahSiswa(konteks, kelasId) {
     })
   });
   if (!hasil) return false;
-  toast(`Akun ${hasil.siswa.namaPanggilan} dibuat.`, 'sukses');
+  toast(`Akun ${hasil.siswa.namaPanggilan} berhasil dibuat.`, 'sukses');
   await tampilkanAkunBaru({ judul: 'Akun siswa baru', nama: hasil.siswa.namaLengkap, username: hasil.siswa.username, pin: hasil.pin });
   return true;
 }
@@ -262,7 +262,7 @@ async function aksiImporCSV(konteks) {
         const hasil = await guruImporSiswa(barisValid);
         hasilAkun = hasil.filter((h) => h.ok);
         dibuat += hasilAkun.length;
-        toast(`${hasilAkun.length} akun siswa dibuat.`, 'sukses');
+        toast(`${hasilAkun.length} akun siswa berhasil dibuat.`, 'sukses');
         pratinjau.innerHTML = `
           <div class="dg-kotak-sukses">
             <p class="font-bold">${hasilAkun.length} akun berhasil dibuat${hasil.length - hasilAkun.length ? `, ${hasil.length - hasilAkun.length} gagal` : ''}.</p>

@@ -15,7 +15,7 @@ function diagramZona(zona) {
   const tinggi = zona.length * (tinggiBatang + jarak) + 10;
   const panjang = lebar - kiri - 60;
   return `
-    <svg viewBox="0 0 ${lebar} ${tinggi}" class="w-full h-auto" role="img" aria-label="Rata-rata progres per zona">
+    <svg viewBox="0 0 ${lebar} ${tinggi}" class="w-full h-auto" role="img" aria-label="Rata-rata progres per pulau">
       ${zona.map((z, i) => {
         const y = 5 + i * (tinggiBatang + jarak);
         const w = Math.max(2, (z.persen / 100) * panjang);
@@ -62,12 +62,12 @@ export async function renderRingkasan(wadah, { kelasId }) {
               </li>`).join('')}
           </ul>
           ${data.perluBantuan.length > BATAS_BANTUAN ? `<a href="#/guru/siswa" class="dg-tautan-kecil mt-3 inline-block">Lihat semua siswa →</a>` : ''}`
-          : kosong('Semua siswa berjalan lancar!', 'Belum ada siswa yang macet atau lama tidak bermain.')}
+          : kosong('Semua siswa berjalan lancar.', 'Belum ada siswa yang macet atau lama tidak bermain.')}
       </section>
 
       <section class="dg-kartu" aria-labelledby="judul-zona">
         <div class="dg-kartu-kepala">
-          <h2 id="judul-zona" class="dg-subjudul">Rata-rata progres per zona</h2>
+          <h2 id="judul-zona" class="dg-subjudul">Rata-rata progres per pulau</h2>
           <span class="text-sm text-teal-tua font-bold">% level selesai</span>
         </div>
         ${st.jumlahSiswa ? diagramZona(data.progresZona) : kosong('Belum ada data', 'Progres akan muncul setelah siswa mulai bermain.')}

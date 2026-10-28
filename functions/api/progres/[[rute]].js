@@ -33,7 +33,7 @@ async function ambilProgres(db, siswaId, levelId) {
 async function levelUntukSiswa(db, siswa, levelId) {
   const [r, zonaNonaktif] = await Promise.all([satu(db, 'SELECT * FROM level WHERE id = ?', levelId), bacaZonaNonaktif(db)]);
   const l = r ? levelKeObjek(r) : null;
-  if (!l || !levelTerlihatUntukKelas(l, siswa.kelas_id)) throw new GalatApi(404, 'Level tidak ditemukan.');
+  if (!l || !levelTerlihatUntukKelas(l, siswa.kelas_id)) throw new GalatApi(404, 'Level ini tidak ada. Kembali ke peta dan pilih level lain ya.');
   if (zonaNonaktif.includes(l.zona)) throw new GalatApi(403, PESAN_ZONA_TUTUP);
   return l;
 }
@@ -51,7 +51,7 @@ async function levelDanProgres(db, siswa, levelId) {
   const zonaNonaktif = zonaNonaktifDariBaris(rz.results?.[0]);
   const terlihat = (rl.results || []).map(levelKeObjek).filter((x) => levelTerlihatUntukKelas(x, siswa.kelas_id));
   const l = terlihat.find((x) => x.id === levelId);
-  if (!l) throw new GalatApi(404, 'Level tidak ditemukan.');
+  if (!l) throw new GalatApi(404, 'Level ini tidak ada. Kembali ke peta dan pilih level lain ya.');
   if (zonaNonaktif.includes(l.zona)) throw new GalatApi(403, PESAN_ZONA_TUTUP);
   const semuaProgres = (rp.results || []).map(progresKeObjek);
   const sz = hitungPeta(terlihat, semuaProgres, zonaNonaktif).find((z) => z.zona.id === l.zona);
@@ -216,7 +216,7 @@ export const onRequest = buatRouter([
     const db = ctx.env.DB;
     const { level, progres } = await levelDanProgres(db, siswa, levelId);
     const nomor = Number((await bacaJson(ctx.request)).nomor);
-    if (!CLUE.some((c) => c.nomor === nomor)) return { ok: false, alasan: 'urutan', pesan: 'Clue tidak ada.' };
+    if (!CLUE.some((c) => c.nomor === nomor)) return { ok: false, alasan: 'urutan', pesan: 'Clue itu tidak ada. Pilih Clue 1, 2, atau 3 ya.' };
     const sudah = progres?.clueDibeli || 0;
     const teks = (sampai) => (level.clue || []).slice(0, sampai);
     const PESAN_KURANG = 'Koinmu belum cukup. Selesaikan atau ulangi level lain untuk mengumpulkan koin.';

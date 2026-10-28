@@ -15,7 +15,7 @@ import { hitungStatistik, siswaDalamAkses, rataRata } from '../../../server/stat
 import { acakKodeKelas, idBaru } from '../../../server/kripto.js';
 
 function periksaKelas(d) {
-  if (!d.nama || d.nama.trim().length < 2) throw new GalatApi(400, 'Nama kelas belum diisi.');
+  if (!d.nama || d.nama.trim().length < 2) throw new GalatApi(400, 'Nama kelas minimal 2 huruf.');
   if (![3, 4, 5, 6].includes(Number(d.tingkat))) throw new GalatApi(400, 'Tingkat kelas harus 3 sampai 6.');
   if (!/^[A-Z0-9]{6}$/.test(d.kodeKelas)) throw new GalatApi(400, 'Kode kelas harus 6 huruf atau angka.');
 }

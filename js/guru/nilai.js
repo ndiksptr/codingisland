@@ -109,7 +109,7 @@ export async function renderNilai(wadah, { konteks, kelasId }) {
   wadah.querySelector('[data-ekspor]')?.addEventListener('click', () => {
     const nama = `nilai-${data.kelas.nama.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${new Date().toISOString().slice(0, 10)}.csv`;
     unduhBerkas(nama, csvNilai(data)); // unduhBerkas menambahkan BOM UTF-8
-    toast(`CSV nilai ${data.kelas.nama} diunduh.`, 'sukses');
+    toast(`CSV nilai ${data.kelas.nama} berhasil diunduh.`, 'sukses');
   });
 
   wadah.addEventListener('click', async (e) => {
@@ -136,7 +136,7 @@ export async function renderNilai(wadah, { konteks, kelasId }) {
       }
     });
     if (!hasil) return;
-    toast(hasil === 'kembali' ? `Nilai ${s.namaPanggilan} kembali otomatis.` : `Nilai akhir ${s.namaPanggilan} disimpan.`, 'sukses');
+    toast(hasil === 'kembali' ? `Nilai ${s.namaPanggilan} berhasil dikembalikan ke nilai otomatis.` : `Nilai akhir ${s.namaPanggilan} berhasil disimpan.`, 'sukses');
     muatUlang();
   });
 }

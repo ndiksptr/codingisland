@@ -61,7 +61,7 @@ function ringkasLevel(a, l, kelas) {
 async function ambilLevelBoleh(ctx, a, id) {
   const r = await satu(ctx.env.DB, 'SELECT * FROM level WHERE id = ?', id);
   const l = r ? levelKeObjek(r) : null;
-  if (!l || !levelBolehDilihat(a, l)) throw new GalatApi(404, 'Level tidak ditemukan.');
+  if (!l || !levelBolehDilihat(a, l)) throw new GalatApi(404, 'Level ini tidak ditemukan, mungkin sudah dihapus. Muat ulang halaman.');
   return l;
 }
 
@@ -90,8 +90,8 @@ async function idLevelBaru(db, zona) {
 }
 
 function periksaDunia(d) {
-  if (!d || !Number.isInteger(d.kolom) || !Number.isInteger(d.baris)) throw new GalatApi(400, 'Data panggung tidak lengkap.');
-  if (d.kolom < 4 || d.kolom > 12 || d.baris < 3 || d.baris > 8) throw new GalatApi(400, 'Ukuran panggung tidak valid.');
+  if (!d || !Number.isInteger(d.kolom) || !Number.isInteger(d.baris)) throw new GalatApi(400, 'Panggung belum lengkap. Pastikan ukuran panggung dan posisi robot sudah diatur.');
+  if (d.kolom < 4 || d.kolom > 12 || d.baris < 3 || d.baris > 8) throw new GalatApi(400, 'Ukuran panggung harus 4–12 kolom dan 3–8 baris.');
   const dalam = (o) => o && Number.isInteger(o.x) && Number.isInteger(o.y) && o.x >= 0 && o.y >= 0 && o.x < d.kolom && o.y < d.baris;
   return {
     kolom: d.kolom,
@@ -116,13 +116,13 @@ async function simpanLevelGuru(ctx, idLama, data, terbit) {
   const db = ctx.env.DB;
   const semuaL = await semuaLevel(db);
   const lama = idLama ? semuaL.find((l) => l.id === idLama) : null;
-  if (idLama && (!lama || !levelBolehDilihat(a, lama))) throw new GalatApi(404, 'Level tidak ditemukan.');
+  if (idLama && (!lama || !levelBolehDilihat(a, lama))) throw new GalatApi(404, 'Level ini tidak ditemukan, mungkin sudah dihapus. Muat ulang halaman.');
   if (lama && !levelBolehDiubah(a, lama)) throw new GalatApi(403, 'Anda hanya bisa mengubah level buatan Anda sendiri.');
 
-  if (!ZONA.some((z) => z.id === data.zona)) throw new GalatApi(400, 'Pilih zona.');
+  if (!ZONA.some((z) => z.id === data.zona)) throw new GalatApi(400, 'Pilih pulau untuk level ini.');
   if (!['ketik', 'debug', 'boss'].includes(data.jenis)) throw new GalatApi(400, 'Pilih jenis level.');
   const judul = String(data.judul || '').trim().replace(/\s+/g, ' ');
-  if (judul.length < 3 || judul.length > 60) throw new GalatApi(400, 'Judul 3–60 huruf.');
+  if (judul.length < 3 || judul.length > 60) throw new GalatApi(400, 'Judul level harus 3–60 huruf.');
 
   let kelasIds;
   if (data.kelasIds === null && a.admin) kelasIds = null;
@@ -257,7 +257,7 @@ export const onRequest = buatRouter([
     const { arah } = await bacaJson(ctx.request);
     const semuaL = await semuaLevel(db);
     const l = semuaL.find((x) => x.id === id);
-    if (!l || !levelBolehDilihat(a, l)) throw new GalatApi(404, 'Level tidak ditemukan.');
+    if (!l || !levelBolehDilihat(a, l)) throw new GalatApi(404, 'Level ini tidak ditemukan, mungkin sudah dihapus. Muat ulang halaman.');
     if (!levelBolehDiubah(a, l)) throw new GalatApi(403, 'Urutan level ini hanya bisa diubah admin atau pembuatnya.');
     if (l.jenis === 'boss') throw new GalatApi(400, 'Level boss selalu berada di urutan terakhir.');
     const berubah = new Set(rapikanUrutan(semuaL, l.zona));
@@ -299,7 +299,7 @@ export const onRequest = buatRouter([
     const db = ctx.env.DB;
     const semuaL = await semuaLevel(db);
     const l = semuaL.find((x) => x.id === id);
-    if (!l || !levelBolehDilihat(a, l)) throw new GalatApi(404, 'Level tidak ditemukan.');
+    if (!l || !levelBolehDilihat(a, l)) throw new GalatApi(404, 'Level ini tidak ditemukan, mungkin sudah dihapus. Muat ulang halaman.');
     if (l.bawaan) throw new GalatApi(400, 'Level bawaan tidak bisa dihapus. Nonaktifkan saja.');
     if (!levelBolehDiubah(a, l)) throw new GalatApi(403, 'Anda hanya bisa menghapus level buatan Anda sendiri.');
     const sisa = semuaL.filter((x) => x.id !== id);
@@ -315,7 +315,7 @@ export const onRequest = buatRouter([
     const r = await satu(ctx.env.DB, 'SELECT * FROM level WHERE id = ?', id);
     if (!r) return null;
     const l = levelKeObjek(r);
-    if (a && !levelBolehDilihat(a, l)) throw new GalatApi(404, 'Level tidak ditemukan.');
+    if (a && !levelBolehDilihat(a, l)) throw new GalatApi(404, 'Level ini tidak ditemukan, mungkin sudah dihapus. Muat ulang halaman.');
     return l;
   }]
 ]);

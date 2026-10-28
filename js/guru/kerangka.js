@@ -6,7 +6,7 @@
 //   konteks.guru   : { guru, admin, menyamar, kelas[], pengaturan } dari guruKonteks()
 //   konteks.kelasId: kelas yang dipilih di filter global (null = semua kelas)
 
-import { esc, robot, bukaModal, toast } from '../ui.js';
+import { esc, robot, bukaModal, toast, jenisGalat } from '../ui.js';
 import { guruKonteks, getPreferensi, simpanPreferensi, keluar, kembaliKeAkunAdmin } from '../store.js';
 import { pindah, muatUlang } from '../router.js';
 import { IKON } from './komponen.js';
@@ -107,7 +107,7 @@ export function denganKerangkaGuru(render, { judul, menu }) {
     try {
       konteks = await guruKonteks();
     } catch (err) {
-      toast(err.message, 'peringatan');
+      toast(err.message, jenisGalat(err));
       pindah('/guru/masuk');
       return undefined;
     }
@@ -156,7 +156,7 @@ export function denganKerangkaGuru(render, { judul, menu }) {
       });
       if (!ya) return;
       await keluar();
-      toast('Anda sudah keluar.', 'info');
+      toast('Anda berhasil keluar dari dashboard.', 'sukses');
       pindah('/guru/masuk');
     });
 
@@ -168,7 +168,7 @@ export function denganKerangkaGuru(render, { judul, menu }) {
         toast('Anda kembali ke akun admin.', 'sukses');
         pindah('/guru/guru');
       } catch (err) {
-        toast(err.message, 'peringatan');
+        toast(err.message, jenisGalat(err));
         pindah('/guru/masuk');
       }
     });

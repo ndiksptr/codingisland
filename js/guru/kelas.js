@@ -1,6 +1,6 @@
 // js/guru/kelas.js — #/guru/kelas: daftar kelas, kode kelas, tambah/edit/hapus
 
-import { esc, bukaModal, bukaFormModal, toast } from '../ui.js';
+import { esc, bukaModal, bukaFormModal, toast, jenisGalat } from '../ui.js';
 import { guruDaftarKelas, guruSimpanKelas, guruHapusKelas, guruKodeKelasBaru, adminDaftarGuru } from '../store.js';
 import { IKON, kosong, tombolAksi } from './komponen.js';
 import { muatUlang } from '../router.js';
@@ -105,7 +105,7 @@ export async function renderKelas(wadah, { konteks, kelasId }) {
       isi: formKelasHTML(kelas, daftarGuru, konteks.guru.id),
       saatSimpan: async (fd) => {
         const nama = String(fd.get('nama') || '').trim();
-        if (nama.length < 2) return { galat: 'Nama kelas belum diisi.' };
+        if (nama.length < 2) return { galat: 'Nama kelas minimal 2 huruf.' };
         return guruSimpanKelas({
           id: kelas?.id,
           nama,
@@ -115,7 +115,7 @@ export async function renderKelas(wadah, { konteks, kelasId }) {
       }
     });
     if (hasil) {
-      toast(kelas ? 'Kelas berhasil diperbarui.' : `Kelas ${hasil.nama} dibuat. Kodenya ${hasil.kodeKelas}.`, 'sukses');
+      toast(kelas ? `Data kelas ${hasil.nama} berhasil disimpan.` : `Kelas ${hasil.nama} berhasil dibuat. Kode kelasnya ${hasil.kodeKelas}.`, 'sukses');
       muatUlang(); // filter kelas di topbar ikut diperbarui
     }
   }
@@ -127,7 +127,7 @@ export async function renderKelas(wadah, { konteks, kelasId }) {
     const salin = t('[data-salin]');
     if (salin) {
       const ok = await salinTeks(salin.dataset.salin);
-      return toast(ok ? `Kode ${salin.dataset.salin} disalin.` : 'Gagal menyalin. Salin manual ya.', ok ? 'sukses' : 'peringatan');
+      return toast(ok ? `Kode ${salin.dataset.salin} berhasil disalin.` : 'Kode gagal disalin. Salin kode secara manual.', ok ? 'sukses' : 'galat');
     }
 
     const kodeBaru = t('[data-kode-baru]');
@@ -141,9 +141,9 @@ export async function renderKelas(wadah, { konteks, kelasId }) {
       if (!ya) return undefined;
       try {
         const kode = await guruKodeKelasBaru(kelas.id);
-        toast(`Kode baru ${kelas.nama}: ${kode}`, 'sukses');
+        toast(`Kode kelas baru untuk ${kelas.nama} berhasil dibuat: ${kode}.`, 'sukses');
         daftar = await gambar();
-      } catch (err) { toast(err.message, 'peringatan'); }
+      } catch (err) { toast(err.message, jenisGalat(err)); }
       return undefined;
     }
 
@@ -161,9 +161,9 @@ export async function renderKelas(wadah, { konteks, kelasId }) {
       if (!ya) return undefined;
       try {
         await guruHapusKelas(kelas.id);
-        toast(`${kelas.nama} dihapus.`, 'sukses');
+        toast(`Kelas ${kelas.nama} berhasil dihapus.`, 'sukses');
         muatUlang();
-      } catch (err) { toast(err.message, 'peringatan'); }
+      } catch (err) { toast(err.message, jenisGalat(err)); }
     }
     return undefined;
   });

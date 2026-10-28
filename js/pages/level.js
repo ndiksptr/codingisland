@@ -2,7 +2,7 @@
 // Kiri (±40%): kartu soal, chip perintah, editor, tombol. Kanan (±60%): panggung 16:9.
 // Di HP panggung tampil di atas, editor di bawah.
 
-import { esc, robot, tombol, bukaModal, toast, gambarRobot, goyangkan } from '../ui.js';
+import { esc, robot, tombol, bukaModal, toast, jenisGalat, gambarRobot, goyangkan } from '../ui.js';
 import {
   getKelas, getProgres, getPreferensi, simpanPreferensi,
   catatPercobaan, tambahLamaBermain, beliClue, getSiswa, getHargaClue
@@ -657,7 +657,7 @@ export async function renderLevel(halaman, { params }) {
   tombolJalankan.addEventListener('click', jalankan);
   $('[data-ulang]').addEventListener('click', () => {
     if (tokenJalan) tokenJalan.batal = true;
-    jalankanCatat().catch((err) => toast(err.message, 'peringatan')); // tombol Jalankan tetap mati sampai selesai
+    jalankanCatat().catch((err) => toast(err.message, jenisGalat(err))); // tombol Jalankan tetap mati sampai selesai
     aturTombolJalan(false);
     panggung.reset();
     resetTujuan();

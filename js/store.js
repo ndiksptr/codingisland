@@ -37,7 +37,7 @@ function qs(obj = {}) {
 }
 
 // Pesan untuk jaringan putus/lambat, server sibuk (503), dan batas CPU Cloudflare (error 1102)
-const PESAN_LAMBAT = 'Internet sedang lambat, coba lagi ya.';
+const PESAN_LAMBAT = 'Coding Island belum bisa dihubungi. Periksa koneksi internet, lalu coba lagi.';
 // Status yang biasanya sementara: gerbang Cloudflare/server sibuk
 const STATUS_SEMENTARA = new Set([502, 503, 504, 520, 521, 522, 523, 524]);
 const JEDA_COBA_ULANG_MS = 800;
@@ -71,7 +71,9 @@ async function api(path, { metode = 'GET', data, simpanCache = false } = {}) {
     try { isi = await res.json(); } catch { /* respons bukan JSON (mis. halaman galat Cloudflare) */ }
     if (!res.ok) {
       if (res.status === 401) lupakanSesi();
-      throw isi?.galat ? new Error(isi.galat) : galatLambat();
+      if (!isi?.galat) throw galatLambat();
+      // Status dibawa agar layar bisa membedakan salah isian (4xx) dari gangguan server (5xx)
+      throw Object.assign(new Error(isi.galat), { status: res.status });
     }
     // Data berubah: sesi (koin, nama) & data baca tersimpan diambil ulang dari server
     if (metode !== 'GET' && !simpanCache) lupakanSesi();

@@ -27,14 +27,17 @@ export default {
 
     const [sumber, ...rute] = url.pathname.slice('/api/'.length).split('/');
     const penangan = API[sumber];
-    if (!penangan) return json({ galat: 'Alamat API tidak ditemukan.' }, 404);
-    if (!env.DB) return json({ galat: 'Database belum terhubung (binding DB tidak ada).' }, 500);
+    if (!penangan) return json({ galat: 'Permintaan ini tidak dikenali. Muat ulang halaman, lalu coba lagi.' }, 404);
+    if (!env.DB) {
+      console.error('Binding D1 "DB" tidak ada. Periksa d1_databases di wrangler.toml.');
+      return json({ galat: 'Coding Island belum siap dipakai. Hubungi admin sekolah.' }, 500);
+    }
 
     try {
       await siapkanDb(env.DB);
     } catch (err) {
       console.error(err);
-      return json({ galat: 'Database belum siap. Coba lagi sebentar ya.' }, 503);
+      return json({ galat: 'Coding Island sedang bersiap. Tunggu sebentar, lalu coba lagi.' }, 503);
     }
     // Bentuk context sama dengan Pages Functions, jadi berkas di functions/api tidak perlu diubah
     return penangan({ request, env, params: { rute }, data: {}, waitUntil: (p) => ctx.waitUntil(p) });

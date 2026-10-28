@@ -2,7 +2,7 @@
 // Avatar & nama, total bintang, koin, berlian, koleksi piala per zona, progres per zona,
 // riwayat 10 level terakhir, pilihan avatar, dan pilihan bahasa perintah koding.
 
-import { esc, tombol, toast } from '../ui.js';
+import { esc, tombol, toast, jenisGalat } from '../ui.js';
 import { getSemuaProgres, ubahAvatarSaya, ubahBahasaSaya, getKelas } from '../store.js';
 import { deretBintang } from '../game/ikon.js';
 import { bahasaSah, namaDalam } from '../game/kamus-perintah.js';
@@ -136,7 +136,7 @@ export async function renderProfil(halaman) {
       halaman.querySelector('[data-avatar-besar]').src = `image/profile/${baru.avatar}.png`;
       toast('Avatar berhasil diganti!', 'sukses');
     } catch (err) {
-      toast(err.message, 'peringatan');
+      toast(err.message, jenisGalat(err));
     }
   }));
 
@@ -148,7 +148,7 @@ export async function renderProfil(halaman) {
     } catch (err) {
       // Kembalikan pilihan semula bila gagal tersimpan
       halaman.querySelector(`[name="bahasa"][value="${bahasaSah(siswa.bahasa)}"]`).checked = true;
-      toast(err.message, 'peringatan');
+      toast(err.message, jenisGalat(err));
     }
   }));
 }

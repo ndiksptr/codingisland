@@ -1,6 +1,6 @@
 // js/guru/siswa-detail.js — #/guru/siswa/:id: profil, progres per zona & level, kode terakhir, catatan guru
 
-import { esc, bukaModal, toast } from '../ui.js';
+import { esc, bukaModal, toast, jenisGalat } from '../ui.js';
 import { guruDetailSiswa, guruSimpanCatatan } from '../store.js';
 import { pindah, muatUlang } from '../router.js';
 import { LABEL_JENIS } from '../data/levels.js';
@@ -112,8 +112,8 @@ export async function renderDetailSiswa(wadah, { params, konteks }) {
       try {
         const c = await guruSimpanCatatan(s.id, wadah.querySelector('[data-catatan]').value);
         wadah.querySelector('[data-info-catatan]').textContent = `Terakhir disimpan ${formatTanggal(c.diperbarui, { jam: true })} oleh ${c.guruNama}`;
-        toast('Catatan disimpan.', 'sukses');
-      } catch (err) { toast(err.message, 'peringatan'); }
+        toast(`Catatan untuk ${s.namaPanggilan} berhasil disimpan.`, 'sukses');
+      } catch (err) { toast(err.message, jenisGalat(err)); }
       return;
     }
 

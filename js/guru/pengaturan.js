@@ -71,7 +71,7 @@ export async function renderPengaturan(wadah, { konteks }) {
 
   pasangForm('[data-form-nama]', async (fd) => {
     await guruUbahNama(String(fd.get('nama') || ''));
-    toast('Nama berhasil disimpan.', 'sukses');
+    toast('Nama tampilan berhasil disimpan.', 'sukses');
     muatUlang();
   });
 
@@ -87,7 +87,7 @@ export async function renderPengaturan(wadah, { konteks }) {
       hargaClue: [fd.get('clue1'), fd.get('clue2'), fd.get('clue3')],
       koinAwal: fd.get('koinAwal')
     });
-    toast('Pengaturan permainan disimpan.', 'sukses');
+    toast('Pengaturan permainan berhasil disimpan.', 'sukses');
     muatUlang();
   });
 }

@@ -3,7 +3,7 @@
 // Tiap pulau punya sakelar aktif/nonaktif (guru & admin, berlaku untuk semua kelas), disimpan di
 // pengaturan.zona_nonaktif. Menyalakan pulau bisa menurunkan nilai murid, jadi konfirmasinya memuat angka sungguhan.
 
-import { esc, bukaModal, toast } from '../ui.js';
+import { esc, bukaModal, toast, jenisGalat } from '../ui.js';
 import {
   guruDaftarLevel, guruDuplikatLevel, guruPindahUrutanLevel, guruHapusLevel, guruAturAktifLevel, guruDaftarZona, guruAturZona
 } from '../store.js';
@@ -55,7 +55,7 @@ function barisLevel(l, i, daftarZona) {
 function sakelarZonaHTML(z) {
   return `
     <label class="sakelar">
-      <input type="checkbox" role="switch" data-zona="${esc(z.id)}" ${z.aktif ? 'checked' : ''} aria-label="Pulau ${esc(z.nama)} aktif untuk murid">
+      <input type="checkbox" role="switch" data-zona="${esc(z.id)}" ${z.aktif ? 'checked' : ''} aria-label="Pulau ${esc(z.nama)} aktif untuk siswa">
       <span class="sakelar-jalur" aria-hidden="true"></span>
       <span>${z.aktif ? 'Aktif' : 'Nonaktif'}</span>
     </label>`;
@@ -66,19 +66,19 @@ const daftarNama = (zona) => zona.map((z) => esc(z.nama)).join(', ');
 /** Konfirmasi MENYALAKAN pulau: levelnya langsung masuk nilai sebagai 0, jadi tampilkan angka sungguhan. */
 function modalNyalakan(z, nonaktifBaru) {
   const murid = !z.totalMurid
-    ? 'Belum ada murid yang terdaftar.'
+    ? 'Belum ada siswa yang terdaftar.'
     : z.nilaiTurun
-      ? `Nilai <strong>${z.nilaiTurun} murid</strong> akan turun sampai mereka menyelesaikannya.`
-      : 'Tidak ada nilai murid yang turun.';
+      ? `Nilai <strong>${z.nilaiTurun} siswa</strong> akan turun sampai mereka menyelesaikannya.`
+      : 'Tidak ada nilai siswa yang turun.';
   const terjangkau = zonaTerjangkau(nonaktifBaru);
   const terkunci = terjangkau.some((x) => x.id === z.id) ? '' : `
-    <p class="mt-2">Pulau ini tetap terkunci bagi murid sampai pulau sebelumnya dinyalakan juga.</p>`;
+    <p class="mt-2">Pulau ini tetap terkunci bagi siswa sampai pulau sebelumnya dinyalakan juga.</p>`;
   return {
     judul: `Nyalakan ${z.nama}?`,
     isi: `
       <p>Pulau ini berisi <strong>${z.jumlahLevel} level</strong>. ${murid} Lanjutkan?</p>${terkunci}
       <p class="mt-2 text-sm">Berlaku untuk <strong>semua kelas</strong>. Level yang belum selesai dihitung 0 dalam nilai akhir.
-        Nilai yang sudah ditimpa guru tidak berubah. Progres dan bintang lama murid di pulau ini muncul kembali.</p>`,
+        Nilai yang sudah ditimpa guru tidak berubah. Progres dan bintang lama siswa di pulau ini muncul kembali.</p>`,
     tombol: [{ teks: 'Batal', nilai: false, varian: 'sekunder' }, { teks: 'Nyalakan', nilai: true, varian: 'utama' }]
   };
 }
@@ -91,14 +91,14 @@ function modalMatikan(z, nonaktifLama, nonaktifBaru) {
   // Mematikan pulau ini membuat murid tidak punya satu pun pulau yang bisa dimainkan
   const habis = sebelum.length > 0 && !sesudah.length;
   return {
-    judul: habis ? 'Murid tidak punya pulau untuk dimainkan' : `Matikan ${z.nama}?`,
+    judul: habis ? 'Siswa tidak punya pulau untuk dimainkan' : `Matikan ${z.nama}?`,
     isi: `
-      ${habis ? `<p class="rounded-xl bg-kuning p-3 mb-2 font-bold">Setelah ${esc(z.nama)} dimatikan, murid tidak punya satu pun pulau
+      ${habis ? `<p class="rounded-xl bg-kuning p-3 mb-2 font-bold">Setelah ${esc(z.nama)} dimatikan, siswa tidak punya satu pun pulau
         yang bisa dimainkan. Peta mereka akan bertuliskan "Belum ada pulau yang dibuka".</p>` : ''}
-      <p>${esc(z.nama)} disembunyikan dari peta murid di <strong>semua kelas</strong>, dan levelnya tidak dihitung dalam nilai akhir.</p>
-      ${ikutTerkunci.length ? `<p class="mt-2">Pulau sesudahnya (<strong>${daftarNama(ikutTerkunci)}</strong>) ikut terkunci bagi murid
+      <p>${esc(z.nama)} disembunyikan dari peta siswa di <strong>semua kelas</strong>, dan levelnya tidak dihitung dalam nilai akhir.</p>
+      ${ikutTerkunci.length ? `<p class="mt-2">Pulau sesudahnya (<strong>${daftarNama(ikutTerkunci)}</strong>) ikut terkunci bagi siswa
         sampai ${esc(z.nama)} dinyalakan lagi.</p>` : ''}
-      <p class="mt-2 text-sm">Progres, bintang, koin, dan berlian murid tidak dihapus, dan muncul kembali saat pulau dinyalakan lagi.</p>`,
+      <p class="mt-2 text-sm">Progres, bintang, koin, dan berlian siswa tidak dihapus, dan muncul kembali saat pulau dinyalakan lagi.</p>`,
     tombol: [{ teks: 'Batal', nilai: false, varian: 'sekunder' }, { teks: habis ? 'Tetap matikan' : 'Matikan', nilai: true, varian: 'bahaya' }]
   };
 }
@@ -116,7 +116,7 @@ export async function renderLevelGuru(wadah, { konteks, kelasId }) {
           <h2 class="dg-subjudul">Level & Soal</h2>
           <p class="text-sm">Level boss selalu di urutan terakhir zonanya. Level baru otomatis disisipkan sebelum boss.
           ${konteks.admin ? '' : 'Anda bisa mengedit level buatan Anda; level bawaan bisa diduplikat atau dinonaktifkan untuk kelas Anda.'}</p>
-          <p class="text-sm mt-1">Sakelar <strong>Aktif</strong> di tiap pulau berlaku untuk semua kelas. Pulau nonaktif tidak tampil di peta murid,
+          <p class="text-sm mt-1">Sakelar <strong>Aktif</strong> di tiap pulau berlaku untuk semua kelas. Pulau nonaktif tidak tampil di peta siswa,
           levelnya tidak dihitung dalam nilai, dan pulau sesudahnya ikut terkunci.</p>
         </div>
         <a href="#/guru/level/baru" class="tombol tombol-utama tombol-kecil">${IKON.tambah}<span>Buat Level Baru</span></a>
@@ -133,7 +133,7 @@ export async function renderLevelGuru(wadah, { konteks, kelasId }) {
               <div>
                 <h3 id="zona-${z.id}" class="dg-subjudul">${esc(z.nama)}</h3>
                 <p class="text-sm text-teal-tua font-bold">${esc(z.konsep)} · ${daftarZona.length} level</p>
-                ${iz.aktif ? '' : '<p class="text-sm text-[#B24E1C] font-bold">Tidak tampil di peta murid · tidak dihitung dalam nilai</p>'}
+                ${iz.aktif ? '' : '<p class="text-sm text-[#B24E1C] font-bold">Tidak tampil di peta siswa · tidak dihitung dalam nilai</p>'}
               </div>
             </div>
             ${sakelarZonaHTML(iz)}
@@ -167,10 +167,10 @@ export async function renderLevelGuru(wadah, { konteks, kelasId }) {
       const ya = await bukaModal(aktif ? modalNyalakan(z, nonaktifBaru) : modalMatikan(z, nonaktifLama, nonaktifBaru));
       if (!ya) return;
       await guruAturZona(z.id, aktif);
-      toast(`Pulau ${z.nama} ${aktif ? 'dinyalakan' : 'dimatikan'}.`, 'sukses');
+      toast(`Pulau ${z.nama} berhasil ${aktif ? 'dinyalakan' : 'dimatikan'}.`, 'sukses');
       muatUlang();
     } catch (err) {
-      toast(err.message, 'peringatan');
+      toast(err.message, jenisGalat(err));
     } finally {
       sakelar.disabled = false;
     }
@@ -184,7 +184,7 @@ export async function renderLevelGuru(wadah, { konteks, kelasId }) {
     try {
       if (aksi === 'naik' || aksi === 'turun') {
         await guruPindahUrutanLevel(l.id, aksi === 'naik' ? -1 : 1);
-        toast(`Urutan "${l.judul}" diubah.`, 'sukses');
+        toast(`Urutan level "${l.judul}" berhasil diubah.`, 'sukses');
         muatUlang();
       } else if (aksi === 'coba') {
         pindah(`/guru/level/${l.id}/coba`);
@@ -192,7 +192,7 @@ export async function renderLevelGuru(wadah, { konteks, kelasId }) {
         pindah(`/guru/level/${l.id}/edit`);
       } else if (aksi === 'duplikat') {
         const baru = await guruDuplikatLevel(l.id);
-        toast(`Salinan dibuat sebagai draf: ${baru.judul}`, 'sukses');
+        toast(`Salinan "${baru.judul}" berhasil dibuat sebagai draf.`, 'sukses');
         pindah(`/guru/level/${baru.id}/edit`);
       } else if (aksi === 'nonaktif' || aksi === 'aktif') {
         const nonaktif = aksi === 'nonaktif';
@@ -205,7 +205,7 @@ export async function renderLevelGuru(wadah, { konteks, kelasId }) {
           if (!ya) return;
         }
         await guruAturAktifLevel(l.id, !nonaktif);
-        toast(nonaktif ? `"${l.judul}" dinonaktifkan.` : `"${l.judul}" aktif lagi.`, 'sukses');
+        toast(nonaktif ? `Level "${l.judul}" berhasil dinonaktifkan.` : `Level "${l.judul}" berhasil diaktifkan lagi.`, 'sukses');
         muatUlang();
       } else if (aksi === 'hapus') {
         const ya = await bukaModal({
@@ -215,12 +215,12 @@ export async function renderLevelGuru(wadah, { konteks, kelasId }) {
         });
         if (!ya) return;
         await guruHapusLevel(l.id);
-        toast(`"${l.judul}" dihapus.`, 'sukses');
+        toast(`Level "${l.judul}" berhasil dihapus.`, 'sukses');
         semua = semua.filter((x) => x.id !== l.id);
         muatUlang();
       }
     } catch (err) {
-      toast(err.message, 'peringatan');
+      toast(err.message, jenisGalat(err));
     }
   });
 }

@@ -219,7 +219,10 @@ function ambilWadahToast() {
 
 /**
  * Tampilkan notifikasi kecil di pojok kanan atas.
- * jenis: 'info' | 'sukses' | 'peringatan'
+ * jenis: 'info'       keterangan biasa, bukan hasil tindakan
+ *        'sukses'     tindakan benar-benar berhasil
+ *        'peringatan' pengguna perlu memperbaiki sesuatu, atau tindakan berhasil sebagian
+ *        'galat'      tindakan gagal bukan karena pengguna (jaringan putus, server bermasalah)
  */
 export function toast(pesan, jenis = 'info', durasi = 3200) {
   const jenisAman = IKON_TOAST[jenis] ? jenis : 'info';
@@ -235,6 +238,12 @@ export function toast(pesan, jenis = 'info', durasi = 3200) {
   }, durasi);
   return el;
 }
+
+/**
+ * Jenis toast untuk galat yang ditangkap: jaringan putus atau server bermasalah (5xx) = 'galat';
+ * ditolak server (4xx) atau salah isian yang diperiksa di browser = 'peringatan'.
+ */
+export const jenisGalat = (err) => (err?.jaringan || err?.status >= 500 ? 'galat' : 'peringatan');
 
 // ---------- Pesan validasi di bawah kolom ----------
 /**
@@ -396,7 +405,7 @@ export function bukaFormModal({ judul, isi, teksSimpan = 'Simpan', varianSimpan 
           }
           tutup(hasil ?? true);
         } catch (err) {
-          galat.textContent = err.message || 'Terjadi kesalahan.';
+          galat.textContent = err.message || 'Perubahan belum tersimpan. Coba lagi.';
         } finally {
           tombolSimpan.disabled = false;
         }

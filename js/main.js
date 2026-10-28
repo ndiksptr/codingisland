@@ -91,11 +91,11 @@ aturPenjaga(async (path) => {
     return `/masuk?ke=${ke}`;
   }
   if (halamanGuru && sesi?.jenis !== 'guru') {
-    toast('Halaman ini khusus guru. Silakan masuk.', 'info');
+    toast('Halaman ini khusus guru. Silakan masuk dengan akun guru.', 'info');
     return `/guru/masuk?ke=${ke}`;
   }
   if (path === '/guru/guru' && sesi?.peran !== 'admin') {
-    toast('Halaman ini khusus admin.', 'peringatan');
+    toast('Halaman ini khusus admin. Anda dialihkan ke Ringkasan.', 'peringatan');
     return '/guru';
   }
   return null;

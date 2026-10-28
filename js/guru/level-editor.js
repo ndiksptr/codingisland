@@ -3,7 +3,7 @@
 // solusi, batas baris, clue, kelas tujuan). Kanan: editor dunia di atas panggung yang sama dengan siswa.
 // "Terbitkan" hanya aktif jika lolos alasanBelumSiap() — store memeriksanya lagi saat menyimpan.
 
-import { esc, toast, gambarRobot } from '../ui.js';
+import { esc, toast, jenisGalat, gambarRobot } from '../ui.js';
 import { guruGetLevel, guruSimpanLevel } from '../store.js';
 import { pindah } from '../router.js';
 import { ZONA, cariZona } from '../data/zona.js';
@@ -28,7 +28,7 @@ const ALAT = [
   { id: 'bendera', teks: 'Bendera', bantuan: 'Klik petak untuk menaruh bendera tujuan (hanya satu).' },
   { id: 'koin', teks: 'Koin wajib', bantuan: 'Koin wajib harus diambil siswa sebelum ke bendera.' },
   { id: 'berlian', teks: 'Berlian bonus', bantuan: 'Berlian bonus boleh diambil, tidak wajib.' },
-  { id: 'rintangan', teks: 'Rintangan', bantuan: 'Rintangan mengikuti zona: batu, karang, kaktus, atau es.' },
+  { id: 'rintangan', teks: 'Rintangan', bantuan: 'Rintangan mengikuti pulau: batu, karang, kaktus, atau es.' },
   { id: 'jurang', teks: 'Jurang', bantuan: 'Jurang harus dilompati dengan lompat().' },
   { id: 'hapus', teks: 'Penghapus', bantuan: 'Klik benda untuk menghapusnya. Robot tidak bisa dihapus, pindahkan saja.' }
 ];
@@ -143,7 +143,7 @@ export async function renderEditorLevel(wadah, { params, konteks }) {
         <section class="dg-kartu">
           <div class="dg-kartu-kepala mb-2">
             <h2 class="dg-subjudul">Perintah yang tersedia</h2>
-            <button type="button" class="tombol tombol-sekunder tombol-kecil" data-perintah-zona>Sesuaikan dengan zona</button>
+            <button type="button" class="tombol tombol-sekunder tombol-kecil" data-perintah-zona>Sesuaikan dengan pulau</button>
           </div>
           <div class="dg-pilihan-grid" data-daftar-perintah>
             ${SEMUA_PERINTAH.map((p) => `<label class="dg-centang font-kode text-sm"><input type="checkbox" data-perintah value="${p}"> ${p}</label>`).join('')}
@@ -366,7 +366,7 @@ export async function renderEditorLevel(wadah, { params, konteks }) {
   function klikPetak(x, y) {
     const d = st.dunia;
     const isi = isiPetak(x, y);
-    const penuh = () => toast('Petak sudah terisi. Pakai Penghapus dulu.', 'info');
+    const penuh = () => toast('Petak ini sudah terisi. Kosongkan dulu dengan alat Penghapus.', 'peringatan');
 
     if (alat === 'robot') {
       if (isi === 'robot') {
@@ -381,7 +381,7 @@ export async function renderEditorLevel(wadah, { params, konteks }) {
       d.tujuan = { x, y };
     } else if (alat === 'hapus') {
       if (!isi) return undefined;
-      if (isi === 'robot') return toast('Robot tidak bisa dihapus. Pilih alat Robot lalu klik petak lain untuk memindahkannya.', 'info');
+      if (isi === 'robot') return toast('Robot tidak bisa dihapus. Untuk memindahkannya, pilih alat Robot lalu klik petak lain.', 'peringatan');
       simpanRiwayat();
       if (isi === 'bendera') d.tujuan = null;
       d.item = d.item.filter((o) => o.x !== x || o.y !== y);
@@ -480,20 +480,20 @@ export async function renderEditorLevel(wadah, { params, konteks }) {
   // =====================================================================
   async function simpan(terbit) {
     const tombol = $(terbit ? '[data-terbitkan]' : '[data-simpan-draf]');
-    if (!st.judul.trim()) { toast('Isi judul dulu sebelum menyimpan.', 'peringatan'); $('[data-isi="judul"]').focus(); return; }
+    if (!st.judul.trim()) { toast('Judul level belum diisi. Isi judul sebelum menyimpan.', 'peringatan'); $('[data-isi="judul"]').focus(); return; }
     tombol.disabled = true;
     try {
       const hasil = await guruSimpanLevel(dataLevel(), { terbit });
       toast(terbit
-        ? `"${hasil.judul}" terbit! Siswa ${hasil.kelas ? hasil.kelas.join(', ') : 'semua kelas'} sudah bisa memainkannya.`
-        : `Draf "${hasil.judul}" disimpan.`, 'sukses');
+        ? `Level "${hasil.judul}" berhasil diterbitkan. Siswa ${hasil.kelas ? hasil.kelas.join(', ') : 'semua kelas'} sudah bisa memainkannya.`
+        : `Draf "${hasil.judul}" berhasil disimpan.`, 'sukses');
       if (!lama) { pindah(`/guru/level/${hasil.id}/edit`); return; }
       st.status = hasil.status;
       const lencana = $('[data-status-level]');
       lencana.textContent = labelStatus[hasil.status] || hasil.status;
       lencana.dataset.jenis = hasil.status === 'terbit' ? 'selesai' : 'clue';
     } catch (err) {
-      toast(err.message, 'peringatan');
+      toast(err.message, jenisGalat(err));
     } finally {
       tombol.disabled = false;
       perbaruiStatus();

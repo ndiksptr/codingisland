@@ -1,7 +1,7 @@
 // js/guru/guru.js — #/guru/guru (khusus admin): tambah, edit, hapus guru, tetapkan kelas, reset password,
 // dan masuk sebagai guru (menyamar) tanpa login ulang
 
-import { esc, bukaModal, bukaFormModal, toast } from '../ui.js';
+import { esc, bukaModal, bukaFormModal, toast, jenisGalat } from '../ui.js';
 import { adminDaftarGuru, adminSimpanGuru, adminHapusGuru, adminResetPasswordGuru, adminMasukSebagaiGuru } from '../store.js';
 import { muatUlang, pindah } from '../router.js';
 import { IKON, kosong, tombolAksi } from './komponen.js';
@@ -82,7 +82,7 @@ export async function renderGuru(wadah, { konteks }) {
       })
     });
     if (hasil) {
-      toast(guru ? `Data ${hasil.nama} disimpan.` : `Akun ${hasil.nama} dibuat.`, 'sukses');
+      toast(guru ? `Data guru ${hasil.nama} berhasil disimpan.` : `Akun guru ${hasil.nama} berhasil dibuat.`, 'sukses');
       muatUlang();
     }
   }
@@ -109,7 +109,7 @@ export async function renderGuru(wadah, { konteks }) {
         await adminMasukSebagaiGuru(guru.id);
         toast(`Anda masuk sebagai ${guru.nama}.`, 'sukses');
         pindah('/guru');
-      } catch (err) { toast(err.message, 'peringatan'); }
+      } catch (err) { toast(err.message, jenisGalat(err)); }
       return undefined;
     }
 
@@ -122,7 +122,7 @@ export async function renderGuru(wadah, { konteks }) {
       if (!ya) return undefined;
       try {
         const sandi = await adminResetPasswordGuru(guru.id);
-        toast(`Password ${guru.nama} direset.`, 'sukses');
+        toast(`Password ${guru.nama} berhasil direset.`, 'sukses');
         await bukaModal({
           judul: 'Password baru',
           isi: `
@@ -134,22 +134,22 @@ export async function renderGuru(wadah, { konteks }) {
           tombol: [{ teks: 'Sudah saya catat', nilai: true }],
           bisaDitutup: false
         });
-      } catch (err) { toast(err.message, 'peringatan'); }
+      } catch (err) { toast(err.message, jenisGalat(err)); }
       return undefined;
     }
 
     if (tombol.dataset.aksi === 'hapus') {
       const ya = await bukaModal({
         judul: `Hapus ${guru.nama}?`,
-        isi: '<p>Akun guru dihapus. Kelas yang diampunya tetap ada, tetapi tanpa guru ini.</p>',
+        isi: '<p>Akun guru ini akan dihapus. Kelas yang diampunya tetap ada, tetapi tidak lagi memiliki guru ini.</p>',
         tombol: [{ teks: 'Batal', nilai: false, varian: 'sekunder' }, { teks: 'Hapus', nilai: true, varian: 'bahaya' }]
       });
       if (!ya) return undefined;
       try {
         await adminHapusGuru(guru.id);
-        toast(`${guru.nama} dihapus.`, 'sukses');
+        toast(`Akun guru ${guru.nama} berhasil dihapus.`, 'sukses');
         muatUlang();
-      } catch (err) { toast(err.message, 'peringatan'); }
+      } catch (err) { toast(err.message, jenisGalat(err)); }
     }
     return undefined;
   });

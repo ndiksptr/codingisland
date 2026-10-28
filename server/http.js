@@ -21,7 +21,7 @@ export async function bacaJson(request) {
   try {
     return (await request.json()) || {};
   } catch {
-    throw new GalatApi(400, 'Data yang dikirim tidak valid.');
+    throw new GalatApi(400, 'Ada data yang tidak terbaca. Muat ulang halaman, lalu coba lagi.');
   }
 }
 
@@ -43,7 +43,7 @@ export function buatRouter(daftarRute) {
     if (!['GET', 'HEAD'].includes(metode)) {
       const tipe = context.request.headers.get('Content-Type') || '';
       const panjang = Number(context.request.headers.get('Content-Length') || 0);
-      if (panjang > 0 && !tipe.includes('application/json')) return json({ galat: 'Format data harus JSON.' }, 415);
+      if (panjang > 0 && !tipe.includes('application/json')) return json({ galat: 'Ada data yang tidak terbaca. Muat ulang halaman, lalu coba lagi.' }, 415);
     }
 
     for (const [m, pola, penangan] of daftarRute) {
@@ -64,10 +64,10 @@ export function buatRouter(daftarRute) {
         if (err instanceof GalatApi) return json({ galat: err.message }, err.status);
         console.error(err);
         // Pelanggaran UNIQUE dari D1 (mis. username kembar) diterjemahkan agar ramah
-        if (/UNIQUE constraint failed/i.test(String(err?.message))) return json({ galat: 'Data itu sudah dipakai. Coba yang lain ya.' }, 409);
-        return json({ galat: 'Terjadi kesalahan di server. Coba lagi ya.' }, 500);
+        if (/UNIQUE constraint failed/i.test(String(err?.message))) return json({ galat: 'Data ini sudah dipakai. Ganti dengan yang lain, lalu coba lagi.' }, 409);
+        return json({ galat: 'Coding Island sedang ada gangguan. Tunggu sebentar, lalu coba lagi.' }, 500);
       }
     }
-    return json({ galat: 'Alamat API tidak ditemukan.' }, 404);
+    return json({ galat: 'Permintaan ini tidak dikenali. Muat ulang halaman, lalu coba lagi.' }, 404);
   };
 }

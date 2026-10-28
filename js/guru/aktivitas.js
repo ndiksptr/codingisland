@@ -1,6 +1,6 @@
 // js/guru/aktivitas.js — #/guru/aktivitas: log aktivitas yang bisa difilter per kelas, siswa, dan jenis
 
-import { esc, toast } from '../ui.js';
+import { esc, toast, jenisGalat } from '../ui.js';
 import { guruAktivitas, guruDaftarSiswa, simpanPreferensi } from '../store.js';
 import { muatUlang } from '../router.js';
 import { kosong, lencanaAktivitas, formatTanggal, waktuRelatif, JENIS_AKTIVITAS } from './komponen.js';
@@ -68,7 +68,7 @@ export async function renderAktivitas(wadah, { konteks, kelasId }) {
         ${total > daftar.length ? '<div class="mt-3 text-center"><button type="button" class="tombol tombol-sekunder tombol-kecil" data-lagi>Tampilkan lebih banyak</button></div>' : ''}`
         : kosong('Belum ada aktivitas', 'Aktivitas muncul saat siswa mendaftar, masuk, mencoba level, atau membeli clue.');
     } catch (err) {
-      toast(err.message, 'peringatan');
+      toast(err.message, jenisGalat(err));
     }
   }
   await gambar();

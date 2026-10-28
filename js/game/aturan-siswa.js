@@ -8,7 +8,7 @@ export function periksaKolomSiswa(kolom, nilai) {
     case 'namaLengkap':
       if (!v) return 'Tulis nama lengkapmu dulu ya.';
       if (v.length < 3) return 'Nama lengkap minimal 3 huruf.';
-      if (v.length > 50) return 'Nama lengkap terlalu panjang.';
+      if (v.length > 50) return 'Nama lengkap paling banyak 50 huruf.';
       if (!/^[A-Za-zÀ-ɏ' .-]+$/.test(v)) return 'Nama hanya boleh berisi huruf dan spasi.';
       return '';
     case 'namaPanggilan':
@@ -25,7 +25,7 @@ export function periksaKolomSiswa(kolom, nilai) {
       if (!/^[A-Za-z0-9]{6}$/.test(v)) return 'Kode kelas terdiri dari 6 huruf atau angka.';
       return '';
     case 'username':
-      if (!v) return 'Username tidak boleh kosong.';
+      if (!v) return 'Username belum diisi.';
       if (!/^[a-z][a-z0-9]{2,15}$/.test(v)) return 'Username 3–16 huruf kecil atau angka, diawali huruf.';
       return '';
     case 'pin':

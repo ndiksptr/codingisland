@@ -67,7 +67,7 @@ export const onRequest = buatRouter([
     const a = await aksesGuru(ctx);
     bolehKelas(a, kelasId);
     const s = await ambilSiswaBoleh(ctx, a, siswaId);
-    if (s.kelas_id !== kelasId) throw new GalatApi(400, 'Siswa tidak ada di kelas ini.');
+    if (s.kelas_id !== kelasId) throw new GalatApi(400, 'Siswa ini tidak terdaftar di kelas ini. Muat ulang halaman nilai.');
     const { nilai, alasan } = await bacaJson(ctx.request);
     const n = Math.round(Number(nilai));
     if (!Number.isFinite(n) || n < 1 || n > 100) throw new GalatApi(400, 'Nilai harus angka 1 sampai 100.');

@@ -53,7 +53,7 @@ async function siswaBaru(ctx, a, data, siap) {
     const pesan = periksaKolomSiswa(kolom, d[kolom]);
     if (pesan) throw new GalatApi(400, pesan);
   }
-  if (siap.dipakai.has(d.username)) throw new GalatApi(409, 'Username ini sudah dipakai. Coba yang lain ya.');
+  if (siap.dipakai.has(d.username)) throw new GalatApi(409, 'Username ini sudah dipakai siswa lain. Pilih username lain.');
   siap.dipakai.add(d.username); // baris impor berikutnya tidak memakai username yang sama
   const pin = acakPin();
   const id = idBaru('siswa');
@@ -179,7 +179,7 @@ export const onRequest = buatRouter([
       } catch (err) {
         console.error(err);
         // Satu transaksi: jika gagal (mis. username baru saja dipakai orang lain), tidak ada akun yang terbuat
-        return hasil.map((h) => (h.pin ? { ...h, ok: false, pesan: 'Gagal menyimpan. Coba impor baris ini lagi.', username: undefined, pin: undefined } : h));
+        return hasil.map((h) => (h.pin ? { ...h, ok: false, pesan: 'Baris ini belum tersimpan karena ada gangguan. Impor ulang baris ini.', username: undefined, pin: undefined } : h));
       }
     }
     return hasil;
@@ -230,7 +230,7 @@ export const onRequest = buatRouter([
       if (pesan) throw new GalatApi(400, pesan);
     }
     if ('kelasId' in data) bolehKelas(a, baru.kelasId);
-    if (await satu(db, 'SELECT id FROM siswa WHERE username = ? AND id <> ?', baru.username, id)) throw new GalatApi(409, 'Username ini sudah dipakai. Coba yang lain ya.');
+    if (await satu(db, 'SELECT id FROM siswa WHERE username = ? AND id <> ?', baru.username, id)) throw new GalatApi(409, 'Username ini sudah dipakai siswa lain. Pilih username lain.');
     await jalankan(db, 'UPDATE siswa SET nama_lengkap = ?, nama_panggilan = ?, avatar = ?, jenis_kelamin = ?, username = ?, kelas_id = ? WHERE id = ?',
       baru.namaLengkap, baru.namaPanggilan, baru.avatar, baru.avatar === 'pria' ? 'L' : 'P', baru.username, baru.kelasId, id);
     return siswaKeObjek(await satu(db, 'SELECT * FROM siswa WHERE id = ?', id));
