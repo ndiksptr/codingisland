@@ -14,13 +14,14 @@
 //   PATCH /api/auth/nama, POST /api/auth/password            akun guru sendiri
 //   GET/PUT /api/auth/pengaturan        pengaturan permainan (PUT: admin)
 //   (pulau per kelas diatur lewat PUT /api/kelas/:id/zona)
-//   GET/POST /api/auth/guru, PATCH/DELETE /api/auth/guru/:id, POST /api/auth/guru/:id/reset-password (admin)
+//   GET/POST /api/auth/guru, PATCH/DELETE /api/auth/guru/:id (admin)
+//   POST /api/auth/guru/:id/reset-password { password }  admin menetapkan password akun berperan guru
 //   POST /api/auth/guru/:id/menyamar    admin masuk sebagai guru itu (sesi baru, admin asli dicatat)
 //   POST /api/auth/akhiri-menyamar      kembali ke akun admin asli
 // Selama menyamar: ubah nama/password dan kelola akun guru/admin ditolak (tolakSaatMenyamar).
 
 import { buatRouter, json, bacaJson, kueri, GalatApi } from '../../../server/http.js';
-import { hashRahasia, cocokRahasia, samarkanWaktu, acakPassword, idBaru, samaKonstan, iterasiDari, perluHashUlang } from '../../../server/kripto.js';
+import { hashRahasia, cocokRahasia, samarkanWaktu, idBaru, samaKonstan, iterasiDari, perluHashUlang } from '../../../server/kripto.js';
 import { buatSesi, hapusSesi, sesiUntukKlien, aksesGuru, wajibAdmin, tolakSaatMenyamar, wajibSiswa, aturKelasAktif } from '../../../server/sesi.js';
 import {
   semua, satu, jalankan, perintah, sekarang, siswaKeObjek, guruKeObjek, semuaKelas, bacaPengaturan,
@@ -361,16 +362,24 @@ export const onRequest = buatRouter([
     return { ok: true };
   }],
 
+  // Admin mengetik sendiri password baru guru (pola sama dengan PIN murid). Ditolak saat menyamar
+  // (wajibAdminAsli) dan untuk akun admin. Hanya hash PBKDF2 yang disimpan; password tidak dikirim
+  // balik, tidak dicatat di aktivitas, dan tidak ditulis ke log.
   ['POST', 'guru/:id/reset-password', async (ctx, { id }) => {
     wajibAdminAsli(await aksesGuru(ctx));
     const db = ctx.env.DB;
-    if (!(await satu(db, 'SELECT id FROM guru WHERE id = ?', id))) throw new GalatApi(404, 'Akun guru ini tidak ditemukan, mungkin sudah dihapus. Muat ulang halaman.');
-    const password = acakPassword();
+    const g = await satu(db, 'SELECT id, peran FROM guru WHERE id = ?', id);
+    if (!g) throw new GalatApi(404, 'Akun guru ini tidak ditemukan, mungkin sudah dihapus. Muat ulang halaman.');
+    if (g.peran !== 'guru') throw new GalatApi(403, 'Password hanya bisa ditetapkan untuk akun berperan guru. Admin mengganti passwordnya sendiri di Pengaturan.');
+    const password = String((await bacaJson(ctx.request)).password ?? '');
+    // Aturan sama dengan halaman pemasangan (#/pasang)
+    if (password.length < 8 || password.length > 64) throw new GalatApi(400, 'Password minimal 8 karakter.');
     await db.batch([
       perintah(db, 'UPDATE guru SET password_hash = ? WHERE id = ?', await hashRahasia(password, iterasi(ctx.env)), id),
+      // Semua sesi guru itu (termasuk sesi penyamaran ke akunnya) dihentikan
       perintah(db, "DELETE FROM sesi WHERE (jenis = 'guru' AND pengguna_id = ?) OR admin_asli_id = ?", id, id)
     ]);
-    return { password };
+    return { ok: true };
   }],
 
   // ================= Admin masuk sebagai guru (menyamar) =================

@@ -69,7 +69,6 @@ export function teksAcak(panjang, huruf) {
 }
 
 export const acakPin = () => String(crypto.getRandomValues(new Uint32Array(1))[0] % 10000).padStart(4, '0');
-export const acakPassword = () => teksAcak(8, 'abcdefghjkmnpqrstuvwxyz23456789');
 export const acakKodeKelas = () => teksAcak(6, 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789');
 export const idBaru = (awalan) => `${awalan}_${Date.now().toString(36)}${tokenAcak(3)}`;
 

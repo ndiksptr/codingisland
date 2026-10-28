@@ -556,8 +556,10 @@ export async function adminHapusGuru(guruId) {
   return true;
 }
 
-export async function adminResetPasswordGuru(guruId) {
-  return (await api(`auth/guru/${enc(guruId)}/reset-password`, { metode: 'POST' })).password;
+/** Admin menetapkan password baru akun berperan guru (diketik admin, minimal 8 karakter). Semua sesi guru itu berakhir. */
+export async function adminResetPasswordGuru(guruId, password) {
+  await api(`auth/guru/${enc(guruId)}/reset-password`, { metode: 'POST', data: { password } });
+  return true;
 }
 
 // ---------- Admin masuk sebagai guru (menyamar) ----------

@@ -1,10 +1,19 @@
-// js/guru/guru.js — #/guru/guru (khusus admin): tambah, edit, hapus guru, tetapkan kelas, reset password,
-// dan masuk sebagai guru (menyamar) tanpa login ulang
+// js/guru/guru.js — #/guru/guru (khusus admin): tambah, edit, hapus guru, tetapkan kelas, ganti password guru
+// (diketik admin, tombol Sarankan hanya mengisi kolom), dan masuk sebagai guru (menyamar) tanpa login ulang
 
 import { esc, bukaModal, bukaFormModal, toast, jenisGalat } from '../ui.js';
 import { adminDaftarGuru, adminSimpanGuru, adminHapusGuru, adminResetPasswordGuru, adminMasukSebagaiGuru } from '../store.js';
 import { muatUlang, pindah } from '../router.js';
 import { IKON, kosong, tombolAksi } from './komponen.js';
+
+// Saran password mudah dibaca, mis. "kpnu-7r3d" (tanpa huruf/angka yang mirip: i l o 0 1).
+// Hanya mengisi kolom; yang tersimpan selalu isi kolom saat Simpan ditekan.
+const HURUF_SARAN = 'abcdefghjkmnpqrstuvwxyz23456789';
+const sarankanPassword = () => {
+  const acak = crypto.getRandomValues(new Uint32Array(8));
+  const k = [...acak].map((n) => HURUF_SARAN[n % HURUF_SARAN.length]).join('');
+  return `${k.slice(0, 4)}-${k.slice(4)}`;
+};
 
 function formGuruHTML(guru, semuaKelas, akunSendiri) {
   const kelasDipilih = new Set((guru?.kelas || []).map((k) => k.id));
@@ -57,7 +66,7 @@ export async function renderGuru(wadah, { konteks }) {
                   <td class="text-right whitespace-nowrap">
                     ${bolehMasukSebagai(g) ? tombolAksi(IKON.masukSebagai, `Masuk sebagai ${g.nama}`, `data-aksi="menyamar" data-id="${esc(g.id)}"`) : ''}
                     ${tombolAksi(IKON.edit, `Edit ${g.nama}`, `data-aksi="edit" data-id="${esc(g.id)}"`)}
-                    ${tombolAksi(IKON.kunci, `Reset password ${g.nama}`, `data-aksi="sandi" data-id="${esc(g.id)}"`)}
+                    ${g.peran === 'guru' ? tombolAksi(IKON.kunci, `Ganti password ${g.nama}`, `data-aksi="sandi" data-id="${esc(g.id)}"`) : ''}
                     ${tombolAksi(IKON.hapus, g.id === konteks.guru.id ? 'Tidak bisa menghapus akun sendiri' : `Hapus ${g.nama}`, `data-aksi="hapus" data-id="${esc(g.id)}" ${g.id === konteks.guru.id ? 'disabled' : ''}`, true)}
                   </td>
                 </tr>`).join('')}
@@ -114,27 +123,49 @@ export async function renderGuru(wadah, { konteks }) {
     }
 
     if (tombol.dataset.aksi === 'sandi') {
-      const ya = await bukaModal({
-        judul: `Reset password ${guru.nama}?`,
-        isi: '<p>Password lama tidak bisa dipakai lagi. Password baru ditampilkan sekali.</p>',
-        tombol: [{ teks: 'Batal', nilai: false, varian: 'sekunder' }, { teks: 'Reset password', nilai: true }]
+      // Admin mengetik password baru (pola sama dengan PIN murid). Password hanya ada di memori halaman
+      // ini sampai kotak "Password baru" ditutup; tidak disimpan di mana pun dan tidak ditulis ke console.
+      const hasil = await bukaFormModal({
+        judul: `Ganti password ${guru.nama}`,
+        isi: `
+          <p class="mb-3">Password lama tidak bisa dipakai lagi, dan ${esc(guru.nama)} akan keluar dari semua perangkat.
+            Password baru ditampilkan sekali untuk Anda catat.</p>
+          <label for="sandi-baru" class="dg-label">Password baru (minimal 8 karakter)</label>
+          <div class="flex gap-2 mt-1">
+            <input id="sandi-baru" name="password" type="text" class="dg-input font-kode" maxlength="64"
+              autocomplete="new-password" autocapitalize="none" spellcheck="false">
+            <button type="button" class="tombol tombol-sekunder tombol-kecil shrink-0" data-sarankan-sandi>Sarankan</button>
+          </div>`,
+        teksSimpan: 'Simpan',
+        saatBuka: (form) => {
+          const kolom = form.querySelector('[name="password"]');
+          form.querySelector('[data-sarankan-sandi]').addEventListener('click', () => {
+            kolom.value = sarankanPassword();
+            kolom.focus();
+            kolom.select();
+          });
+        },
+        saatSimpan: async (fd) => {
+          const password = String(fd.get('password') || '');
+          // Sama dengan halaman pemasangan; server memeriksa ulang
+          if (password.length < 8) return { galat: 'Password minimal 8 karakter.' };
+          await adminResetPasswordGuru(guru.id, password);
+          return { password };
+        }
       });
-      if (!ya) return undefined;
-      try {
-        const sandi = await adminResetPasswordGuru(guru.id);
-        toast(`Password ${guru.nama} berhasil direset.`, 'sukses');
-        await bukaModal({
-          judul: 'Password baru',
-          isi: `
-            <p>Berikan kepada <strong>${esc(guru.nama)}</strong> dan minta ia menggantinya di menu Pengaturan.</p>
-            <div class="dg-kotak-pin">
-              <div><span>Username</span><strong>${esc(guru.username)}</strong></div>
-              <div><span>Password</span><strong>${esc(sandi)}</strong></div>
-            </div>`,
-          tombol: [{ teks: 'Sudah saya catat', nilai: true }],
-          bisaDitutup: false
-        });
-      } catch (err) { toast(err.message, jenisGalat(err)); }
+      if (!hasil) return undefined;
+      toast(`Password ${guru.nama} berhasil diganti.`, 'sukses');
+      await bukaModal({
+        judul: 'Password baru',
+        isi: `
+          <p>Berikan kepada <strong>${esc(guru.nama)}</strong>. Password ini <strong>tidak akan ditampilkan lagi</strong> setelah kotak ini ditutup.</p>
+          <div class="dg-kotak-pin">
+            <div><span>Username</span><strong>${esc(guru.username)}</strong></div>
+            <div><span>Password</span><strong>${esc(hasil.password)}</strong></div>
+          </div>`,
+        tombol: [{ teks: 'Sudah saya catat', nilai: true }],
+        bisaDitutup: false
+      });
       return undefined;
     }
 
