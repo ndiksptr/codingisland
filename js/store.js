@@ -415,6 +415,11 @@ export async function guruSimpanKelas(data) {
     : api('kelas', { metode: 'POST', data: isi });
 }
 
+/** Kode kelas acak dari server yang belum dipakai kelas lain (untuk diisikan ke form, boleh ditimpa guru). */
+export async function guruKodeKelasAcak() {
+  return (await api('kelas/kode-acak')).kode;
+}
+
 export async function guruKodeKelasBaru(kelasId) {
   return (await api(`kelas/${enc(kelasId)}/kode-baru`, { metode: 'POST' })).kode;
 }

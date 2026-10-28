@@ -1,7 +1,7 @@
 // js/guru/kelas.js — #/guru/kelas: daftar kelas, kode kelas, tambah/edit/hapus
 
 import { esc, bukaModal, bukaFormModal, toast, jenisGalat } from '../ui.js';
-import { guruDaftarKelas, guruSimpanKelas, guruHapusKelas, guruKodeKelasBaru, adminDaftarGuru } from '../store.js';
+import { guruDaftarKelas, guruSimpanKelas, guruHapusKelas, guruKodeKelasBaru, guruKodeKelasAcak, adminDaftarGuru } from '../store.js';
 import { IKON, kosong, tombolAksi } from './komponen.js';
 import { muatUlang } from '../router.js';
 
@@ -21,7 +21,7 @@ async function salinTeks(teks) {
   }
 }
 
-function formKelasHTML(kelas, daftarGuru, idSaya) {
+function formKelasHTML(kelas, daftarGuru, idSaya, kodeAwal) {
   return `
     <div class="dg-form-grid">
       <label class="dg-label">Nama kelas
@@ -32,6 +32,14 @@ function formKelasHTML(kelas, daftarGuru, idSaya) {
           ${[3, 4, 5, 6].map((t) => `<option value="${t}" ${kelas?.tingkat === t ? 'selected' : ''}>Kelas ${t}</option>`).join('')}
         </select>
       </label>
+      <div class="sm:col-span-2">
+        <label for="kode-kelas" class="dg-label">Kode kelas (6 huruf atau angka)</label>
+        <div class="flex gap-2 mt-1">
+          <input id="kode-kelas" name="kodeKelas" class="dg-input font-kode tracking-[.3em]" required maxlength="6" autocomplete="off" spellcheck="false" placeholder="ABC123" value="${esc(kodeAwal)}">
+          <button type="button" class="tombol tombol-sekunder tombol-kecil shrink-0" data-acak-kode>Acak</button>
+        </div>
+        <p class="mt-1 text-sm">Ketik sendiri atau tekan <strong>Acak</strong>. Kode harus berbeda dari kelas lain.${kelas ? ' Kalau kode diganti, siswa yang sudah terdaftar tidak terpengaruh.' : ''}</p>
+      </div>
     </div>
     ${daftarGuru ? `
       <fieldset class="mt-3">
@@ -41,7 +49,7 @@ function formKelasHTML(kelas, daftarGuru, idSaya) {
             <label class="dg-centang"><input type="checkbox" name="guruIds" value="${esc(g.id)}" ${kelas?.guru?.some((x) => x.id === g.id) ? 'checked' : ''}> ${esc(g.nama)}${g.id === idSaya ? ' (Anda)' : g.peran === 'admin' ? ' (admin)' : ''}</label>`).join('')}
         </div>
         ${daftarGuru.some((g) => g.peran === 'guru') ? '' : '<p class="mt-2 text-sm">Belum ada akun guru lain. Buat akun guru di menu <strong>Guru</strong>, lalu pilih di sini.</p>'}
-      </fieldset>` : '<p class="mt-3 text-sm text-teal-tua">Kelas baru otomatis Anda ampu. Kode kelas dibuat otomatis.</p>'}`;
+      </fieldset>` : '<p class="mt-3 text-sm text-teal-tua">Kelas baru otomatis Anda ampu.</p>'}`;
 }
 
 export async function renderKelas(wadah, { konteks, kelasId }) {
@@ -99,17 +107,41 @@ export async function renderKelas(wadah, { konteks, kelasId }) {
   let daftar = await gambar();
 
   async function bukaForm(kelas) {
-    const daftarGuru = admin ? await adminDaftarGuru() : null;
+    // Kelas baru langsung diisi kode acak dari server; guru boleh menimpanya
+    const [daftarGuru, kodeAwal] = await Promise.all([
+      admin ? adminDaftarGuru() : null,
+      kelas ? kelas.kodeKelas : guruKodeKelasAcak().catch(() => '')
+    ]);
     const hasil = await bukaFormModal({
       judul: kelas ? `Edit ${kelas.nama}` : 'Tambah kelas',
-      isi: formKelasHTML(kelas, daftarGuru, konteks.guru.id),
+      isi: formKelasHTML(kelas, daftarGuru, konteks.guru.id, kodeAwal),
+      saatBuka: (form) => {
+        const kolom = form.querySelector('[name="kodeKelas"]');
+        // Huruf kecil otomatis menjadi huruf besar; selain huruf dan angka dibuang
+        kolom.addEventListener('input', () => { kolom.value = kolom.value.toUpperCase().replace(/[^A-Z0-9]/g, ''); });
+        const tombolAcak = form.querySelector('[data-acak-kode]');
+        tombolAcak.addEventListener('click', async () => {
+          tombolAcak.disabled = true;
+          try {
+            kolom.value = await guruKodeKelasAcak();
+            kolom.focus();
+          } catch (err) {
+            toast(err.message, jenisGalat(err));
+          } finally {
+            tombolAcak.disabled = false;
+          }
+        });
+      },
       saatSimpan: async (fd) => {
         const nama = String(fd.get('nama') || '').trim();
+        const kodeKelas = String(fd.get('kodeKelas') || '').trim().toUpperCase();
         if (nama.length < 2) return { galat: 'Nama kelas minimal 2 huruf.' };
+        if (!/^[A-Z0-9]{6}$/.test(kodeKelas)) return { galat: 'Kode kelas harus 6 huruf atau angka. Ketik kode lain atau tekan Acak.' };
         return guruSimpanKelas({
           id: kelas?.id,
           nama,
           tingkat: Number(fd.get('tingkat')),
+          kodeKelas,
           ...(admin ? { guruIds: fd.getAll('guruIds') } : {})
         });
       }

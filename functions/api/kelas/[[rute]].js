@@ -2,6 +2,7 @@
 //   GET    /api/kelas/publik            daftar kelas untuk pendaftaran (tanpa kode kelas)
 //   POST   /api/kelas/cek-kode          { kelasId, kode } -> { cocok }
 //   GET    /api/kelas                   kelas yang diampu guru (+ guru pengampu, jumlah siswa, rata-rata nilai)
+//   GET    /api/kelas/kode-acak         { kode } kode acak yang belum dipakai (guru boleh menimpanya)
 //   POST   /api/kelas                   tambah kelas (guru otomatis menjadi pengampu)
 //   GET    /api/kelas/:id               satu kelas (siswa: hanya kelasnya sendiri)
 //   PUT    /api/kelas/:id               ubah kelas (guruIds hanya untuk admin)
@@ -27,6 +28,13 @@ async function kodeUnik(db) {
   return kode;
 }
 
+// Kode kelas unik di seluruh sekolah (pembanding huruf besar, kolom kode_kelas UNIQUE)
+async function tolakKodeKembar(db, kode, kecualiId = '') {
+  if (await satu(db, 'SELECT id FROM kelas WHERE kode_kelas = ? AND id <> ?', kode, kecualiId)) {
+    throw new GalatApi(409, `Kode kelas ${kode} sudah dipakai kelas lain. Ketik kode lain atau tekan Acak.`);
+  }
+}
+
 async function aturGuruKelas(db, kelasId, guruIds) {
   const guruAda = new Set((await semua(db, 'SELECT id FROM guru')).map((g) => g.id));
   const stmts = [perintah(db, 'DELETE FROM guru_kelas WHERE kelas_id = ?', kelasId)];
@@ -44,6 +52,11 @@ export const onRequest = buatRouter([
     const { kelasId, kode } = await bacaJson(ctx.request);
     const k = await satu(ctx.env.DB, 'SELECT kode_kelas FROM kelas WHERE id = ?', kelasId);
     return { cocok: !!k && k.kode_kelas.toUpperCase() === String(kode || '').trim().toUpperCase() };
+  }],
+
+  ['GET', 'kode-acak', async (ctx) => {
+    await aksesGuru(ctx);
+    return { kode: await kodeUnik(ctx.env.DB) };
   }],
 
   ['GET', '', async (ctx) => {
@@ -72,7 +85,7 @@ export const onRequest = buatRouter([
       kodeKelas: String(data.kodeKelas || (await kodeUnik(db))).trim().toUpperCase()
     };
     periksaKelas(d);
-    if (await satu(db, 'SELECT id FROM kelas WHERE kode_kelas = ?', d.kodeKelas)) throw new GalatApi(409, 'Kode kelas sudah dipakai kelas lain.');
+    await tolakKodeKembar(db, d.kodeKelas);
     const id = idBaru('kelas');
     await jalankan(db, 'INSERT INTO kelas (id, nama, tingkat, kode_kelas) VALUES (?,?,?,?)', id, d.nama, d.tingkat, d.kodeKelas);
     // Guru biasa otomatis menjadi pengampu kelas yang dibuatnya; admin memilih sendiri
@@ -106,7 +119,7 @@ export const onRequest = buatRouter([
       kodeKelas: 'kodeKelas' in data ? String(data.kodeKelas).trim().toUpperCase() : lama.kodeKelas
     };
     periksaKelas(baru);
-    if (await satu(db, 'SELECT id FROM kelas WHERE kode_kelas = ? AND id <> ?', baru.kodeKelas, id)) throw new GalatApi(409, 'Kode kelas sudah dipakai kelas lain.');
+    await tolakKodeKembar(db, baru.kodeKelas, id);
     await jalankan(db, 'UPDATE kelas SET nama = ?, tingkat = ?, kode_kelas = ? WHERE id = ?', baru.nama, baru.tingkat, baru.kodeKelas, id);
     if (a.admin && Array.isArray(data.guruIds)) await aturGuruKelas(db, id, data.guruIds);
     return ambilKelas(db, id);

@@ -40,7 +40,7 @@ Setelah admin pertama dibuat, halaman `#/pasang` dan endpoint-nya **menolak perm
 
 Masuk sebagai admin di `#/guru/masuk`, lalu:
 
-1. **Buat kelas:** menu **Kelas** → **Tambah kelas**. Isi nama (misalnya `Kelas 3A`) dan tingkat. Kode kelas 6 karakter dibuat otomatis, dan admin bisa memilih guru pengampunya di sini.
+1. **Buat kelas:** menu **Kelas** → **Tambah kelas**. Isi nama (misalnya `Kelas 3A`) dan tingkat. Kode kelas 6 huruf/angka bisa diketik sendiri atau dibuat dengan tombol **Acak** (harus berbeda dari kelas lain), dan admin bisa memilih guru pengampunya di sini.
 2. **Buat akun guru:** menu **Guru** → **Tambah guru**. Isi nama, username, password awal, peran (`guru` atau `admin`), dan kelas yang diampu. Berikan username dan password awal kepada guru, lalu minta guru menggantinya di **Pengaturan** → **Ganti password**.
 3. **Bagikan kode kelas ke siswa:** menu **Kelas** menampilkan kode setiap kelas. Siswa membuka situs → **Daftar**, memilih kelasnya, lalu mengetik kode kelas tersebut. Guru juga bisa menambahkan siswa satu per satu atau lewat **Impor CSV** di menu **Siswa** (PIN acak tampil sekali untuk dicatat).
 4. Jika kode kelas tersebar ke luar kelas, klik **Buat kode baru** di menu **Kelas**. Siswa yang sudah terdaftar tidak terpengaruh.
