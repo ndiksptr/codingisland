@@ -4,7 +4,7 @@
 //
 // Field soal:
 //   instruksi        teks sangat singkat untuk siswa
-//   tantanganBonus   satu kalimat tambahan, hanya tampil untuk kelas 5–6
+//   tantanganBonus   kalimat tambahan (sudah tidak ditampilkan ke murid; dibiarkan di data lama)
 //   tujuanTeks       [{ teks, jenis: 'sampai' }] atau [{ teks, jenis: 'ambil', jumlah }]
 //   dunia            { kolom, baris, robot {x,y,arah}, tujuan {x,y}, item [], rintangan [], jurang [] }
 //                    ditulis sebagai peta teks lewat duniaDariTeks (lihat js/game/dunia.js):

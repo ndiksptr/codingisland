@@ -4,7 +4,7 @@
 
 import { esc, robot, tombol, bukaModal, toast, jenisGalat, gambarRobot, goyangkan } from '../ui.js';
 import {
-  getKelas, getProgres, getPreferensi, simpanPreferensi,
+  getProgres, getPreferensi, simpanPreferensi,
   catatPercobaan, tambahLamaBermain, beliClue, getSiswa, getHargaClue
 } from '../store.js';
 import { pindah } from '../router.js';
@@ -118,14 +118,10 @@ export async function renderLevel(halaman, { params }) {
   }
 
   // ---------- Data pendukung ----------
-  const [kelas, progresAwal, pref] = await Promise.all([
-    getKelas(siswa.kelasId),
+  const [progresAwal, pref] = await Promise.all([
     getProgres(siswa.id, level.id),
     getPreferensi()
   ]);
-  const tingkat = kelas?.tingkat ?? 3;
-  const bantuBawaan = tingkat <= 4; // kelas 3–4: bantu ketik selalu aktif
-  let bantuKetik = bantuBawaan || !!pref.bantuKetik;
   let kecepatan = KECEPATAN[pref.kecepatan] ? pref.kecepatan : 'normal';
   const tampilPetakAwal = pref.tampilPetak !== false;
   let progres = progresAwal;
@@ -164,11 +160,6 @@ export async function renderLevel(halaman, { params }) {
               ${level.jenis === 'boss' ? '<img src="image/item/piala.png" alt="Piala boss" class="piala-soal melayang">' : ''}
             </div>
             <p class="mt-2 text-lg">${formatInstruksi(level.instruksi || level.ringkasan || '', bahasaKode)}</p>
-            ${tingkat >= 5 && level.tantanganBonus ? `
-              <p class="tantangan-bonus mt-3">
-                <img src="image/item/berlian.png" alt="" class="w-7 h-7 object-contain shrink-0">
-                <span><strong>Tantangan bonus:</strong> ${formatInstruksi(level.tantanganBonus, bahasaKode)}</span>
-              </p>` : ''}
             ${daftarTujuan.length ? `
               <h2 class="mt-4 font-judul text-xl font-extrabold">Tujuan</h2>
               <ul class="daftar-tujuan mt-1">
@@ -180,9 +171,7 @@ export async function renderLevel(halaman, { params }) {
           <div class="kartu py-4">
             <div class="flex flex-wrap items-center justify-between gap-2">
               <h2 class="font-judul text-xl font-extrabold">Perintah</h2>
-              ${bantuBawaan
-                ? '<span class="text-sm font-bold text-teal-tua">Klik perintah untuk menambahkannya</span>'
-                : sakelar('Bantu ketik', 'data-sakelar-bantu', bantuKetik)}
+              <span class="text-sm font-bold text-teal-tua">Klik perintah untuk menambahkannya</span>
             </div>
             <div class="mt-2 flex flex-wrap gap-2" data-chips>
               ${perintah.map((p) => `<button type="button" class="chip-perintah" data-chip="${esc(p)}">${esc(labelChip(p, bahasaKode))}</button>`).join('')}
@@ -265,24 +254,12 @@ export async function renderLevel(halaman, { params }) {
     editor.bersihkanSorotan();
   };
 
-  // ---------- Chip perintah (bantu ketik) ----------
-  const aturChip = () => {
-    halaman.querySelectorAll('[data-chip]').forEach((c) => {
-      c.setAttribute('aria-disabled', String(!bantuKetik));
-      c.title = bantuKetik ? `Tambahkan ${labelChip(c.dataset.chip, bahasaKode)}` : 'Nyalakan "Bantu ketik" untuk menambahkan dengan klik';
-    });
-  };
-  aturChip();
+  // ---------- Chip perintah: selalu aktif untuk semua murid ----------
+  halaman.querySelectorAll('[data-chip]').forEach((c) => { c.title = `Tambahkan ${labelChip(c.dataset.chip, bahasaKode)}`; });
   $('[data-chips]').addEventListener('click', (e) => {
     const chip = e.target.closest('[data-chip]');
     if (!chip) return;
-    if (!bantuKetik) { toast('Nyalakan "Bantu ketik" dulu, atau ketik sendiri ya.', 'info'); return; }
     editor.sisipkan(templatChip(chip.dataset.chip, bahasaKode));
-  });
-  $('[data-sakelar-bantu]')?.addEventListener('change', (e) => {
-    bantuKetik = e.target.checked;
-    simpanPreferensi({ bantuKetik });
-    aturChip();
   });
   $('[data-sakelar-petak]').addEventListener('change', (e) => {
     panggung.tampilPetak(e.target.checked);

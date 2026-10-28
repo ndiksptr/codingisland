@@ -122,9 +122,6 @@ export async function renderEditorLevel(wadah, { params, konteks }) {
         <section class="dg-kartu">
           <h2 class="dg-subjudul mb-3">Instruksi untuk siswa</h2>
           <label class="dg-label">Instruksi (singkat)<textarea class="dg-input min-h-[5rem]" data-isi="instruksi" maxlength="500" placeholder="Contoh: Lompati jurang dan ambil koin, lalu ke bendera!">${esc(st.instruksi)}</textarea></label>
-          <label class="dg-label mt-3">Tantangan bonus <span class="font-normal text-sm">(opsional, tampil untuk kelas 5–6)</span>
-            <input class="dg-input" data-isi="tantanganBonus" maxlength="200" value="${esc(st.tantanganBonus)}">
-          </label>
           <p class="dg-label mt-4">Pratinjau tampilan siswa</p>
           <div class="pratinjau-siswa" data-pratinjau></div>
         </section>
@@ -227,7 +224,7 @@ export async function renderEditorLevel(wadah, { params, konteks }) {
       jenis: st.jenis,
       tingkat: st.tingkat,
       instruksi: st.instruksi,
-      tantanganBonus: st.tantanganBonus,
+      tantanganBonus: st.tantanganBonus, // tidak lagi diisi/ditampilkan; nilai lama soal tetap disimpan
       tujuanTeks: st.tujuanTeks,
       perintahTersedia: st.perintahTersedia,
       kodeAwal: editorAwal.getNilai(),
@@ -246,7 +243,6 @@ export async function renderEditorLevel(wadah, { params, konteks }) {
         <span class="lencana-jenis" data-jenis="${esc(st.jenis)}">${st.jenis === 'debug' ? ikonBug(16) : ''} ${esc(LABEL_JENIS[st.jenis])}</span>
         <h3 class="mt-2 font-judul text-2xl font-extrabold text-teal-tua leading-tight">${esc(st.judul || 'Judul level')}</h3>
         <p class="mt-1 text-lg">${st.instruksi ? formatInstruksi(st.instruksi) : '<span class="text-[#6E8F8A]">Instruksi akan tampil di sini.</span>'}</p>
-        ${st.tantanganBonus ? `<p class="tantangan-bonus mt-2"><img src="image/item/berlian.png" alt="" class="w-6 h-6 object-contain shrink-0"><span><strong>Tantangan bonus:</strong> ${formatInstruksi(st.tantanganBonus)}</span></p>` : ''}
         ${st.tujuanTeks.length ? `<ul class="daftar-tujuan mt-3">${st.tujuanTeks.map((t) => `<li><span class="centang" aria-hidden="true"></span><span>${esc(t.teks)}</span></li>`).join('')}</ul>` : ''}
       </div>`;
   }
@@ -506,7 +502,7 @@ export async function renderEditorLevel(wadah, { params, konteks }) {
   wadah.addEventListener('input', (e) => {
     const t = e.target;
     const kunci = t.dataset.isi;
-    if (kunci === 'judul' || kunci === 'instruksi' || kunci === 'tantanganBonus') st[kunci] = t.value;
+    if (kunci === 'judul' || kunci === 'instruksi') st[kunci] = t.value;
     else if (kunci === 'batasBaris') { st.batasBaris = Math.max(1, Number(t.value) || 1); batasManual = true; }
     else if (t.dataset.clue !== undefined) st.clue[Number(t.dataset.clue)] = t.value;
     else if (t.closest('[data-baris-tujuan]')) {
