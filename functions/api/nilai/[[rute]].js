@@ -3,12 +3,13 @@
 //   PUT    /api/nilai/:kelasId/:siswaId     { nilai, alasan } timpa nilai akhir (1–100, alasan wajib)
 //   DELETE /api/nilai/:kelasId/:siswaId     kembalikan ke nilai otomatis
 // Nilai akhir = hitungNilaiAkhir (js/game/skor.js): rata-rata nilai semua level terbit untuk kelas itu
-// (belum selesai = 0), dibulatkan, 1–100. Level dari zona yang dinonaktifkan tidak ikut dihitung
-// (tidak menjadi kolom, tidak masuk pembagi). Nilai yang ditimpa guru (nilai_timpa) tetap menang.
+// (belum selesai = 0), dibulatkan, 1–100. Level dari pulau yang tidak dipakai kelas itu tidak ikut dihitung
+// (tidak menjadi kolom, tidak masuk pembagi). Murid = anggota kelas (siswa_kelas), dan progres yang dihitung
+// hanya progres DI KELAS ITU. Nilai yang ditimpa guru (nilai_timpa) tetap menang.
 
 import { buatRouter, bacaJson, GalatApi } from '../../../server/http.js';
 import { aksesGuru, bolehKelas, ambilSiswaBoleh } from '../../../server/sesi.js';
-import { semua, perintah, perintahAktivitas, sekarang, semuaLevel, semuaKelas, levelBerlaku, bacaZonaNonaktif } from '../../../server/data.js';
+import { semua, perintah, perintahAktivitas, sekarang, semuaLevel, semuaKelas, levelBerlaku } from '../../../server/data.js';
 import { ZONA } from '../../../js/data/zona.js';
 import { hitungNilaiAkhir } from '../../../js/game/skor.js';
 
@@ -17,23 +18,24 @@ export const onRequest = buatRouter([
     const a = await aksesGuru(ctx);
     bolehKelas(a, kelasId);
     const db = ctx.env.DB;
-    const urutZona = (l) => ZONA.findIndex((z) => z.id === l.zona);
-    const [levelsSemua, kelasSemua, siswaBaris, progres, timpaBaris, zonaNonaktif] = await Promise.all([
+    const [levelsSemua, kelasSemua, siswaBaris, progres, timpaBaris] = await Promise.all([
       semuaLevel(db),
       semuaKelas(db),
-      semua(db, 'SELECT * FROM siswa WHERE kelas_id = ? ORDER BY nama_lengkap', kelasId),
-      semua(db, 'SELECT p.* FROM progres p JOIN siswa s ON s.id = p.siswa_id WHERE s.kelas_id = ?', kelasId),
-      semua(db, 'SELECT * FROM nilai_timpa WHERE kelas_id = ?', kelasId),
-      bacaZonaNonaktif(db)
+      semua(db, 'SELECT s.* FROM siswa_kelas sk JOIN siswa s ON s.id = sk.siswa_id WHERE sk.kelas_id = ? ORDER BY s.nama_lengkap', kelasId),
+      semua(db, 'SELECT * FROM progres WHERE kelas_id = ?', kelasId),
+      semua(db, 'SELECT * FROM nilai_timpa WHERE kelas_id = ?', kelasId)
     ]);
-    // Saring dulu: level zona nonaktif tidak masuk senarai nilai maupun jumlah pembagi
-    const levels = levelsSemua.filter((l) => levelBerlaku(l, kelasId, zonaNonaktif))
+    const kelas = kelasSemua.find((k) => k.id === kelasId);
+    const zonaIds = kelas?.zonaIds || [];
+    // Urutan kolom mengikuti urutan pulau kelas ini; pulau yang tidak dipakai tidak masuk senarai maupun pembagi
+    const urutZona = (l) => zonaIds.indexOf(l.zona);
+    const levels = levelsSemua.filter((l) => levelBerlaku(l, kelasId, zonaIds))
       .sort((p, q) => urutZona(p) - urutZona(q) || (p.urutan ?? 0) - (q.urutan ?? 0));
     const kunciProgres = new Map(progres.map((p) => [`${p.siswa_id}|${p.level_id}`, p]));
     const timpa = new Map(timpaBaris.map((t) => [t.siswa_id, t]));
 
     return {
-      kelas: kelasSemua.find((k) => k.id === kelasId),
+      kelas,
       levels: levels.map((l) => {
         const z = ZONA.find((x) => x.id === l.zona);
         return { id: l.id, zona: l.zona, zonaNama: z?.nama || l.zona, warna: z?.warna || '#55A9A0', urutan: l.urutan, judul: l.judul, jenis: l.jenis };
@@ -67,7 +69,7 @@ export const onRequest = buatRouter([
     const a = await aksesGuru(ctx);
     bolehKelas(a, kelasId);
     const s = await ambilSiswaBoleh(ctx, a, siswaId);
-    if (s.kelas_id !== kelasId) throw new GalatApi(400, 'Siswa ini tidak terdaftar di kelas ini. Muat ulang halaman nilai.');
+    if (!s.kelasAnggota.includes(kelasId)) throw new GalatApi(400, 'Siswa ini tidak terdaftar di kelas ini. Muat ulang halaman nilai.');
     const { nilai, alasan } = await bacaJson(ctx.request);
     const n = Math.round(Number(nilai));
     if (!Number.isFinite(n) || n < 1 || n > 100) throw new GalatApi(400, 'Nilai harus angka 1 sampai 100.');

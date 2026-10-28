@@ -1,12 +1,12 @@
 // js/pages/peta.js — peta pulau untuk siswa
-// #/peta        : ringkasan pulau (zona yang dinonaktifkan guru tidak ditampilkan sama sekali;
-//                 bila tidak ada pulau yang terbuka, tampil pesan "Belum ada pulau yang dibuka")
+// #/peta        : ringkasan pulau milik kelas aktif, dalam urutan kelas itu (pulau yang tidak dipakai
+//                 kelas atau belum berisi soal tidak ditampilkan; bila tidak ada satu pun pulau yang
+//                 bisa dimainkan, tampil pesan "Belum ada pulau yang dibuka")
 // #/peta/:zona  : peta satu pulau dengan jalur berkelok dan lingkaran level
 
 import { esc, robot, gambarRobot, tombol, bukaModal, toast, pramuatGambar } from '../ui.js';
-import { sesiAktif, daftarLevelTerbit, getSemuaProgres, aturZonaTerlihat, getRingkasanJuara, getZonaNonaktif } from '../store.js';
+import { sesiAktif, daftarLevelTerbit, getSemuaProgres, aturZonaTerlihat, getRingkasanJuara, getKelas } from '../store.js';
 import { pindah } from '../router.js';
-import { ZONA } from '../data/zona.js';
 import { LABEL_JENIS } from '../data/levels.js';
 import { hitungPeta, levelAktif } from '../game/kemajuan.js';
 import { buatJalur } from '../game/jalur.js';
@@ -34,17 +34,17 @@ const tipsAcak = (kecuali = '') => {
 // =====================================================================
 // Data bersama
 // =====================================================================
-/** Muat status peta untuk siswa yang sedang masuk. */
+/** Muat status peta untuk siswa yang sedang masuk, di kelas aktifnya (soal, pulau, dan progres kelas itu). */
 export async function muatPeta() {
   const sesi = await sesiAktif();
   const siswa = sesi.pengguna;
-  const [levels, progres, zonaNonaktif] = await Promise.all([
+  const [levels, progres, kelas] = await Promise.all([
     daftarLevelTerbit({ kelasId: siswa.kelasId }),
     getSemuaProgres({ siswaId: siswa.id }),
-    getZonaNonaktif()
+    getKelas(siswa.kelasId)
   ]);
-  // Zona nonaktif tetap dihitung (mengunci zona sesudahnya), tetapi tidak ditampilkan ke murid
-  return { siswa, status: hitungPeta(levels, progres, zonaNonaktif).filter((z) => z.aktif) };
+  // Urutan pulau = daftar milik kelas; pulau tanpa soal dilewati oleh hitungPeta
+  return { siswa, kelas, status: hitungPeta(levels, progres, kelas?.zonaIds || []) };
 }
 
 /** Putar animasi sekali jika ada zona yang baru terbuka sejak terakhir dilihat. */

@@ -102,7 +102,7 @@ export function kartuStat({ label, nilai, ikon, catatan = '' }) {
 
 const LABEL_AKTIVITAS = {
   daftar: 'Daftar', masuk: 'Masuk', coba: 'Mencoba', selesai: 'Selesai',
-  clue: 'Beli clue', piala: 'Piala', juara: 'Juara', keluar: 'Keluar', pin: 'Ganti PIN', nilai: 'Nilai', zona: 'Pulau'
+  clue: 'Beli clue', piala: 'Piala', juara: 'Juara', keluar: 'Keluar', pin: 'Ganti PIN', nilai: 'Nilai', zona: 'Pulau', kelas: 'Kelas'
 };
 export const JENIS_AKTIVITAS = Object.keys(LABEL_AKTIVITAS);
 export const lencanaAktivitas = (jenis) =>

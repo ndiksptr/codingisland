@@ -1,32 +1,48 @@
 // functions/api/siswa/[[rute]].js — siswa
+// Satu murid boleh anggota banyak kelas (tabel siswa_kelas). Kolom lama siswa.kelas_id tidak dipakai lagi.
 // Untuk siswa yang masuk:
-//   GET   /api/siswa/saya                 data diri (tanpa hash PIN)
+//   GET   /api/siswa/saya                 data diri (tanpa hash PIN), kelasId = kelas aktif
 //   PATCH /api/siswa/saya/avatar          { avatar }
 //   PATCH /api/siswa/saya/bahasa          { bahasa: 'id' | 'en' } bahasa nama perintah koding
-//   POST  /api/siswa/saya/zona-terlihat   { zonaIds }
+//   POST  /api/siswa/saya/zona-terlihat   { zonaIds } pulau yang animasinya sudah dilihat DI KELAS AKTIF
+//   POST  /api/siswa/saya/gabung          { kode } ikut kelas lain dengan kode kelas (TANPA koin awal lagi)
 // Untuk guru (dibatasi kelas yang diampu; admin semua):
-//   GET    /api/siswa?kelasId=            daftar + statistik
-//   POST   /api/siswa                     tambah (username otomatis, PIN acak dikembalikan sekali)
+//   GET    /api/siswa?kelasId=            daftar + statistik (kelasId: angka kelas itu saja)
+//   POST   /api/siswa                     tambah akun baru (username otomatis, PIN acak dikembalikan sekali)
+//   POST   /api/siswa/anggota             { username, kelasId } tambahkan murid yang SUDAH punya akun ke kelas
 //   POST   /api/siswa/impor/pratinjau     periksa baris CSV
 //   POST   /api/siswa/impor               buat akun dari baris CSV yang valid
-//   GET    /api/siswa/:id                 detail + progres per level + catatan guru
-//   PATCH  /api/siswa/:id                 ubah nama/avatar/username/kelas
+//   GET    /api/siswa/:id?kelasId=        detail + progres per level di satu kelas + catatan guru
+//   PATCH  /api/siswa/:id                 ubah nama/avatar/username
+//   DELETE /api/siswa/:id/kelas/:kelasId  keluarkan dari kelas (akun & kemajuan di kelas lain tetap utuh)
 //   POST   /api/siswa/:id/reset-pin       { pin } PIN baru 4 angka dari guru (kosong = acak)
 //   PUT    /api/siswa/:id/catatan         { teks }
-//   DELETE /api/siswa/:id
+//   DELETE /api/siswa/:id                 hapus akun permanen
 
 import { buatRouter, bacaJson, kueri, GalatApi } from '../../../server/http.js';
-import { wajibSiswa, aksesGuru, bolehKelas, saringKelas, ambilSiswaBoleh } from '../../../server/sesi.js';
+import { wajibSiswa, wajibSiswaDiKelas, aturKelasAktif, aksesGuru, bolehKelas, saringKelas, ambilSiswaBoleh } from '../../../server/sesi.js';
 import {
-  semua, satu, jalankan, perintah, sekarang, siswaKeObjek, bacaPengaturan, perintahAktivitas, sarankanDariSet
+  semua, satu, jalankan, perintah, sekarang, siswaKeObjek, bacaPengaturan, perintahAktivitas, sarankanDariSet, semuaKelas
 } from '../../../server/data.js';
-import { hitungStatistik, siswaDalamAkses } from '../../../server/statistik.js';
+import { hitungStatistik, keanggotaanDalamAkses, gabungPerSiswa } from '../../../server/statistik.js';
 import { hashRahasia, acakPin, idBaru, iterasiDari } from '../../../server/kripto.js';
+import { BATAS, sisaTahanJendela, catatGagalJendela } from '../../../server/batas.js';
 import { periksaKolomSiswa } from '../../../js/game/aturan-siswa.js';
 import { ZONA } from '../../../js/data/zona.js';
 import { BAHASA_KODE, BAHASA_BAWAAN_SISWA } from '../../../js/game/kamus-perintah.js';
 
 const iterasi = iterasiDari;
+
+/** Baris siswa terbaru tetapi dengan kelas aktif sesi ini (siswaKeObjek membaca kelas_aktif & zona_terlihat_kelas). */
+async function siswaTerbaru(db, s) {
+  const r = await satu(db, 'SELECT * FROM siswa WHERE id = ?', s.id);
+  return siswaKeObjek(r && { ...r, kelas_aktif: s.kelas_aktif, zona_terlihat_kelas: s.zona_terlihat_kelas });
+}
+
+/** Perintah tambah keanggotaan (aman diulang: keanggotaan yang sudah ada tidak berubah). */
+const perintahGabung = (db, siswaId, kelasId) =>
+  perintah(db, 'INSERT INTO siswa_kelas (siswa_id, kelas_id, bergabung_pada) VALUES (?,?,?) ON CONFLICT(siswa_id, kelas_id) DO NOTHING',
+    siswaId, kelasId, sekarang());
 
 // ---------- Tambah siswa oleh guru (juga dipakai impor) ----------
 /** Data pendukung yang dibaca SEKALI per permintaan: username terpakai & koin awal. */
@@ -60,9 +76,11 @@ async function siswaBaru(ctx, a, data, siap) {
   return {
     id, username: d.username, pin,
     perintah: [
-      perintah(db, `INSERT INTO siswa (id, nama_lengkap, nama_panggilan, jenis_kelamin, avatar, kelas_id, username, pin_hash, koin, berlian, zona_terlihat, dibuat_pada, bahasa)
-        VALUES (?,?,?,?,?,?,?,?,?,0,?,?,?)`, id, d.namaLengkap, d.namaPanggilan, d.avatar === 'pria' ? 'L' : 'P', d.avatar, d.kelasId,
-      d.username, await hashRahasia(pin, iterasi(ctx.env)), siap.koinAwal, JSON.stringify([ZONA[0].id]), sekarang(), BAHASA_BAWAAN_SISWA),
+      // Koin awal hanya di sini (baris murid pertama kali dibuat); kelas lewat siswa_kelas
+      perintah(db, `INSERT INTO siswa (id, nama_lengkap, nama_panggilan, jenis_kelamin, avatar, username, pin_hash, koin, berlian, dibuat_pada, bahasa)
+        VALUES (?,?,?,?,?,?,?,?,0,?,?)`, id, d.namaLengkap, d.namaPanggilan, d.avatar === 'pria' ? 'L' : 'P', d.avatar,
+      d.username, await hashRahasia(pin, iterasi(ctx.env)), siap.koinAwal, sekarang(), BAHASA_BAWAAN_SISWA),
+      perintahGabung(db, id, d.kelasId),
       perintahAktivitas(db, id, 'daftar', `Didaftarkan oleh ${a.pelaku.nama}`)
     ]
   };
@@ -114,7 +132,7 @@ export const onRequest = buatRouter([
     const { avatar } = await bacaJson(ctx.request);
     if (!['pria', 'wanita'].includes(avatar)) throw new GalatApi(400, 'Pilih salah satu gambar ya.');
     await jalankan(ctx.env.DB, 'UPDATE siswa SET avatar = ?, jenis_kelamin = ? WHERE id = ?', avatar, avatar === 'pria' ? 'L' : 'P', s.id);
-    return siswaKeObjek(await satu(ctx.env.DB, 'SELECT * FROM siswa WHERE id = ?', s.id));
+    return siswaTerbaru(ctx.env.DB, s);
   }],
 
   // Hanya nama perintah koding yang berganti; kode yang sudah tersimpan tidak diterjemahkan
@@ -123,25 +141,80 @@ export const onRequest = buatRouter([
     const { bahasa } = await bacaJson(ctx.request);
     if (!BAHASA_KODE.includes(bahasa)) throw new GalatApi(400, 'Pilih bahasa Indonesia atau Inggris ya.');
     await jalankan(ctx.env.DB, 'UPDATE siswa SET bahasa = ? WHERE id = ?', bahasa, s.id);
-    return siswaKeObjek(await satu(ctx.env.DB, 'SELECT * FROM siswa WHERE id = ?', s.id));
+    return siswaTerbaru(ctx.env.DB, s);
   }],
 
+  // Catatan pulau yang sudah terlihat menempel di keanggotaan kelas aktif, jadi animasi pulau baru
+  // muncul lagi saat pulau terbuka di kelas lain
   ['POST', 'saya/zona-terlihat', async (ctx) => {
-    const s = await wajibSiswa(ctx);
+    const s = await wajibSiswaDiKelas(ctx);
     const { zonaIds } = await bacaJson(ctx.request);
-    const bersih = [...new Set(zonaIds || [])].filter((z) => ZONA.some((x) => x.id === z));
-    await jalankan(ctx.env.DB, 'UPDATE siswa SET zona_terlihat = ? WHERE id = ?', JSON.stringify(bersih), s.id);
-    return siswaKeObjek(await satu(ctx.env.DB, 'SELECT * FROM siswa WHERE id = ?', s.id));
+    const bersih = JSON.stringify([...new Set(zonaIds || [])].filter((z) => ZONA.some((x) => x.id === z)));
+    await jalankan(ctx.env.DB, 'UPDATE siswa_kelas SET zona_terlihat = ? WHERE siswa_id = ? AND kelas_id = ?', bersih, s.id, s.kelas_aktif);
+    return siswaTerbaru(ctx.env.DB, { ...s, zona_terlihat_kelas: bersih });
+  }],
+
+  // Ikut kelas lain dengan kode kelas. SENGAJA tidak menyentuh koin: koin awal hanya diberikan sekali
+  // saat baris murid pertama kali dibuat (pendaftaran / dibuatkan guru), bukan saat bergabung ke kelas.
+  // Kode salah dihitung per murid (BATAS.gabung) supaya kode kelas tidak bisa ditebak-tebak.
+  ['POST', 'saya/gabung', async (ctx) => {
+    const s = await wajibSiswa(ctx);
+    const db = ctx.env.DB;
+    const kunci = `gabung:s:${s.id}`;
+    const tahan = await sisaTahanJendela(db, kunci, BATAS.gabung);
+    if (tahan) return { ok: false, pesan: `Terlalu banyak kode yang salah. Coba lagi dalam ${Math.ceil(tahan / 60)} menit ya.` };
+    const kode = String((await bacaJson(ctx.request)).kode || '').trim().toUpperCase();
+    const salah = periksaKolomSiswa('kodeKelas', kode);
+    if (salah) return { ok: false, pesan: salah };
+    const kelas = await satu(db, 'SELECT id, nama FROM kelas WHERE kode_kelas = ?', kode);
+    if (!kelas) {
+      await catatGagalJendela(db, kunci, BATAS.gabung);
+      return { ok: false, pesan: 'Kode kelas belum cocok. Tanya gurumu ya.' };
+    }
+    if (await satu(db, 'SELECT 1 AS ada FROM siswa_kelas WHERE siswa_id = ? AND kelas_id = ?', s.id, kelas.id)) {
+      return { ok: false, pesan: `Kamu sudah ikut ${kelas.nama}.` };
+    }
+    await db.batch([
+      perintahGabung(db, s.id, kelas.id),
+      perintahAktivitas(db, s.id, 'kelas', `Bergabung ke ${kelas.nama} dengan kode kelas`)
+    ]);
+    // Kelas yang sedang dimainkan tetap dipakai; murid yang belum punya kelas langsung main di kelas baru
+    await aturKelasAktif(ctx, s.kelas_aktif || kelas.id);
+    return { ok: true, kelas: { id: kelas.id, nama: kelas.nama } };
   }],
 
   // ================= Guru =================
+  // Tanpa filter kelas: satu baris per murid (angka semua kelas yang Anda ampu digabung).
+  // Dengan filter kelas: angka kelas itu saja, sama dengan halaman Nilai kelas itu.
   ['GET', '', async (ctx) => {
     const a = await aksesGuru(ctx);
     const k = saringKelas(a, kueri(ctx.request).kelasId || null);
-    return (await hitungStatistik(ctx.env.DB, await siswaDalamAkses(ctx.env.DB, a, k))).map((x) => x.baris);
+    return gabungPerSiswa(await hitungStatistik(ctx.env.DB, await keanggotaanDalamAkses(ctx.env.DB, a, k)));
   }],
 
   ['POST', '', async (ctx) => tambahSiswaOlehGuru(ctx, await aksesGuru(ctx), await bacaJson(ctx.request))],
+
+  // Tambahkan murid yang SUDAH punya akun ke kelas yang diampu (mis. anggota ekskul dari kelas lain).
+  // Akun, koin, dan kemajuan di kelas lain tidak berubah; tidak ada koin awal lagi.
+  ['POST', 'anggota', async (ctx) => {
+    const a = await aksesGuru(ctx);
+    const db = ctx.env.DB;
+    const { username, kelasId } = await bacaJson(ctx.request);
+    bolehKelas(a, kelasId);
+    const u = String(username || '').trim().toLowerCase();
+    if (!u) throw new GalatApi(400, 'Ketik username siswa yang ingin ditambahkan.');
+    const s = await satu(db, 'SELECT * FROM siswa WHERE username = ?', u);
+    if (!s) throw new GalatApi(404, `Siswa dengan username ${u} tidak ditemukan. Periksa ejaannya, atau buat akun baru lewat Tambah Siswa.`);
+    const kelas = a.kelas.find((k) => k.id === kelasId);
+    if (await satu(db, 'SELECT 1 AS ada FROM siswa_kelas WHERE siswa_id = ? AND kelas_id = ?', s.id, kelasId)) {
+      throw new GalatApi(409, `${s.nama_lengkap} sudah menjadi anggota ${kelas.nama}.`);
+    }
+    await db.batch([
+      perintahGabung(db, s.id, kelasId),
+      perintahAktivitas(db, s.id, 'kelas', `Ditambahkan ke ${kelas.nama} oleh ${a.pelaku.nama}`)
+    ]);
+    return { siswa: { id: s.id, namaLengkap: s.nama_lengkap, namaPanggilan: s.nama_panggilan }, kelas: { id: kelas.id, nama: kelas.nama } };
+  }],
 
   ['POST', 'impor/pratinjau', async (ctx) => {
     const a = await aksesGuru(ctx);
@@ -185,18 +258,27 @@ export const onRequest = buatRouter([
     return hasil;
   }],
 
+  // Kemajuan terpisah per kelas: detail menampilkan SATU kelas (kelasId, atau kelas pertama yang Anda ampu)
   ['GET', ':id', async (ctx, { id }) => {
     const a = await aksesGuru(ctx);
     const db = ctx.env.DB;
     const baris = await ambilSiswaBoleh(ctx, a, id);
-    const [x] = await hitungStatistik(db, [baris]);
+    const kelasSemua = await semuaKelas(db);
+    const kelasBoleh = baris.kelasAnggota.filter((k) => a.admin || a.kelasIds.has(k));
+    const diminta = kueri(ctx.request).kelasId;
+    const kelasId = kelasBoleh.includes(diminta) ? diminta : (kelasBoleh[0] || null);
+    const [x] = await hitungStatistik(db, [{ baris, kelasId }], { kelas: kelasSemua });
     const peta = new Map(x.progres.map((p) => [p.levelId, p]));
-    const urutZona = (l) => ZONA.findIndex((z) => z.id === l.zona);
+    const zonaIds = kelasSemua.find((k) => k.id === kelasId)?.zonaIds || [];
+    const urutZona = (l) => zonaIds.indexOf(l.zona);
     const levels = x.levels.slice().sort((p, q) => urutZona(p) - urutZona(q) || (p.urutan ?? 0) - (q.urutan ?? 0));
     const catatan = await satu(db, 'SELECT * FROM catatan_guru WHERE siswa_id = ?', id);
     return {
       siswa: x.baris,
-      zona: ZONA.map((z) => {
+      // Kelas murid ini yang boleh Anda lihat, untuk pilihan kelas di halaman detail
+      kelasBoleh: kelasBoleh.map((k) => kelasSemua.find((y) => y.id === k)).filter(Boolean).map((k) => ({ id: k.id, nama: k.nama })),
+      kelasId,
+      zona: zonaIds.map((zid) => ZONA.find((z) => z.id === zid)).filter(Boolean).map((z) => {
         const lvZ = levels.filter((l) => l.zona === z.id);
         const selesai = lvZ.filter((l) => peta.get(l.id)?.selesai).length;
         return { id: z.id, nama: z.nama, warna: z.warna, selesai, total: lvZ.length, persen: lvZ.length ? Math.round((selesai / lvZ.length) * 100) : 0 };
@@ -222,18 +304,35 @@ export const onRequest = buatRouter([
       namaLengkap: 'namaLengkap' in data ? String(data.namaLengkap).trim().replace(/\s+/g, ' ') : lama.nama_lengkap,
       namaPanggilan: 'namaPanggilan' in data ? String(data.namaPanggilan).trim() : lama.nama_panggilan,
       avatar: 'avatar' in data ? data.avatar : lama.avatar,
-      username: 'username' in data ? String(data.username).trim().toLowerCase() : lama.username,
-      kelasId: 'kelasId' in data ? data.kelasId : lama.kelas_id
+      username: 'username' in data ? String(data.username).trim().toLowerCase() : lama.username
     };
-    for (const kolom of ['namaLengkap', 'namaPanggilan', 'avatar', 'username', 'kelasId']) {
+    for (const kolom of ['namaLengkap', 'namaPanggilan', 'avatar', 'username']) {
       const pesan = periksaKolomSiswa(kolom, baru[kolom]);
       if (pesan) throw new GalatApi(400, pesan);
     }
-    if ('kelasId' in data) bolehKelas(a, baru.kelasId);
     if (await satu(db, 'SELECT id FROM siswa WHERE username = ? AND id <> ?', baru.username, id)) throw new GalatApi(409, 'Username ini sudah dipakai siswa lain. Pilih username lain.');
-    await jalankan(db, 'UPDATE siswa SET nama_lengkap = ?, nama_panggilan = ?, avatar = ?, jenis_kelamin = ?, username = ?, kelas_id = ? WHERE id = ?',
-      baru.namaLengkap, baru.namaPanggilan, baru.avatar, baru.avatar === 'pria' ? 'L' : 'P', baru.username, baru.kelasId, id);
+    await jalankan(db, 'UPDATE siswa SET nama_lengkap = ?, nama_panggilan = ?, avatar = ?, jenis_kelamin = ?, username = ? WHERE id = ?',
+      baru.namaLengkap, baru.namaPanggilan, baru.avatar, baru.avatar === 'pria' ? 'L' : 'P', baru.username, id);
     return siswaKeObjek(await satu(db, 'SELECT * FROM siswa WHERE id = ?', id));
+  }],
+
+  // KELUARKAN dari satu kelas (bukan hapus akun): hanya baris keanggotaan yang dihapus.
+  // Akun, koin, berlian, keanggotaan, dan kemajuan di kelas lain tetap utuh. Kemajuan di kelas ini juga
+  // tidak dihapus (tidak dihitung lagi), jadi muncul kembali bila murid ditambahkan lagi ke kelas ini.
+  ['DELETE', ':id/kelas/:kelasId', async (ctx, { id, kelasId }) => {
+    const a = await aksesGuru(ctx);
+    bolehKelas(a, kelasId);
+    const s = await ambilSiswaBoleh(ctx, a, id);
+    if (!s.kelasAnggota.includes(kelasId)) throw new GalatApi(404, 'Siswa ini sudah tidak terdaftar di kelas itu. Muat ulang halaman.');
+    const kelas = a.kelas.find((k) => k.id === kelasId);
+    const db = ctx.env.DB;
+    await db.batch([
+      perintah(db, 'DELETE FROM siswa_kelas WHERE siswa_id = ? AND kelas_id = ?', id, kelasId),
+      // Sesi murid yang sedang main di kelas ini kembali memilih kelas (atau diminta kode kelas)
+      perintah(db, "UPDATE sesi SET kelas_aktif_id = NULL WHERE jenis = 'siswa' AND pengguna_id = ? AND kelas_aktif_id = ?", id, kelasId),
+      perintahAktivitas(db, id, 'kelas', `Dikeluarkan dari ${kelas.nama} oleh ${a.pelaku.nama}`)
+    ]);
+    return { ok: true };
   }],
 
   // Guru/admin menetapkan PIN murid. { pin } kosong atau tidak dikirim = PIN acak dari sistem.
@@ -273,7 +372,7 @@ export const onRequest = buatRouter([
     const a = await aksesGuru(ctx);
     await ambilSiswaBoleh(ctx, a, id);
     const db = ctx.env.DB;
-    // progres, aktivitas, catatan, dan nilai_timpa ikut terhapus lewat ON DELETE CASCADE
+    // keanggotaan, progres semua kelas, aktivitas, catatan, dan nilai_timpa ikut terhapus lewat ON DELETE CASCADE
     await db.batch([
       perintah(db, "DELETE FROM sesi WHERE jenis = 'siswa' AND pengguna_id = ?", id),
       perintah(db, 'DELETE FROM siswa WHERE id = ?', id)

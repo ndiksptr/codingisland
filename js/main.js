@@ -27,6 +27,7 @@ import { renderCobaLevel } from './guru/level-coba.js';
 import { renderNilai } from './guru/nilai.js';
 import { renderProfil } from './pages/profil.js';
 import { renderBantuan } from './pages/bantuan.js';
+import { renderPilihKelas, renderGabungKelas } from './pages/pilih-kelas.js';
 
 // Bungkus halaman siswa dengan header (avatar, koin, berlian, keluar)
 function denganHeaderSiswa(render) {
@@ -51,6 +52,8 @@ rute('/peta/:zona', denganHeaderSiswa(renderPetaZona), 'Peta Pulau');
 rute('/level/:id', denganHeaderSiswa(renderLevel), 'Level');
 rute('/juara', denganHeaderSiswa(renderJuara), 'Sertifikat Juara');
 rute('/profil', denganHeaderSiswa(renderProfil), 'Profilku');
+rute('/pilih-kelas', denganHeaderSiswa(renderPilihKelas), 'Pilih Kelas');
+rute('/gabung-kelas', denganHeaderSiswa(renderGabungKelas), 'Kode Kelas');
 rute('/bantuan', renderBantuan, 'Bantuan');
 
 rute('/pasang', renderPasang, 'Pemasangan');
@@ -73,7 +76,8 @@ guru('/guru/guru', renderGuru, 'Guru', 'guru');
 guru('/guru/pengaturan', renderPengaturan, 'Pengaturan', 'pengaturan');
 
 // ---------- Penjaga rute ----------
-// #/peta, #/peta/*, #/level/*, #/juara & #/profil : siswa. #/guru/* : guru & admin. #/guru/guru : admin saja.
+// #/peta, #/peta/*, #/level/*, #/juara & #/profil : siswa dengan kelas aktif. #/pilih-kelas & #/gabung-kelas : siswa.
+// #/guru/* : guru & admin. #/guru/guru : admin saja.
 aturPenjaga(async (path) => {
   const sesi = await sesiAktif();
   const ke = encodeURIComponent(path);
@@ -84,11 +88,16 @@ aturPenjaga(async (path) => {
 
   const halamanSiswa = path === '/peta' || path.startsWith('/peta/') || path === '/level' || path.startsWith('/level/') ||
     path === '/juara' || path === '/profil';
+  const halamanKelas = path === '/pilih-kelas' || path === '/gabung-kelas';
   const halamanGuru = path === '/guru' || path.startsWith('/guru/');
 
-  if (halamanSiswa && sesi?.jenis !== 'siswa') {
+  if ((halamanSiswa || halamanKelas) && sesi?.jenis !== 'siswa') {
     toast('Masuk dulu ya, baru bisa bermain.', 'info');
     return `/masuk?ke=${ke}`;
+  }
+  // Semua isi permainan mengikuti kelas aktif: belum punya kelas -> kode kelas; banyak kelas -> pilih dulu
+  if (halamanSiswa && !sesi.pengguna.kelasId) {
+    return sesi.pengguna.kelas?.length ? `/pilih-kelas?ke=${ke}` : '/gabung-kelas';
   }
   if (halamanGuru && sesi?.jenis !== 'guru') {
     toast('Halaman ini khusus guru. Silakan masuk dengan akun guru.', 'info');

@@ -1,9 +1,11 @@
 // js/guru/siswa.js — #/guru/siswa: tabel siswa (cari, filter, urut, halaman), tambah, impor CSV,
 // serta aksi per siswa yang juga dipakai halaman detail.
+// Satu siswa boleh anggota banyak kelas (mis. kelas reguler + ekskul). "Keluarkan dari kelas" hanya
+// melepas satu keanggotaan; "Hapus akun" menghapus akun beserta kemajuannya di SEMUA kelas.
 
 import { esc, bukaModal, bukaFormModal, toast, unduhBerkas } from '../ui.js';
 import {
-  guruDaftarSiswa, guruTambahSiswa, guruUbahSiswa, guruPindahKelas, guruResetPin, guruHapusSiswa,
+  guruDaftarSiswa, guruTambahSiswa, guruUbahSiswa, guruTambahAnggota, guruKeluarkanDariKelas, guruResetPin, guruHapusSiswa,
   guruPratinjauImpor, guruImporSiswa, simpanPreferensi
 } from '../store.js';
 import { muatUlang } from '../router.js';
@@ -16,7 +18,7 @@ const KOLOM = [
   { id: 'avatar', teks: '', urut: false },
   { id: 'namaLengkap', teks: 'Nama lengkap' },
   { id: 'namaPanggilan', teks: 'Panggilan' },
-  { id: 'kelasNama', teks: 'Kelas' },
+  { id: 'kelasNama', teks: 'Kelas yang diikuti' },
   { id: 'username', teks: 'Username' },
   { id: 'levelSelesai', teks: 'Level selesai', angka: true },
   { id: 'totalBintang', teks: 'Bintang', angka: true },
@@ -72,18 +74,75 @@ export async function aksiEditSiswa(siswa, konteks) {
   return !!hasil;
 }
 
-export async function aksiPindahKelas(siswa, konteks) {
+const daftarNamaKelas = (kelas) => (kelas || []).map((k) => `<strong>${esc(k.nama)}</strong>`).join(', ') || 'belum ada';
+const chipKelas = (kelas) => (kelas?.length
+  ? kelas.map((k) => `<span class="dg-chip">${esc(k.nama)}</span>`).join(' ')
+  : '<span class="text-sm text-[#B24E1C] font-bold">Belum punya kelas</span>');
+
+/** Tambahkan siswa ini ke kelas lain yang Anda ampu (tanpa memindahkan dari kelas lamanya). */
+export async function aksiTambahKeKelas(siswa, konteks) {
+  const sudah = new Set((siswa.kelas || []).map((k) => k.id));
+  const pilihan = konteks.kelas.filter((k) => !sudah.has(k.id));
+  if (!pilihan.length) { toast(`${siswa.namaPanggilan} sudah menjadi anggota semua kelas yang Anda ampu.`, 'info'); return false; }
   const hasil = await bukaFormModal({
-    judul: `Pindahkan ${siswa.namaPanggilan}`,
+    judul: `Tambahkan ${siswa.namaPanggilan} ke kelas lain`,
     isi: `
-      <p class="mb-3">Kelas sekarang: <strong>${esc(siswa.kelasNama)}</strong>. Progres siswa tetap tersimpan.</p>
-      <label class="dg-label">Kelas tujuan
-        <select name="kelasId" class="dg-input">${pilihanKelas(konteks.kelas.filter((k) => k.id !== siswa.kelasId), '')}</select>
+      <p class="mb-3">Kelas sekarang: ${daftarNamaKelas(siswa.kelas)}. ${esc(siswa.namaPanggilan)} tetap di kelas itu, dan akun,
+        koin, serta kemajuannya tidak berubah. Di kelas baru, kemajuannya dimulai dari awal.</p>
+      <label class="dg-label">Kelas yang ditambahkan
+        <select name="kelasId" class="dg-input">${pilihanKelas(pilihan, '')}</select>
       </label>`,
-    teksSimpan: 'Pindahkan',
-    saatSimpan: (fd) => (fd.get('kelasId') ? guruPindahKelas(siswa.id, fd.get('kelasId')) : { galat: 'Belum ada kelas lain yang bisa dipilih.' })
+    teksSimpan: 'Tambahkan ke kelas',
+    saatSimpan: (fd) => guruTambahAnggota(siswa.username, fd.get('kelasId'))
   });
-  if (hasil) toast(`${siswa.namaPanggilan} berhasil dipindahkan ke kelas lain.`, 'sukses');
+  if (hasil) toast(`${siswa.namaPanggilan} berhasil ditambahkan ke ${hasil.kelas.nama}.`, 'sukses');
+  return !!hasil;
+}
+
+/** KELUARKAN dari satu kelas — bukan hapus akun. Akun & kemajuan di kelas lain tetap utuh. */
+export async function aksiKeluarkanDariKelas(siswa, konteks, kelasTerpilih = null) {
+  const boleh = new Set(konteks.kelas.map((k) => k.id));
+  const pilihan = (siswa.kelas || []).filter((k) => boleh.has(k.id));
+  if (!pilihan.length) { toast(`${siswa.namaPanggilan} bukan anggota kelas yang Anda ampu.`, 'info'); return false; }
+  const hasil = await bukaFormModal({
+    judul: `Keluarkan ${siswa.namaPanggilan} dari kelas?`,
+    isi: `
+      <p class="rounded-xl bg-mint p-3 mb-3"><strong>Ini bukan menghapus akun.</strong> ${esc(siswa.namaLengkap)} hanya keluar dari kelas yang
+        dipilih. Akun, koin, berlian, dan kemajuannya di kelas lain tetap utuh, dan ia tetap bisa masuk seperti biasa.</p>
+      <label class="dg-label">Keluarkan dari kelas
+        <select name="kelasId" class="dg-input">${pilihanKelas(pilihan, kelasTerpilih || '')}</select>
+      </label>
+      <p class="mt-2 text-sm">Kemajuannya di kelas itu tidak lagi dihitung, dan muncul kembali bila ia ditambahkan lagi ke kelas tersebut.</p>`,
+    teksSimpan: 'Keluarkan dari kelas',
+    saatSimpan: async (fd) => {
+      await guruKeluarkanDariKelas(siswa.id, fd.get('kelasId'));
+      return pilihan.find((k) => k.id === fd.get('kelasId'));
+    }
+  });
+  if (hasil) toast(`${siswa.namaPanggilan} berhasil dikeluarkan dari ${hasil.nama}. Akunnya tetap ada.`, 'sukses');
+  return !!hasil;
+}
+
+/** Tambahkan siswa yang SUDAH punya akun (dari kelas lain) ke kelas Anda, lewat username-nya. */
+async function aksiTambahSiswaLama(konteks, kelasId) {
+  if (!konteks.kelas.length) { toast('Buat kelas dulu sebelum menambah siswa.', 'peringatan'); return false; }
+  const hasil = await bukaFormModal({
+    judul: 'Tambahkan siswa yang sudah punya akun',
+    isi: `
+      <p class="mb-3">Untuk siswa yang sudah punya akun di kelas lain, misalnya anggota ekskul. Akun, koin, dan kemajuannya
+        di kelas lain tidak berubah. Siswa juga bisa bergabung sendiri dengan kode kelas dari halaman Profilnya.</p>
+      <div class="dg-form-grid">
+        <label class="dg-label">Username siswa<input name="username" class="dg-input font-kode" maxlength="16" autocomplete="off" placeholder="Contoh: rani12"></label>
+        <label class="dg-label">Kelas<select name="kelasId" class="dg-input">${pilihanKelas(konteks.kelas, kelasId)}</select></label>
+      </div>`,
+    teksSimpan: 'Tambahkan ke kelas',
+    saatSimpan: (fd) => {
+      const username = String(fd.get('username') || '').trim().toLowerCase();
+      if (!username) return { galat: 'Ketik username siswa yang ingin ditambahkan.' };
+      return guruTambahAnggota(username, fd.get('kelasId'));
+    }
+  });
+  if (hasil) toast(`${hasil.siswa.namaLengkap} berhasil ditambahkan ke ${hasil.kelas.nama}.`, 'sukses');
   return !!hasil;
 }
 
@@ -124,11 +183,13 @@ export async function aksiResetPin(siswa) {
 
 export async function aksiHapusSiswa(siswa) {
   const hasil = await bukaFormModal({
-    judul: `Hapus ${siswa.namaLengkap}?`,
+    judul: `Hapus akun ${siswa.namaLengkap}?`,
     varianSimpan: 'bahaya',
-    teksSimpan: 'Hapus permanen',
+    teksSimpan: 'Hapus akun permanen',
     isi: `
-      <p>Akun, progres, dan aktivitas siswa ini akan <strong>dihapus permanen</strong>.</p>
+      <p>Akun ini akan <strong>dihapus permanen dari semua kelas</strong> (${daftarNamaKelas(siswa.kelas)}), beserta koin, berlian,
+        seluruh kemajuan, dan aktivitasnya. Tindakan ini tidak bisa dibatalkan.</p>
+      <p class="mt-2 text-sm">Kalau siswa ini hanya perlu keluar dari satu kelas, batalkan dan pakai <strong>Keluarkan dari kelas</strong>.</p>
       <label class="dg-label mt-3">Ketik <code class="dg-kode">${esc(siswa.username)}</code> untuk konfirmasi
         <input name="konfirmasi" class="dg-input font-kode" autocomplete="off">
       </label>`,
@@ -291,7 +352,8 @@ export async function renderSiswa(wadah, { konteks, kelasId }) {
         </div>
         <div class="flex flex-wrap gap-2">
           <button type="button" class="tombol tombol-sekunder tombol-kecil" data-impor-csv>${IKON.unggah}<span>Impor CSV</span></button>
-          <button type="button" class="tombol tombol-utama tombol-kecil" data-tambah-siswa>${IKON.tambah}<span>Tambah Siswa</span></button>
+          <button type="button" class="tombol tombol-sekunder tombol-kecil" data-tambah-lama>${IKON.siswa}<span>Tambah Siswa yang Sudah Ada</span></button>
+          <button type="button" class="tombol tombol-utama tombol-kecil" data-tambah-siswa>${IKON.tambah}<span>Tambah Siswa Baru</span></button>
         </div>
       </div>
       <div class="dg-alat">
@@ -332,7 +394,7 @@ export async function renderSiswa(wadah, { konteks, kelasId }) {
     elJumlah.textContent = `${data.length} siswa${status.cari ? ' cocok dengan pencarian' : ''}`;
 
     if (!semua.length) {
-      elTabel.innerHTML = kosong('Belum ada siswa', 'Bagikan kode kelas agar siswa mendaftar, atau klik Tambah Siswa / Impor CSV.');
+      elTabel.innerHTML = kosong('Belum ada siswa', 'Bagikan kode kelas agar siswa mendaftar, atau klik Tambah Siswa Baru / Impor CSV.');
       elHalaman.innerHTML = '';
       return;
     }
@@ -358,7 +420,7 @@ export async function renderSiswa(wadah, { konteks, kelasId }) {
                 <td>${avatarSiswa(s.avatar)}</td>
                 <td class="font-bold"><a class="dg-tautan" href="#/guru/siswa/${esc(s.id)}">${esc(s.namaLengkap)}</a></td>
                 <td>${esc(s.namaPanggilan)}</td>
-                <td>${esc(s.kelasNama)}</td>
+                <td>${chipKelas(s.kelas)}</td>
                 <td><code class="dg-kode">${esc(s.username)}</code></td>
                 <td class="text-right">${s.levelSelesai}/${s.totalLevel}</td>
                 <td class="text-right">${s.totalBintang}</td>
@@ -367,9 +429,10 @@ export async function renderSiswa(wadah, { konteks, kelasId }) {
                 <td class="text-right whitespace-nowrap">
                   <a class="dg-tombol-ikon" href="#/guru/siswa/${esc(s.id)}" aria-label="Lihat detail ${esc(s.namaLengkap)}" title="Lihat detail">${IKON.lihat}</a>
                   ${tombolAksi(IKON.edit, `Edit ${s.namaLengkap}`, `data-aksi="edit" data-id="${esc(s.id)}"`)}
-                  ${tombolAksi(IKON.pindah, `Pindah kelas ${s.namaLengkap}`, `data-aksi="pindah" data-id="${esc(s.id)}"`)}
+                  ${tombolAksi(IKON.pindah, `Tambahkan ${s.namaLengkap} ke kelas lain`, `data-aksi="tambah-kelas" data-id="${esc(s.id)}"`)}
+                  ${tombolAksi(IKON.keluar, `Keluarkan ${s.namaLengkap} dari kelas (akun tetap ada)`, `data-aksi="keluarkan" data-id="${esc(s.id)}"`)}
                   ${tombolAksi(IKON.kunci, `Ganti PIN ${s.namaLengkap}`, `data-aksi="pin" data-id="${esc(s.id)}"`)}
-                  ${tombolAksi(IKON.hapus, `Hapus ${s.namaLengkap}`, `data-aksi="hapus" data-id="${esc(s.id)}"`, true)}
+                  ${tombolAksi(IKON.hapus, `Hapus akun ${s.namaLengkap} permanen`, `data-aksi="hapus" data-id="${esc(s.id)}"`, true)}
                 </td>
               </tr>`).join('')}
           </tbody>
@@ -407,6 +470,7 @@ export async function renderSiswa(wadah, { konteks, kelasId }) {
     if (hal && !hal.disabled) { status.halaman = Number(hal.dataset.hal); gambar(); return; }
 
     if (e.target.closest('[data-tambah-siswa]')) { if (await aksiTambahSiswa(konteks, kelasId)) muatUlang(); return; }
+    if (e.target.closest('[data-tambah-lama]')) { if (await aksiTambahSiswaLama(konteks, kelasId)) muatUlang(); return; }
     if (e.target.closest('[data-impor-csv]')) { if (await aksiImporCSV(konteks)) muatUlang(); return; }
 
     const aksi = e.target.closest('[data-aksi]');
@@ -415,7 +479,8 @@ export async function renderSiswa(wadah, { konteks, kelasId }) {
     if (!siswa) return;
     const jalan = {
       edit: () => aksiEditSiswa(siswa, konteks),
-      pindah: () => aksiPindahKelas(siswa, konteks),
+      'tambah-kelas': () => aksiTambahKeKelas(siswa, konteks),
+      keluarkan: () => aksiKeluarkanDariKelas(siswa, konteks, kelasId),
       pin: () => aksiResetPin(siswa),
       hapus: () => aksiHapusSiswa(siswa)
     }[aksi.dataset.aksi];

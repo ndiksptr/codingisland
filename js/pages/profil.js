@@ -1,12 +1,15 @@
 // js/pages/profil.js — #/profil: profil siswa (dibuka dari header)
 // Avatar & nama, total bintang, koin, berlian, koleksi piala per zona, progres per zona,
-// riwayat 10 level terakhir, pilihan avatar, dan pilihan bahasa perintah koding.
+// riwayat 10 level terakhir, pilihan avatar, pilihan bahasa perintah koding, dan daftar kelas + ikut kelas lain.
+// Bintang, piala, dan progres di sini milik kelas yang sedang dimainkan; koin & berlian milik murid.
 
 import { esc, tombol, toast, jenisGalat } from '../ui.js';
-import { getSemuaProgres, ubahAvatarSaya, ubahBahasaSaya, getKelas } from '../store.js';
+import { getSemuaProgres, ubahAvatarSaya, ubahBahasaSaya, sesiAktif } from '../store.js';
+import { muatUlang } from '../router.js';
 import { deretBintang } from '../game/ikon.js';
 import { bahasaSah, namaDalam } from '../game/kamus-perintah.js';
 import { muatPeta } from './peta.js';
+import { formGabungHTML, pasangFormGabung } from './pilih-kelas.js';
 
 const PILIHAN_BAHASA = [
   { id: 'id', nama: 'Bahasa Indonesia' },
@@ -21,8 +24,9 @@ const formatTanggal = (iso) => {
 };
 
 export async function renderProfil(halaman) {
-  const { siswa, status } = await muatPeta();
-  const [progres, kelas] = await Promise.all([getSemuaProgres({ siswaId: siswa.id }), getKelas(siswa.kelasId)]);
+  const { siswa, status, kelas } = await muatPeta();
+  const [progres, sesi] = await Promise.all([getSemuaProgres({ siswaId: siswa.id }), sesiAktif()]);
+  const kelasku = sesi?.pengguna?.kelas || [];
   const totalBintang = status.reduce((n, z) => n + z.bintang, 0);
   const maksBintang = status.reduce((n, z) => n + z.bintangMaks, 0);
 
@@ -94,7 +98,7 @@ export async function renderProfil(halaman) {
                 </li>`;
             }).join('')}
           </ul>`
-          : '<p>Belum ada level yang dimainkan. Ayo mulai dari Pulau Pantai!</p>'}
+          : `<p>Belum ada level yang dimainkan. Ayo mulai dari ${status[0] ? `Pulau ${esc(status[0].zona.nama)}` : 'pulau pertama'}!</p>`}
       </section>
 
       <section class="kartu mt-6" aria-labelledby="judul-avatar">
@@ -109,6 +113,17 @@ export async function renderProfil(halaman) {
               <span class="font-judul text-xl font-extrabold">${a === 'pria' ? 'Laki-laki' : 'Perempuan'}</span>
             </label>`).join('')}
         </fieldset>
+      </section>
+
+      <section class="kartu mt-6" aria-labelledby="judul-kelasku">
+        <h2 id="judul-kelasku" class="font-judul text-2xl font-extrabold text-teal-tua">Kelasku</h2>
+        <p class="mb-3">Kamu ikut ${kelasku.length} kelas. Pindah kelas lewat tombol kelas di bagian atas halaman.</p>
+        <ul class="flex flex-wrap gap-2 mb-4">
+          ${kelasku.map((k) => `<li class="rounded-xl ${k.id === siswa.kelasId ? 'bg-mint' : 'bg-latar'} px-3 py-1 font-bold">${esc(k.nama)}${k.id === siswa.kelasId ? ' (sedang dimainkan)' : ''}</li>`).join('')}
+        </ul>
+        <h3 class="font-judul text-xl font-extrabold">Ikut kelas lain</h3>
+        <p class="mb-2">Punya kode kelas lain, misalnya kelas ekskul? Masukkan di sini.</p>
+        ${formGabungHTML()}
       </section>
 
       <section class="kartu mt-6" aria-labelledby="judul-bahasa">
@@ -129,6 +144,11 @@ export async function renderProfil(halaman) {
         </fieldset>
       </section>
     </section>`;
+
+  pasangFormGabung(halaman, (k) => {
+    toast(`Hore, kamu sekarang ikut ${k.nama}! Pindah kelas lewat tombol kelas di atas.`, 'sukses');
+    muatUlang();
+  });
 
   halaman.querySelectorAll('[name="avatar"]').forEach((r) => r.addEventListener('change', async () => {
     try {

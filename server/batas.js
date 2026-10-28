@@ -4,7 +4,7 @@
 // Dua jenis baris:
 //   'siswa:u:<username>', 'guru:u:<username>'      per username: gagal beruntun -> ditahan sebentar.
 //                                                   gagal = jumlah salah beruntun, tahan_sampai = akhir masa tahan.
-//   'siswa:ip:<ip>', 'guru:ip:<ip>', 'pasang:ip:<ip>'  per IP berjendela: gagal = jumlah salah di jendela ini,
+//   'siswa:ip:<ip>', 'guru:ip:<ip>', 'pasang:ip:<ip>'  per IP berjendela (juga 'gabung:s:<siswaId>' per murid): gagal = jumlah salah di jendela ini,
 //                                                   tahan_sampai = akhir jendela. Satu sekolah berbagi satu IP,
 //                                                   jadi batas siswa per IP dibuat longgar.
 
@@ -17,6 +17,7 @@ export const BATAS = {
   ipSiswa: { gagal: 300, jendelaMs: 15 * MENIT },  // satu kelas/sekolah di balik satu IP Wi-Fi
   ipGuru: { gagal: 30, jendelaMs: 15 * MENIT },
   ipPasang: { gagal: 30, jendelaMs: 15 * MENIT },
+  gabung: { gagal: 10, jendelaMs: 15 * MENIT },     // kode kelas salah saat murid bergabung ke kelas lain (per murid)
   simpanBarisMs: 15 * MENIT                         // baris tanpa tahanan yang lebih tua dari ini dibersihkan
 };
 

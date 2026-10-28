@@ -1,23 +1,25 @@
 // functions/api/level/[[rute]].js — level & soal
+// Semua soal dibuat guru (tidak ada soal bawaan). Soal tampil di kelas yang dicentang (kelasIds;
+// null = semua kelas, [] = belum tampil di mana pun) dan hanya bila pulaunya dipakai kelas itu.
 // Untuk siswa:
-//   GET /api/level/terbit?zona=        level terbit untuk kelas siswa. Solusi tidak dikirim, dan clue
-//                                      hanya yang sudah dibeli (agar tidak bisa diintip tanpa membayar).
-//                                      Level dari zona yang dinonaktifkan guru tidak dikirim sama sekali.
+//   GET /api/level/terbit?zona=        level terbit untuk kelas AKTIF siswa. Solusi tidak dikirim, dan clue
+//                                      hanya yang sudah dibeli di kelas itu (agar tidak bisa diintip tanpa membayar).
+//                                      Level dari pulau yang tidak dipakai kelas itu tidak dikirim sama sekali.
 //   GET /api/level/harga-clue          harga Clue 1–3
 // Alat pengembang (guru, atau siswa jika env.MODE_DEV = "1"):
 //   GET /api/level/semua, GET /api/level/:id
-// Untuk guru (level bawaan + level kelasnya + level buatannya):
+// Untuk guru (level kelasnya + level buatannya; admin semua):
 //   GET  /api/level/guru               daftar ringkas
 //   GET  /api/level/guru/:id           data lengkap (edit / coba main)
 //   POST /api/level/guru               { level, terbit }  buat
 //   PUT  /api/level/guru/:id           { level, terbit }  ubah
-//   POST /api/level/guru/:id/duplikat | /urutan { arah } | /aktif { aktif }
+//   POST /api/level/guru/:id/duplikat | /urutan { arah } | /aktif { aktif } (terbit / jadi draf)
 //   DELETE /api/level/guru/:id
 
 import { buatRouter, bacaJson, kueri, GalatApi } from '../../../server/http.js';
-import { ambilSesi, wajibSiswa, aksesGuru } from '../../../server/sesi.js';
+import { ambilSesi, wajibSiswaDiKelas, aksesGuru } from '../../../server/sesi.js';
 import {
-  semua, satu, perintah, sekarang, semuaKelas, semuaLevel, bacaPengaturan, bacaZonaNonaktif, perintahSimpanLevel,
+  semua, satu, perintah, sekarang, semuaKelas, semuaLevel, bacaPengaturan, bacaZonaKelas, perintahSimpanLevel,
   levelBerlaku, rapikanUrutan, levelKeObjek
 } from '../../../server/data.js';
 import { tokenAcak } from '../../../server/kripto.js';
@@ -33,22 +35,12 @@ const urutkan = (levels) => levels.sort((p, q) => urutZona(p) - urutZona(q) || (
 const levelBolehDilihat = (a, l) => !!l.bawaan || a.admin || l.pembuat?.id === a.guru.id || (l.kelasIds || []).some((k) => a.kelasIds.has(k));
 const levelBolehDiubah = (a, l) => a.admin || (!l.bawaan && l.pembuat?.id === a.guru.id);
 
-function statusLevelUntuk(a, l) {
-  if (!l.bawaan) return l.terbit ? 'terbit' : 'draf';
-  if (l.terbit === false) return 'nonaktif';
-  if (a.admin) return 'terbit';
-  const non = (l.kelasNonaktif || []).filter((k) => a.kelasIds.has(k));
-  if (!non.length) return 'terbit';
-  return non.length >= a.kelasIds.size ? 'nonaktif' : 'sebagian';
-}
-
 function ringkasLevel(a, l, kelas) {
   const bisaEdit = levelBolehDiubah(a, l);
   return {
     id: l.id, zona: l.zona, urutan: l.urutan, judul: l.judul, jenis: l.jenis,
-    tingkat: l.tingkat || [3, 4, 5, 6],
     bawaan: !!l.bawaan,
-    status: statusLevelUntuk(a, l),
+    status: l.terbit ? 'terbit' : 'draf',
     kelasIds: l.kelasIds ? l.kelasIds.slice() : null,
     kelas: l.kelasIds ? l.kelasIds.map((id) => kelas.find((k) => k.id === id)?.nama).filter(Boolean) : null,
     pembuat: l.bawaan ? 'Bawaan' : (l.pembuat?.nama || '-'),
@@ -67,7 +59,7 @@ async function ambilLevelBoleh(ctx, a, id) {
 
 async function levelLengkapUntukGuru(ctx, a, id) {
   const l = await ambilLevelBoleh(ctx, a, id);
-  return { ...l, ...ringkasLevel(a, l, await semuaKelas(ctx.env.DB)), tingkat: l.tingkat || [3, 4, 5, 6] };
+  return { ...l, ...ringkasLevel(a, l, await semuaKelas(ctx.env.DB)) };
 }
 
 /** Simpan level yang berubah urutannya + level utama dalam satu batch. */
@@ -131,8 +123,6 @@ async function simpanLevelGuru(ctx, idLama, data, terbit) {
     const boleh = new Set(a.admin ? (await semuaKelas(db)).map((k) => k.id) : [...a.kelasIds]);
     if (kelasIds.some((k) => !boleh.has(k))) throw new GalatApi(403, 'Ada kelas tujuan yang bukan kelas Anda.');
   }
-  const tingkat = [...new Set((data.tingkat || []).map(Number))].filter((t) => [3, 4, 5, 6].includes(t)).sort();
-  if (!tingkat.length) throw new GalatApi(400, 'Pilih minimal satu tingkat kelas sasaran.');
 
   const zonaLama = lama?.zona;
   const level = {
@@ -143,8 +133,7 @@ async function simpanLevelGuru(ctx, idLama, data, terbit) {
     judul,
     instruksi: String(data.instruksi || '').trim().slice(0, 500),
     ringkasan: String(data.instruksi || '').trim().slice(0, 120) || judul,
-    tantanganBonus: String(data.tantanganBonus || '').trim().slice(0, 200),
-    tingkat,
+    tantanganBonus: String(data.tantanganBonus || '').trim().slice(0, 200), // tidak ditampilkan lagi; isi lama dibiarkan
     kelasIds,
     dunia: periksaDunia(data.dunia),
     perintahTersedia: (data.perintahTersedia || []).filter((x) => SEMUA_PERINTAH.includes(x)),
@@ -184,15 +173,16 @@ async function wajibGuruAtauDev(ctx) {
 export const onRequest = buatRouter([
   // ================= Siswa =================
   ['GET', 'terbit', async (ctx) => {
-    const siswa = await wajibSiswa(ctx);
+    const siswa = await wajibSiswaDiKelas(ctx);
     const db = ctx.env.DB;
     const { zona } = kueri(ctx.request);
-    const [progres, levels, zonaNonaktif] = await Promise.all([
-      semua(db, 'SELECT level_id, clue_dibeli FROM progres WHERE siswa_id = ?', siswa.id), semuaLevel(db), bacaZonaNonaktif(db)
+    const [progres, levels, zonaIds] = await Promise.all([
+      semua(db, 'SELECT level_id, clue_dibeli FROM progres WHERE siswa_id = ? AND kelas_id = ?', siswa.id, siswa.kelas_aktif),
+      semuaLevel(db), bacaZonaKelas(db, siswa.kelas_aktif)
     ]);
     const clueDibeli = new Map(progres.map((p) => [p.level_id, p.clue_dibeli || 0]));
-    return urutkan(levels.filter((l) => levelBerlaku(l, siswa.kelas_id, zonaNonaktif) && (!zona || l.zona === zona)))
-      .map(({ solusi, clue, pembuat, kelasNonaktif, ...l }) => ({
+    return urutkan(levels.filter((l) => levelBerlaku(l, siswa.kelas_aktif, zonaIds) && (!zona || l.zona === zona)))
+      .map(({ solusi, clue, pembuat, ...l }) => ({
         ...l,
         // Clue yang belum dibeli dikosongkan; teksnya dikirim saat dibeli
         clue: [0, 1, 2].map((i) => (i < (clueDibeli.get(l.id) || 0) ? (clue?.[i] || '') : ''))
@@ -239,9 +229,7 @@ export const onRequest = buatRouter([
       bawaan: false,
       terbit: false,
       kelasIds: a.admin ? (asli.kelasIds ? asli.kelasIds.slice() : null) : [...a.kelasIds],
-      kelasNonaktif: [],
       pembuat: { id: a.guru.id, nama: a.guru.nama },
-      tingkat: asli.tingkat || [3, 4, 5, 6],
       dibuatPada: sekarang(),
       diperbarui: sekarang()
     };
@@ -272,23 +260,17 @@ export const onRequest = buatRouter([
     return { ok: true };
   }],
 
+  // Terbitkan (aktif) atau kembalikan menjadi draf. Kelas yang memakai soal diatur lewat centang Kelas.
   ['POST', 'guru/:id/aktif', async (ctx, { id }) => {
     const a = await aksesGuru(ctx);
     const { aktif } = await bacaJson(ctx.request);
     const l = await ambilLevelBoleh(ctx, a, id);
-    if (l.bawaan && !a.admin) {
-      // Guru: nonaktif hanya untuk kelas yang diampunya
-      const non = new Set(l.kelasNonaktif || []);
-      for (const k of a.kelasIds) { if (aktif) non.delete(k); else non.add(k); }
-      l.kelasNonaktif = [...non];
-    } else {
-      if (!levelBolehDiubah(a, l)) throw new GalatApi(403, 'Anda hanya bisa mengatur level buatan Anda sendiri.');
-      if (aktif && !l.bawaan) {
-        const alasan = alasanBelumSiap(l);
-        if (alasan.length) throw new GalatApi(400, `Belum bisa diterbitkan: ${alasan.join(' ')}`);
-      }
-      l.terbit = !!aktif;
+    if (!levelBolehDiubah(a, l)) throw new GalatApi(403, 'Anda hanya bisa mengatur level buatan Anda sendiri.');
+    if (aktif) {
+      const alasan = alasanBelumSiap(l);
+      if (alasan.length) throw new GalatApi(400, `Belum bisa diterbitkan: ${alasan.join(' ')}`);
     }
+    l.terbit = !!aktif;
     l.diperbarui = sekarang();
     await simpanBanyak(ctx.env.DB, [l]);
     return ringkasLevel(a, l, await semuaKelas(ctx.env.DB));
@@ -300,7 +282,6 @@ export const onRequest = buatRouter([
     const semuaL = await semuaLevel(db);
     const l = semuaL.find((x) => x.id === id);
     if (!l || !levelBolehDilihat(a, l)) throw new GalatApi(404, 'Level ini tidak ditemukan, mungkin sudah dihapus. Muat ulang halaman.');
-    if (l.bawaan) throw new GalatApi(400, 'Level bawaan tidak bisa dihapus. Nonaktifkan saja.');
     if (!levelBolehDiubah(a, l)) throw new GalatApi(403, 'Anda hanya bisa menghapus level buatan Anda sendiri.');
     const sisa = semuaL.filter((x) => x.id !== id);
     const berubah = rapikanUrutan(sisa, l.zona);

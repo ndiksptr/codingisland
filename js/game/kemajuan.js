@@ -1,56 +1,43 @@
-// js/game/kemajuan.js — aturan buka-kunci zona dan level (fungsi murni, tanpa akses data)
-// Zona pertama selalu terbuka (kecuali dinonaktifkan). Zona berikutnya terbuka setelah boss zona sebelumnya selesai
-// (cukup salah satu boss, agar boss tambahan buatan guru tidak mengunci pulau yang sudah terbuka).
-// Level terbuka jika level sebelumnya (dalam zona yang sama) selesai. Jika boss zona sudah
-// selesai, semua level di zona itu terbuka — termasuk level baru yang disisipkan guru.
-// Zona yang dinonaktifkan guru tetap dihitung pada urutannya, tetapi tidak pernah terbuka dan tidak
-// pernah lulus (juga bila ia zona pertama). Akibatnya zona sesudahnya ikut terkunci sampai zona itu
-// dinyalakan lagi. Menyembunyikannya dari murid adalah tugas js/pages/peta.js, bukan fungsi ini.
+// js/game/kemajuan.js — aturan buka-kunci pulau dan level (fungsi murni, tanpa akses data)
+// Urutan pulau = daftar milik kelas aktif (kelas.zonaIds), BUKAN urutan tetap ZONA.
+// Pulau yang tidak dicentang guru tidak ada di daftar itu, dan pulau yang dicentang tetapi belum berisi
+// satu soal pun dilewati begitu saja (disembunyikan otomatis), jadi keduanya tidak pernah menghalangi
+// pulau sesudahnya. Pulau pertama yang bisa dimainkan selalu terbuka; pulau berikutnya terbuka setelah
+// boss pulau sebelumnya selesai (cukup salah satu boss, agar boss tambahan buatan guru tidak mengunci
+// pulau yang sudah terbuka). Level terbuka jika level sebelumnya (dalam pulau yang sama) selesai.
+// Jika boss pulau sudah selesai, semua level di pulau itu terbuka — termasuk level baru yang disisipkan guru.
 
-import { ZONA } from '../data/zona.js';
+import { cariZona } from '../data/zona.js';
 
-/** Zona yang aktif (urutan tetap seperti ZONA). */
-export const zonaAktif = (zonaNonaktif = []) => ZONA.filter((z) => !zonaNonaktif.includes(z.id));
+/** Definisi pulau (js/data/zona.js) menurut daftar id milik kelas, dalam urutan kelas itu. */
+export const zonaDariIds = (zonaIds = []) => zonaIds.map(cariZona).filter(Boolean);
 
-/** Zona aktif terakhir: boss-nya menjadikan murid Juara Coding Island. */
-export const zonaTerakhir = (zonaNonaktif = []) => {
-  const aktif = zonaAktif(zonaNonaktif);
-  return aktif[aktif.length - 1] || null;
+/** Pulau yang bisa dimainkan: dipakai kelas DAN berisi minimal satu level dari `levels`. */
+export const zonaDimainkan = (zonaIds = [], levels = []) => zonaDariIds(zonaIds).filter((z) => levels.some((l) => l.zona === z.id));
+
+/** Pulau terakhir yang bisa dimainkan: boss-nya menjadikan murid Juara Coding Island. */
+export const zonaTerakhir = (zonaIds = [], levels = []) => {
+  const daftar = zonaDimainkan(zonaIds, levels);
+  return daftar[daftar.length - 1] || null;
 };
 
 /**
- * Zona yang masih mungkin terbuka bagi murid: zona aktif sebelum zona nonaktif pertama.
- * Kosong = tidak ada satu pun pulau yang bisa dimainkan.
- */
-export function zonaTerjangkau(zonaNonaktif = []) {
-  const i = ZONA.findIndex((z) => zonaNonaktif.includes(z.id));
-  return i < 0 ? [...ZONA] : ZONA.slice(0, i);
-}
-
-const PESAN_DITUTUP_GURU = 'Pulau ini belum dibuka gurumu';
-
-/**
- * Hitung status seluruh peta.
- * levels : daftar level yang terbit untuk siswa
- * progres: daftar progres siswa
- * zonaNonaktif: id zona yang dinonaktifkan guru (tetap ada di hasil dengan aktif = false)
- * Hasil  : array per zona { zona, aktif, ditutupGuru, terbuka, lulus, tuntas, levels[], selesai, total, bintang, bintangMaks, syarat }
- *          ditutupGuru = zona ini atau zona sebelumnya nonaktif, jadi murid tidak bisa membukanya sendiri
+ * Hitung status seluruh peta untuk satu kelas.
+ * levels : level yang berlaku untuk kelas itu (sudah disaring server)
+ * progres: progres murid DI KELAS ITU
+ * zonaIds: pulau milik kelas, urutan main
+ * Hasil  : array per pulau yang bisa dimainkan { zona, terbuka, lulus, tuntas, levels[], selesai, total, bintang, bintangMaks, syarat }
+ *          zona.nomor = posisi pulau di daftar kelas (pulau kosong tidak dihitung)
  *          tiap level mendapat { nomor, status: 'terkunci'|'terbuka'|'selesai', bintang, nilai }
- *          zona.nomor = nomor pulau di antara zona aktif (null untuk zona nonaktif)
  */
-export function hitungPeta(levels, progres, zonaNonaktif = []) {
+export function hitungPeta(levels, progres, zonaIds = []) {
   const petaProgres = new Map(progres.map((p) => [p.levelId, p]));
   let bossSebelumSelesai = true;
   let zonaSebelum = null;
-  let ditutupGuru = false;
-  let nomorPulau = 0;
 
-  return ZONA.map((zonaAsli, i) => {
-    const aktif = !zonaNonaktif.includes(zonaAsli.id);
-    if (!aktif) ditutupGuru = true;
-    const zona = { ...zonaAsli, nomor: aktif ? ++nomorPulau : null };
-    const terbuka = aktif && (i === 0 || bossSebelumSelesai);
+  return zonaDimainkan(zonaIds, levels).map((zonaAsli, i) => {
+    const zona = { ...zonaAsli, nomor: i + 1 };
+    const terbuka = bossSebelumSelesai; // pulau pertama di daftar kelas: belum ada pulau sebelumnya
     const urut = levels.filter((l) => l.zona === zona.id).sort((a, b) => (a.urutan ?? 0) - (b.urutan ?? 0));
     const bossLulus = urut.some((l) => l.jenis === 'boss' && petaProgres.get(l.id)?.selesai);
 
@@ -66,25 +53,21 @@ export function hitungPeta(levels, progres, zonaNonaktif = []) {
 
     const jumlahSelesai = daftar.filter((l) => l.status === 'selesai').length;
     const boss = daftar.filter((l) => l.jenis === 'boss');
-    // Lulus jika salah satu boss selesai; tanpa boss, lulus jika semua level selesai.
-    // Zona nonaktif tidak pernah terbuka, jadi tidak pernah lulus: zona sesudahnya ikut terkunci.
-    const lulus = terbuka && daftar.length > 0 &&
-      (boss.length ? boss.some((l) => l.status === 'selesai') : jumlahSelesai === daftar.length);
+    // Lulus jika salah satu boss selesai; tanpa boss, lulus jika semua level selesai
+    const lulus = terbuka && (boss.length ? boss.some((l) => l.status === 'selesai') : jumlahSelesai === daftar.length);
 
     const hasil = {
       zona,
-      aktif,
-      ditutupGuru,
       terbuka,
       lulus,
-      tuntas: terbuka && daftar.length > 0 && jumlahSelesai === daftar.length,
+      tuntas: terbuka && jumlahSelesai === daftar.length,
       levels: daftar,
       selesai: jumlahSelesai,
       total: daftar.length,
       bintang: daftar.reduce((n, l) => n + (l.status === 'selesai' ? l.bintang : 0), 0),
       bintangMaks: daftar.length * 3,
-      // Zona nonaktif tidak terlihat murid, jadi jangan menyuruh murid menyelesaikan boss-nya
-      syarat: ditutupGuru ? PESAN_DITUTUP_GURU : zonaSebelum ? `Selesaikan boss ${zonaSebelum.nama} dulu` : ''
+      // Pulau sebelumnya menurut daftar kelas ini
+      syarat: zonaSebelum ? `Selesaikan boss ${zonaSebelum.nama} dulu` : ''
     };
 
     bossSebelumSelesai = lulus;

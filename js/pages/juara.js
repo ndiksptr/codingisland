@@ -1,13 +1,13 @@
 // js/pages/juara.js — sertifikat "Juara Coding Island" (#/juara)
-// Tampil setelah boss pulau AKTIF terakhir selesai (biasanya Pegunungan Salju; bila zona itu
-// dinonaktifkan guru, pulau aktif sebelumnya). Bintang & daftar pulau hanya dari zona aktif (dihitung server).
+// Tampil setelah boss pulau terakhir di daftar kelas aktif selesai (urutan pulau milik kelas itu).
+// Bintang & daftar pulau hanya dari soal kelas itu (dihitung server).
 // Tombol cetak memakai window.print() dengan gaya cetak khusus (@media print di css/app.css).
 
 import { esc, robot, tombol } from '../ui.js';
-import { sesiAktif, getRingkasanJuara, getZonaNonaktif } from '../store.js';
-import { zonaTerakhir } from '../game/kemajuan.js';
+import { sesiAktif, getRingkasanJuara } from '../store.js';
+import { muatPeta } from './peta.js';
 
-// "keempat pulau: Pantai, Laut, Gurun, dan Pegunungan Salju" mengikuti jumlah pulau yang aktif
+// "keempat pulau: Pantai, Laut, Gurun, dan Pegunungan Salju" mengikuti jumlah pulau kelas itu
 const KATA_JUMLAH = { 2: 'kedua', 3: 'ketiga', 4: 'keempat' };
 function teksPulau(pulau) {
   if (pulau.length <= 1) return `pulau ${esc(pulau[0] || '')}`;
@@ -27,7 +27,8 @@ export async function renderJuara(halaman) {
   const data = await getRingkasanJuara(sesi.pengguna.id);
 
   if (!data) {
-    const akhir = zonaTerakhir(await getZonaNonaktif());
+    const { status } = await muatPeta();
+    const akhir = status[status.length - 1]?.zona; // pulau terakhir di daftar kelas aktif
     halaman.innerHTML = `
       <section class="mx-auto max-w-lg px-4 py-12">
         <div class="kartu muncul flex flex-col items-center text-center gap-3">

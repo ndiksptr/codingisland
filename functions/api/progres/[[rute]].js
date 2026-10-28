@@ -1,69 +1,69 @@
-// functions/api/progres/[[rute]].js — progres siswa yang sedang masuk
-//   GET  /api/progres                     semua progres saya
+// functions/api/progres/[[rute]].js — progres siswa yang sedang masuk, DI KELAS AKTIFNYA
+// Kemajuan terpisah per kelas (kunci progres: siswa_id, kelas_id, level_id): semua rute di bawah memakai
+// kelas aktif sesi ini (wajibSiswaDiKelas). Koin dan berlian tetap satu dompet di baris siswa.
+//   GET  /api/progres                     semua progres saya di kelas aktif
 //   GET  /api/progres/juara               data sertifikat (null jika boss pulau terakhir belum selesai)
 //   GET  /api/progres/:levelId            progres satu level (atau null)
 //   POST /api/progres/:levelId/percobaan  { kode, detik } — level terkunci ditolak 403; server MENJALANKAN ULANG kode dengan interpreter
 //                                         yang sama, lalu menghitung berhasil, bintang, nilai, koin, berlian
 //   POST /api/progres/:levelId/clue       { nomor } — beli clue berurutan; teks clue dikirim setelah dibeli
 //   POST /api/progres/:levelId/lama       { detik } — tambah lama bermain
-// Level dari zona yang dinonaktifkan guru ditolak 403 (progres lamanya tetap tersimpan, tidak dihapus).
+// Level dari pulau yang tidak dipakai kelas aktif dianggap tidak ada (404); progres lamanya tetap tersimpan.
 // Alat pengembang (hanya jika env.MODE_DEV = "1"):
 //   PUT /api/progres/:levelId, DELETE /api/progres
 
 import { buatRouter, bacaJson, GalatApi } from '../../../server/http.js';
-import { wajibSiswa } from '../../../server/sesi.js';
+import { wajibSiswaDiKelas } from '../../../server/sesi.js';
 import {
   semua, satu, jalankan, perintah, sekarang, siswaKeObjek, progresKeObjek, levelKeObjek, semuaLevel,
-  bacaPengaturan, bacaZonaNonaktif, zonaNonaktifDariBaris, perintahAktivitas, levelTerlihatUntukKelas, levelBerlaku, semuaKelas
+  bacaPengaturan, bacaZonaKelas, zonaKelasDariTeks, perintahAktivitas, levelBerlaku
 } from '../../../server/data.js';
 import { jalankanKode } from '../../../js/game/interpreter.js';
 import { hitungBintang, hitungKoin, NILAI_BINTANG, BERLIAN_BOSS, CLUE, KOIN_SELESAI_PERTAMA, KOIN_PER_BINTANG_BARU } from '../../../js/game/skor.js';
-import { hitungPeta, zonaAktif, zonaTerakhir } from '../../../js/game/kemajuan.js';
+import { hitungPeta, zonaDimainkan, zonaTerakhir } from '../../../js/game/kemajuan.js';
 
 const MAKS_KODE = 5000;
 const MAKS_DETIK = 600;
-const PESAN_ZONA_TUTUP = 'Pulau ini sedang ditutup oleh gurumu. Ayo main di pulau lain dulu ya!';
+const PESAN_TIDAK_ADA = 'Level ini tidak ada. Kembali ke peta dan pilih level lain ya.';
 
-async function ambilProgres(db, siswaId, levelId) {
-  const r = await satu(db, 'SELECT * FROM progres WHERE siswa_id = ? AND level_id = ?', siswaId, levelId);
+async function ambilProgres(db, siswaId, kelasId, levelId) {
+  const r = await satu(db, 'SELECT * FROM progres WHERE siswa_id = ? AND kelas_id = ? AND level_id = ?', siswaId, kelasId, levelId);
   return r ? progresKeObjek(r) : null;
 }
 
-/** Level yang boleh dimainkan siswa ini. */
+/** Level yang boleh dimainkan siswa ini di kelas aktifnya. */
 async function levelUntukSiswa(db, siswa, levelId) {
-  const [r, zonaNonaktif] = await Promise.all([satu(db, 'SELECT * FROM level WHERE id = ?', levelId), bacaZonaNonaktif(db)]);
+  const [r, zonaIds] = await Promise.all([satu(db, 'SELECT * FROM level WHERE id = ?', levelId), bacaZonaKelas(db, siswa.kelas_aktif)]);
   const l = r ? levelKeObjek(r) : null;
-  if (!l || !levelTerlihatUntukKelas(l, siswa.kelas_id)) throw new GalatApi(404, 'Level ini tidak ada. Kembali ke peta dan pilih level lain ya.');
-  if (zonaNonaktif.includes(l.zona)) throw new GalatApi(403, PESAN_ZONA_TUTUP);
+  if (!l || !levelBerlaku(l, siswa.kelas_aktif, zonaIds)) throw new GalatApi(404, PESAN_TIDAK_ADA);
   return l;
 }
 
 /**
- * Level + progres siswa dalam satu kali bolak-balik ke D1, sekaligus memeriksa level itu TERBUKA
- * dengan aturan yang sama dengan peta (js/game/kemajuan.js): level/pulau terkunci ditolak 403.
+ * Level + progres siswa (di kelas aktif) dalam satu kali bolak-balik ke D1, sekaligus memeriksa level itu
+ * TERBUKA dengan aturan yang sama dengan peta (js/game/kemajuan.js): level/pulau terkunci ditolak 403.
  */
 async function levelDanProgres(db, siswa, levelId) {
-  const [rl, rp, rz] = await db.batch([
+  const [rl, rp, rk] = await db.batch([
     perintah(db, 'SELECT * FROM level'),
-    perintah(db, 'SELECT * FROM progres WHERE siswa_id = ?', siswa.id),
-    perintah(db, "SELECT nilai FROM pengaturan WHERE kunci = 'zona_nonaktif'")
+    perintah(db, 'SELECT * FROM progres WHERE siswa_id = ? AND kelas_id = ?', siswa.id, siswa.kelas_aktif),
+    perintah(db, 'SELECT zona_ids FROM kelas WHERE id = ?', siswa.kelas_aktif)
   ]);
-  const zonaNonaktif = zonaNonaktifDariBaris(rz.results?.[0]);
-  const terlihat = (rl.results || []).map(levelKeObjek).filter((x) => levelTerlihatUntukKelas(x, siswa.kelas_id));
-  const l = terlihat.find((x) => x.id === levelId);
-  if (!l) throw new GalatApi(404, 'Level ini tidak ada. Kembali ke peta dan pilih level lain ya.');
-  if (zonaNonaktif.includes(l.zona)) throw new GalatApi(403, PESAN_ZONA_TUTUP);
+  const zonaIds = rk.results?.[0] ? zonaKelasDariTeks(rk.results[0].zona_ids) : [];
+  const berlaku = (rl.results || []).map(levelKeObjek).filter((x) => levelBerlaku(x, siswa.kelas_aktif, zonaIds));
+  const l = berlaku.find((x) => x.id === levelId);
+  if (!l) throw new GalatApi(404, PESAN_TIDAK_ADA);
   const semuaProgres = (rp.results || []).map(progresKeObjek);
-  const sz = hitungPeta(terlihat, semuaProgres, zonaNonaktif).find((z) => z.zona.id === l.zona);
-  // Pulau terkunci karena pulau sebelumnya dimatikan guru: murid tidak bisa membukanya sendiri
-  if (sz && !sz.terbuka && sz.ditutupGuru) throw new GalatApi(403, PESAN_ZONA_TUTUP);
+  const sz = hitungPeta(berlaku, semuaProgres, zonaIds).find((z) => z.zona.id === l.zona);
   const status = sz?.levels.find((x) => x.id === levelId)?.status;
+  if (!sz?.terbuka) throw new GalatApi(403, `Pulau ini masih terkunci. ${sz?.syarat || 'Selesaikan pulau sebelumnya dulu'} ya.`);
   if (status === 'terkunci') throw new GalatApi(403, 'Level ini masih terkunci. Selesaikan level sebelumnya dulu ya.');
-  return { level: l, progres: semuaProgres.find((p) => p.levelId === levelId) || null, zonaNonaktif };
+  return { level: l, levels: berlaku, zonaIds, progres: semuaProgres.find((p) => p.levelId === levelId) || null };
 }
 
-const pastikanBarisProgres = (db, siswaId, levelId) =>
-  perintah(db, `INSERT INTO progres (siswa_id, level_id, diperbarui) VALUES (?,?,?) ON CONFLICT(siswa_id, level_id) DO NOTHING`, siswaId, levelId, sekarang());
+const pastikanBarisProgres = (db, siswaId, kelasId, levelId) =>
+  perintah(db, `INSERT INTO progres (siswa_id, kelas_id, level_id, diperbarui) VALUES (?,?,?,?)
+    ON CONFLICT(siswa_id, kelas_id, level_id) DO NOTHING`, siswaId, kelasId, levelId, sekarang());
 
 const wajibModeDev = (env) => {
   if (env.MODE_DEV !== '1') throw new GalatApi(403, 'Alat pengembang tidak aktif di server ini.');
@@ -71,68 +71,74 @@ const wajibModeDev = (env) => {
 
 export const onRequest = buatRouter([
   ['GET', '', async (ctx) => {
-    const s = await wajibSiswa(ctx);
-    return (await semua(ctx.env.DB, 'SELECT * FROM progres WHERE siswa_id = ?', s.id)).map(progresKeObjek);
+    const s = await wajibSiswaDiKelas(ctx);
+    return (await semua(ctx.env.DB, 'SELECT * FROM progres WHERE siswa_id = ? AND kelas_id = ?', s.id, s.kelas_aktif)).map(progresKeObjek);
   }],
 
-  // Juara = boss zona AKTIF terakhir selesai. Bintang dihitung dari level zona aktif saja.
+  // Juara = boss pulau terakhir di daftar kelas aktif selesai. Bintang dihitung dari soal kelas itu saja.
   ['GET', 'juara', async (ctx) => {
-    const s = await wajibSiswa(ctx);
+    const s = await wajibSiswaDiKelas(ctx);
     const db = ctx.env.DB;
-    const zonaNonaktif = await bacaZonaNonaktif(db);
-    const zonaAkhir = zonaTerakhir(zonaNonaktif)?.id;
-    const levels = (await semuaLevel(db)).filter((l) => levelBerlaku(l, s.kelas_id, zonaNonaktif));
-    const progres = (await semua(db, 'SELECT * FROM progres WHERE siswa_id = ?', s.id)).map(progresKeObjek);
+    const [kelas, semuaL, progresBaris] = await Promise.all([
+      satu(db, 'SELECT nama, zona_ids FROM kelas WHERE id = ?', s.kelas_aktif),
+      semuaLevel(db),
+      semua(db, 'SELECT * FROM progres WHERE siswa_id = ? AND kelas_id = ?', s.id, s.kelas_aktif)
+    ]);
+    const zonaIds = zonaKelasDariTeks(kelas?.zona_ids);
+    const levels = semuaL.filter((l) => levelBerlaku(l, s.kelas_aktif, zonaIds));
+    const zonaAkhir = zonaTerakhir(zonaIds, levels)?.id;
+    const progres = progresBaris.map(progresKeObjek);
     const bossAkhir = progres.find((p) => p.selesai && levels.some((l) => l.id === p.levelId && l.zona === zonaAkhir && l.jenis === 'boss'));
     if (!bossAkhir) return null;
     const ids = new Set(levels.map((l) => l.id));
-    const kelas = (await semuaKelas(db)).find((k) => k.id === s.kelas_id);
     return {
       namaLengkap: s.nama_lengkap,
       kelas: kelas?.nama || '-',
       totalBintang: progres.filter((p) => p.selesai && ids.has(p.levelId)).reduce((n, p) => n + (p.bintang || 0), 0),
       maksBintang: levels.length * 3,
-      pulau: zonaAktif(zonaNonaktif).map((z) => z.nama), // pulau yang ditaklukkan (zona aktif)
+      pulau: zonaDimainkan(zonaIds, levels).map((z) => z.nama), // pulau yang ditaklukkan, urutan kelas
       tanggal: bossAkhir.selesaiPada || bossAkhir.diperbarui
     };
   }],
 
   ['DELETE', '', async (ctx) => {
     wajibModeDev(ctx.env);
-    const s = await wajibSiswa(ctx);
-    await jalankan(ctx.env.DB, 'DELETE FROM progres WHERE siswa_id = ?', s.id);
+    const s = await wajibSiswaDiKelas(ctx);
+    await jalankan(ctx.env.DB, 'DELETE FROM progres WHERE siswa_id = ? AND kelas_id = ?', s.id, s.kelas_aktif);
     return { ok: true };
   }],
 
   ['GET', ':levelId', async (ctx, { levelId }) => {
-    const s = await wajibSiswa(ctx);
-    return ambilProgres(ctx.env.DB, s.id, levelId);
+    const s = await wajibSiswaDiKelas(ctx);
+    return ambilProgres(ctx.env.DB, s.id, s.kelas_aktif, levelId);
   }],
 
   ['PUT', ':levelId', async (ctx, { levelId }) => {
     wajibModeDev(ctx.env);
-    const s = await wajibSiswa(ctx);
+    const s = await wajibSiswaDiKelas(ctx);
     const db = ctx.env.DB;
     await levelUntukSiswa(db, s, levelId);
     const p = await bacaJson(ctx.request);
     await db.batch([
-      pastikanBarisProgres(db, s.id, levelId),
+      pastikanBarisProgres(db, s.id, s.kelas_aktif, levelId),
       perintah(db, `UPDATE progres SET selesai = ?, bintang = ?, nilai = ?, percobaan = ?, diperbarui = ?,
-        selesai_pada = COALESCE(selesai_pada, CASE WHEN ? = 1 THEN ? END) WHERE siswa_id = ? AND level_id = ?`,
+        selesai_pada = COALESCE(selesai_pada, CASE WHEN ? = 1 THEN ? END) WHERE siswa_id = ? AND kelas_id = ? AND level_id = ?`,
       p.selesai ? 1 : 0, Math.min(3, Math.max(0, Math.round(p.bintang || 0))), Math.min(100, Math.max(0, Math.round(p.nilai || 0))),
-      Math.max(0, Math.round(p.percobaan || 0)), sekarang(), p.selesai ? 1 : 0, sekarang(), s.id, levelId)
+      Math.max(0, Math.round(p.percobaan || 0)), sekarang(), p.selesai ? 1 : 0, sekarang(), s.id, s.kelas_aktif, levelId)
     ]);
-    return ambilProgres(db, s.id, levelId);
+    return ambilProgres(db, s.id, s.kelas_aktif, levelId);
   }],
 
   // ================= Jalankan (dihitung ulang di server) =================
   // Hadiah (koin, berlian, piala, juara) dihitung DI DALAM satu db.batch (satu transaksi D1) dari isi
   // baris progres saat itu, bukan dari data yang dibaca sebelumnya. Jadi dua permintaan yang sama
   // bersamaan tidak memberi koin dobel: yang kedua sudah melihat level selesai beserta bintangnya.
+  // Baris progres yang dibaca dan ditulis adalah milik kelas aktif (siswa_id, kelas_id, level_id), dan
+  // dompet koin/berlian tetap satu di baris siswa — tidak ada pengecekan silang antar kelas.
   ['POST', ':levelId/percobaan', async (ctx, { levelId }) => {
-    const siswa = await wajibSiswa(ctx);
+    const siswa = await wajibSiswaDiKelas(ctx);
     const db = ctx.env.DB;
-    const { level, progres: awal, zonaNonaktif } = await levelDanProgres(db, siswa, levelId);
+    const { level, levels, zonaIds, progres: awal } = await levelDanProgres(db, siswa, levelId);
     const body = await bacaJson(ctx.request);
     const kode = String(body.kode ?? '').slice(0, MAKS_KODE);
     const detik = Math.min(MAKS_DETIK, Math.max(0, Math.round(Number(body.detik) || 0)));
@@ -145,13 +151,13 @@ export const onRequest = buatRouter([
     const nilai = NILAI_BINTANG[bintang];
     const ok = hasil.berhasil ? 1 : 0;
     const boss = level.jenis === 'boss' ? 1 : 0;
-    const bossAkhir = boss && level.zona === zonaTerakhir(zonaNonaktif)?.id ? 1 : 0;
+    const bossAkhir = boss && level.zona === zonaTerakhir(zonaIds, levels)?.id ? 1 : 0;
     const waktu = sekarang();
-    const dari = 'FROM progres WHERE siswa_id = ? AND level_id = ?';
-    const kunci = [siswa.id, levelId];
+    const dari = 'FROM progres WHERE siswa_id = ? AND kelas_id = ? AND level_id = ?';
+    const kunci = [siswa.id, siswa.kelas_aktif, levelId];
 
     const hasilBatch = await db.batch([
-      pastikanBarisProgres(db, siswa.id, levelId),
+      pastikanBarisProgres(db, siswa.id, siswa.kelas_aktif, levelId),
       // [1] keadaan progres sebelum percobaan ini, dibaca di dalam transaksi yang sama
       perintah(db, `SELECT selesai, bintang ${dari}`, ...kunci),
       // [2] koin & berlian bertambah atomik; besarnya dihitung dari keadaan progres saat ini
@@ -181,7 +187,7 @@ export const onRequest = buatRouter([
           nilai = MAX(nilai, ?),
           selesai_pada = COALESCE(selesai_pada, CASE WHEN ? = 1 THEN ? END),
           diperbarui = ?
-        WHERE siswa_id = ? AND level_id = ?`,
+        WHERE siswa_id = ? AND kelas_id = ? AND level_id = ?`,
       kode, detik, ok, bintang, ok ? nilai : 0, ok, waktu, waktu, ...kunci),
       // [7][8] keadaan akhir untuk dikirim ke browser
       perintah(db, `SELECT * ${dari}`, ...kunci),
@@ -212,7 +218,7 @@ export const onRequest = buatRouter([
   // dengan UPDATE ... WHERE clue_dibeli = nomor - 1. Jika klaim kalah dari permintaan lain yang sama
   // (klik ganda), koin dikembalikan, jadi koin tidak pernah terpotong dua kali.
   ['POST', ':levelId/clue', async (ctx, { levelId }) => {
-    const siswa = await wajibSiswa(ctx);
+    const siswa = await wajibSiswaDiKelas(ctx);
     const db = ctx.env.DB;
     const { level, progres } = await levelDanProgres(db, siswa, levelId);
     const nomor = Number((await bacaJson(ctx.request)).nomor);
@@ -234,9 +240,9 @@ export const onRequest = buatRouter([
     // 2) Klaim clue + catat aktivitas dalam satu batch; aktivitas hanya ditulis bila klaim berhasil (changes() = 1)
     const waktu = sekarang();
     const [, klaim] = await db.batch([
-      pastikanBarisProgres(db, siswa.id, levelId),
-      perintah(db, 'UPDATE progres SET clue_dibeli = ?, diperbarui = ? WHERE siswa_id = ? AND level_id = ? AND clue_dibeli = ?',
-        nomor, waktu, siswa.id, levelId, nomor - 1),
+      pastikanBarisProgres(db, siswa.id, siswa.kelas_aktif, levelId),
+      perintah(db, 'UPDATE progres SET clue_dibeli = ?, diperbarui = ? WHERE siswa_id = ? AND kelas_id = ? AND level_id = ? AND clue_dibeli = ?',
+        nomor, waktu, siswa.id, siswa.kelas_aktif, levelId, nomor - 1),
       perintah(db, `INSERT INTO aktivitas (waktu, siswa_id, jenis, keterangan) SELECT ?, ?, 'clue', ? WHERE changes() = 1`,
         waktu, siswa.id, `Membeli Clue ${nomor} di level ${level.judul}`)
     ]);
@@ -245,7 +251,7 @@ export const onRequest = buatRouter([
       const [, rs, rp] = await db.batch([
         perintah(db, 'UPDATE siswa SET koin = koin + ? WHERE id = ?', harga, siswa.id),
         perintah(db, 'SELECT * FROM siswa WHERE id = ?', siswa.id),
-        perintah(db, 'SELECT clue_dibeli FROM progres WHERE siswa_id = ? AND level_id = ?', siswa.id, levelId)
+        perintah(db, 'SELECT clue_dibeli FROM progres WHERE siswa_id = ? AND kelas_id = ? AND level_id = ?', siswa.id, siswa.kelas_aktif, levelId)
       ]);
       const kini = rp.results?.[0]?.clue_dibeli || 0;
       return kini >= nomor
@@ -262,15 +268,16 @@ export const onRequest = buatRouter([
   }],
 
   ['POST', ':levelId/lama', async (ctx, { levelId }) => {
-    const siswa = await wajibSiswa(ctx);
+    const siswa = await wajibSiswaDiKelas(ctx);
     const db = ctx.env.DB;
     await levelUntukSiswa(db, siswa, levelId);
     const detik = Math.min(MAKS_DETIK, Math.max(0, Math.round(Number((await bacaJson(ctx.request)).detik) || 0)));
     if (!detik) return null;
     await db.batch([
-      pastikanBarisProgres(db, siswa.id, levelId),
-      perintah(db, 'UPDATE progres SET detik = detik + ?, diperbarui = ? WHERE siswa_id = ? AND level_id = ?', detik, sekarang(), siswa.id, levelId)
+      pastikanBarisProgres(db, siswa.id, siswa.kelas_aktif, levelId),
+      perintah(db, 'UPDATE progres SET detik = detik + ?, diperbarui = ? WHERE siswa_id = ? AND kelas_id = ? AND level_id = ?',
+        detik, sekarang(), siswa.id, siswa.kelas_aktif, levelId)
     ]);
-    return ambilProgres(db, siswa.id, levelId);
+    return ambilProgres(db, siswa.id, siswa.kelas_aktif, levelId);
   }]
 ]);

@@ -15,7 +15,6 @@ export function alasanBelumSiap(l) {
   if (!l.dunia?.robot) alasan.push('Taruh robot di panggung.');
   if (!l.dunia?.tujuan) alasan.push('Taruh bendera tujuan di panggung.');
   if (!Array.isArray(l.perintahTersedia) || !l.perintahTersedia.length) alasan.push('Pilih minimal satu perintah.');
-  if (Array.isArray(l.kelasIds) && !l.kelasIds.length) alasan.push('Pilih minimal satu kelas tujuan.');
   if (!Array.isArray(l.tujuanTeks) || !l.tujuanTeks.length) alasan.push('Tambahkan minimal satu tujuan.');
   if (!Array.isArray(l.clue) || l.clue.length !== 3 || l.clue.some((c) => !String(c || '').trim())) alasan.push('Isi ketiga clue.');
   if (!l.dunia?.robot || !l.dunia?.tujuan) return alasan;

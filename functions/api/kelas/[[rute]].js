@@ -4,15 +4,17 @@
 //   GET    /api/kelas                   kelas yang diampu guru (+ guru pengampu, jumlah siswa, rata-rata nilai)
 //   GET    /api/kelas/kode-acak         { kode } kode acak yang belum dipakai (guru boleh menimpanya)
 //   POST   /api/kelas                   tambah kelas (guru otomatis menjadi pengampu)
-//   GET    /api/kelas/:id               satu kelas (siswa: hanya kelasnya sendiri)
+//   GET    /api/kelas/:id               satu kelas (siswa: hanya kelas yang diikutinya)
 //   PUT    /api/kelas/:id               ubah kelas (guruIds hanya untuk admin)
+//   PUT    /api/kelas/:id/zona          { zonaIds } pulau yang dipakai kelas ini beserta urutannya
 //   POST   /api/kelas/:id/kode-baru     buat kode kelas baru
-//   DELETE /api/kelas/:id               hapus kelas kosong
+//   DELETE /api/kelas/:id               hapus kelas kosong (tanpa anggota)
 
 import { buatRouter, bacaJson, GalatApi } from '../../../server/http.js';
 import { ambilSesi, aksesGuru, bolehKelas } from '../../../server/sesi.js';
-import { semua, satu, jalankan, perintah, semuaKelas } from '../../../server/data.js';
-import { hitungStatistik, siswaDalamAkses, rataRata } from '../../../server/statistik.js';
+import { semua, satu, jalankan, perintah, semuaKelas, zonaKelasDariTeks } from '../../../server/data.js';
+import { hitungStatistik, keanggotaanDalamAkses, rataRata } from '../../../server/statistik.js';
+import { ZONA } from '../../../js/data/zona.js';
 import { acakKodeKelas, idBaru } from '../../../server/kripto.js';
 
 function periksaKelas(d) {
@@ -63,9 +65,9 @@ export const onRequest = buatRouter([
     const a = await aksesGuru(ctx);
     const db = ctx.env.DB;
     const guruList = await semua(db, 'SELECT id, nama FROM guru');
-    const stat = await hitungStatistik(db, await siswaDalamAkses(db, a), { kelas: a.kelas });
+    const stat = await hitungStatistik(db, await keanggotaanDalamAkses(db, a), { kelas: a.kelas });
     return a.kelas.map((k) => {
-      const st = stat.filter((x) => x.siswa.kelasId === k.id);
+      const st = stat.filter((x) => x.kelasId === k.id);
       return {
         ...k,
         guru: k.guruIds.map((id) => guruList.find((g) => g.id === id)).filter(Boolean),
@@ -97,10 +99,10 @@ export const onRequest = buatRouter([
     const db = ctx.env.DB;
     const s = await ambilSesi(ctx);
     if (s?.jenis === 'siswa') {
-      const siswa = await satu(db, 'SELECT kelas_id FROM siswa WHERE id = ?', s.pengguna_id);
-      if (siswa?.kelas_id !== id) throw new GalatApi(403, 'Kamu hanya bisa melihat kelasmu sendiri.');
-      const k = await satu(db, 'SELECT id, nama, tingkat FROM kelas WHERE id = ?', id);
-      return k || null;
+      const k = await satu(db, `SELECT k.id, k.nama, k.tingkat, k.zona_ids FROM siswa_kelas sk JOIN kelas k ON k.id = sk.kelas_id
+        WHERE sk.siswa_id = ? AND sk.kelas_id = ?`, s.pengguna_id, id);
+      if (!k) throw new GalatApi(403, 'Kamu hanya bisa melihat kelas yang kamu ikuti.');
+      return { id: k.id, nama: k.nama, tingkat: k.tingkat, zonaIds: zonaKelasDariTeks(k.zona_ids) };
     }
     const a = await aksesGuru(ctx);
     bolehKelas(a, id);
@@ -125,6 +127,18 @@ export const onRequest = buatRouter([
     return ambilKelas(db, id);
   }],
 
+  // Pulau milik kelas: hanya pilihan dan urutannya (definisi pulau tetap di js/data/zona.js).
+  // Daftar kosong boleh: murid kelas ini melihat "Belum ada pulau yang dibuka".
+  ['PUT', ':id/zona', async (ctx, { id }) => {
+    const a = await aksesGuru(ctx);
+    bolehKelas(a, id);
+    const { zonaIds } = await bacaJson(ctx.request);
+    if (!Array.isArray(zonaIds)) throw new GalatApi(400, 'Daftar pulau tidak terbaca. Muat ulang halaman, lalu coba lagi.');
+    const bersih = [...new Set(zonaIds)].filter((z) => ZONA.some((x) => x.id === z));
+    await jalankan(ctx.env.DB, 'UPDATE kelas SET zona_ids = ? WHERE id = ?', JSON.stringify(bersih), id);
+    return ambilKelas(ctx.env.DB, id);
+  }],
+
   ['POST', ':id/kode-baru', async (ctx, { id }) => {
     const a = await aksesGuru(ctx);
     bolehKelas(a, id);
@@ -137,8 +151,8 @@ export const onRequest = buatRouter([
     const a = await aksesGuru(ctx);
     bolehKelas(a, id);
     const db = ctx.env.DB;
-    if (await satu(db, 'SELECT id FROM siswa WHERE kelas_id = ? LIMIT 1', id)) {
-      throw new GalatApi(400, 'Kelas masih berisi siswa. Pindahkan atau hapus siswanya dulu.');
+    if (await satu(db, 'SELECT siswa_id FROM siswa_kelas WHERE kelas_id = ? LIMIT 1', id)) {
+      throw new GalatApi(400, 'Kelas masih berisi siswa. Keluarkan siswanya dari kelas ini dulu.');
     }
     await jalankan(db, 'DELETE FROM kelas WHERE id = ?', id);
     return { ok: true };

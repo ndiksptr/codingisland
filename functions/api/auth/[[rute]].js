@@ -1,7 +1,8 @@
 // functions/api/auth/[[rute]].js — akun & sesi
 //   GET  /api/auth/sesi                 { sesi, modeDev } — sesi aktif (siswa/guru) atau null
 //   GET  /api/auth/tahan?jenis=         sisa detik tahanan login untuk alamat IP ini
-//   POST /api/auth/masuk-siswa          { username, pin }
+//   POST /api/auth/masuk-siswa          { username, pin } — murid dengan satu kelas langsung memakai kelas itu
+//   PUT  /api/auth/kelas-aktif          { kelasId } murid memilih / berpindah kelas aktif (harus anggotanya)
 //   POST /api/auth/masuk-guru           { username, password }
 //   POST /api/auth/keluar
 //   POST /api/auth/daftar               pendaftaran siswa dengan kode kelas
@@ -12,8 +13,7 @@
 //   GET  /api/auth/konteks              konteks dashboard guru
 //   PATCH /api/auth/nama, POST /api/auth/password            akun guru sendiri
 //   GET/PUT /api/auth/pengaturan        pengaturan permainan (PUT: admin)
-//   GET /api/auth/zona                  status aktif + dampak tiap zona (guru & admin)
-//   PUT /api/auth/zona/:id              { aktif } aktifkan/nonaktifkan zona (guru & admin), dicatat di aktivitas
+//   (pulau per kelas diatur lewat PUT /api/kelas/:id/zona)
 //   GET/POST /api/auth/guru, PATCH/DELETE /api/auth/guru/:id, POST /api/auth/guru/:id/reset-password (admin)
 //   POST /api/auth/guru/:id/menyamar    admin masuk sebagai guru itu (sesi baru, admin asli dicatat)
 //   POST /api/auth/akhiri-menyamar      kembali ke akun admin asli
@@ -21,15 +21,12 @@
 
 import { buatRouter, json, bacaJson, kueri, GalatApi } from '../../../server/http.js';
 import { hashRahasia, cocokRahasia, samarkanWaktu, acakPassword, idBaru, samaKonstan, iterasiDari, perluHashUlang } from '../../../server/kripto.js';
-import { buatSesi, hapusSesi, sesiUntukKlien, aksesGuru, wajibAdmin, tolakSaatMenyamar } from '../../../server/sesi.js';
+import { buatSesi, hapusSesi, sesiUntukKlien, aksesGuru, wajibAdmin, tolakSaatMenyamar, wajibSiswa, aturKelasAktif } from '../../../server/sesi.js';
 import {
   semua, satu, jalankan, perintah, sekarang, siswaKeObjek, guruKeObjek, semuaKelas, bacaPengaturan,
-  perintahAktivitas, sarankanUsernameDb, bacaZonaNonaktif, zonaNonaktifDariBaris
+  perintahAktivitas, sarankanUsernameDb
 } from '../../../server/data.js';
-import { dampakZona } from '../../../server/statistik.js';
-import { zonaAktif } from '../../../js/game/kemajuan.js';
 import { periksaKolomSiswa } from '../../../js/game/aturan-siswa.js';
-import { ZONA } from '../../../js/data/zona.js';
 import { BAHASA_BAWAAN_SISWA } from '../../../js/game/kamus-perintah.js';
 import { BATAS, sisaTahanLogin, sisaTahanJendela, catatGagalLogin, catatGagalJendela, hapusBatas, bersihkanKedaluwarsa } from '../../../server/batas.js';
 
@@ -130,9 +127,23 @@ export const onRequest = buatRouter([
     const { hasil, akun } = await prosesMasuk(ctx, 'siswa', username, String(pin || ''),
       (u) => satu(ctx.env.DB, 'SELECT * FROM siswa WHERE username = ?', u), 'siswa', 'pin_hash', 'Username atau PIN belum cocok.');
     if (hasil) return hasil;
-    const setCookie = await buatSesi(ctx.env, 'siswa', akun.id);
+    // Satu kelas: langsung dipakai tanpa pertanyaan. Banyak kelas: murid memilih dulu (kelasAktif null).
+    const kelasIds = (await semua(ctx.env.DB, 'SELECT kelas_id FROM siswa_kelas WHERE siswa_id = ?', akun.id)).map((r) => r.kelas_id);
+    const kelasAktif = kelasIds.length === 1 ? kelasIds[0] : null;
+    const setCookie = await buatSesi(ctx.env, 'siswa', akun.id, null, kelasAktif);
     await perintahAktivitas(ctx.env.DB, akun.id, 'masuk', 'Masuk ke Coding Island').run();
-    return json({ ok: true, siswa: siswaKeObjek(akun) }, 200, { 'Set-Cookie': setCookie });
+    return json({ ok: true, siswa: siswaKeObjek({ ...akun, kelas_aktif: kelasAktif }), jumlahKelas: kelasIds.length }, 200, { 'Set-Cookie': setCookie });
+  }],
+
+  // Murid memilih kelas aktif: soal, pulau, bintang, dan nilai mengikuti kelas ini. Koin & berlian tetap satu.
+  ['PUT', 'kelas-aktif', async (ctx) => {
+    const s = await wajibSiswa(ctx);
+    const { kelasId } = await bacaJson(ctx.request);
+    const k = await satu(ctx.env.DB, `SELECT k.id, k.nama FROM siswa_kelas sk JOIN kelas k ON k.id = sk.kelas_id
+      WHERE sk.siswa_id = ? AND sk.kelas_id = ?`, s.id, String(kelasId || ''));
+    if (!k) throw new GalatApi(404, 'Kelas itu tidak ada di daftar kelasmu. Pilih kelas yang lain ya.');
+    await aturKelasAktif(ctx, k.id);
+    return { ok: true, kelas: { id: k.id, nama: k.nama } };
   }],
 
   ['POST', 'masuk-guru', async (ctx) => {
@@ -173,14 +184,19 @@ export const onRequest = buatRouter([
     }
     const { koinAwal } = await bacaPengaturan(db);
     const id = idBaru('siswa');
+    const waktu = sekarang();
     await db.batch([
-      perintah(db, `INSERT INTO siswa (id, nama_lengkap, nama_panggilan, jenis_kelamin, avatar, kelas_id, username, pin_hash, koin, berlian, zona_terlihat, dibuat_pada, bahasa)
-        VALUES (?,?,?,?,?,?,?,?,?,0,?,?,?)`, id, d.namaLengkap, d.namaPanggilan, d.avatar === 'pria' ? 'L' : 'P', d.avatar, d.kelasId,
-      d.username, await hashRahasia(d.pin, iterasi(ctx.env)), koinAwal, JSON.stringify([ZONA[0].id]), sekarang(), BAHASA_BAWAAN_SISWA),
+      // Koin awal HANYA diberikan di sini, saat baris murid pertama kali dibuat (bergabung ke kelas lain tidak memberi koin)
+      perintah(db, `INSERT INTO siswa (id, nama_lengkap, nama_panggilan, jenis_kelamin, avatar, username, pin_hash, koin, berlian, dibuat_pada, bahasa)
+        VALUES (?,?,?,?,?,?,?,?,0,?,?)`, id, d.namaLengkap, d.namaPanggilan, d.avatar === 'pria' ? 'L' : 'P', d.avatar,
+      d.username, await hashRahasia(d.pin, iterasi(ctx.env)), koinAwal, waktu, BAHASA_BAWAAN_SISWA),
+      perintah(db, 'INSERT INTO siswa_kelas (siswa_id, kelas_id, bergabung_pada) VALUES (?,?,?)', id, d.kelasId, waktu),
       perintahAktivitas(db, id, 'daftar', 'Mendaftar di Coding Island')
     ]);
-    const setCookie = await buatSesi(ctx.env, 'siswa', id);
-    return json({ ok: true, siswa: siswaKeObjek(await satu(db, 'SELECT * FROM siswa WHERE id = ?', id)) }, 200, { 'Set-Cookie': setCookie });
+    // Murid baru hanya punya satu kelas: langsung main di kelas itu
+    const setCookie = await buatSesi(ctx.env, 'siswa', id, null, d.kelasId);
+    const baru = await satu(db, 'SELECT * FROM siswa WHERE id = ?', id);
+    return json({ ok: true, siswa: siswaKeObjek({ ...baru, kelas_aktif: d.kelasId }) }, 200, { 'Set-Cookie': setCookie });
   }],
 
   ['GET', 'cek-username', async (ctx) => {
@@ -284,47 +300,6 @@ export const onRequest = buatRouter([
     const simpan = (k, v) => perintah(db, 'INSERT INTO pengaturan (kunci, nilai) VALUES (?,?) ON CONFLICT(kunci) DO UPDATE SET nilai = excluded.nilai', k, JSON.stringify(v));
     await db.batch([simpan('harga_clue', harga), simpan('koin_awal', koin)]);
     return bacaPengaturan(db);
-  }],
-
-  // ================= Zona aktif/nonaktif (guru & admin; sakelarnya di halaman Level & Soal) =================
-  // Disimpan di pengaturan.zona_nonaktif (JSON array id zona). Progres, bintang, koin, dan berlian
-  // murid di zona itu TIDAK dihapus; zona yang diaktifkan lagi kembali seperti semula.
-  // Zona nonaktif juga mengunci zona sesudahnya (js/game/kemajuan.js). GET menyertakan dampakZona untuk konfirmasi.
-  ['GET', 'zona', async (ctx) => {
-    await aksesGuru(ctx);
-    const db = ctx.env.DB;
-    const [zonaNonaktif, dampak] = await Promise.all([bacaZonaNonaktif(db), dampakZona(db)]);
-    return ZONA.map((z) => ({
-      id: z.id, nama: z.nama, konsep: z.konsep, warna: z.warna,
-      aktif: !zonaNonaktif.includes(z.id),
-      ...dampak.find((d) => d.id === z.id)
-    }));
-  }],
-
-  ['PUT', 'zona/:id', async (ctx, { id }) => {
-    const a = await aksesGuru(ctx);
-    const zona = ZONA.find((z) => z.id === id);
-    if (!zona) throw new GalatApi(404, 'Pulau tidak ditemukan. Muat ulang halaman, lalu coba lagi.');
-    const { aktif } = await bacaJson(ctx.request);
-    if (typeof aktif !== 'boolean') throw new GalatApi(400, 'Pilih aktif atau nonaktif.');
-    const db = ctx.env.DB;
-    const baris = await satu(db, "SELECT nilai FROM pengaturan WHERE kunci = 'zona_nonaktif'");
-    const lama = zonaNonaktifDariBaris(baris);
-    const baru = ZONA.map((z) => z.id).filter((x) => (x === id ? !aktif : lama.includes(x)));
-    if (!zonaAktif(baru).length) throw new GalatApi(400, 'Minimal satu pulau harus tetap aktif. Nyalakan pulau lain dulu sebelum mematikan pulau ini.');
-    if (baru.length === lama.length && baru.every((x) => lama.includes(x))) return { zonaNonaktif: lama };
-
-    // Simpan hanya jika belum diubah orang lain sejak dibaca; aktivitas ditulis hanya bila tersimpan.
-    // Satu baris aktivitas per murid (tabel aktivitas per murid), karena zona berlaku untuk semua kelas.
-    const [simpan] = await db.batch([
-      baris
-        ? perintah(db, "UPDATE pengaturan SET nilai = ? WHERE kunci = 'zona_nonaktif' AND nilai = ?", JSON.stringify(baru), baris.nilai)
-        : perintah(db, "INSERT INTO pengaturan (kunci, nilai) VALUES ('zona_nonaktif', ?) ON CONFLICT(kunci) DO NOTHING", JSON.stringify(baru)),
-      perintah(db, "INSERT INTO aktivitas (waktu, siswa_id, jenis, keterangan) SELECT ?, id, 'zona', ? FROM siswa WHERE changes() = 1",
-        sekarang(), `Zona ${zona.nama} ${aktif ? 'diaktifkan' : 'dinonaktifkan'} oleh ${a.pelaku.nama}`)
-    ]);
-    if (!simpan.meta?.changes) throw new GalatApi(409, 'Pengaturan pulau baru saja diubah oleh guru lain. Muat ulang halaman, lalu coba lagi.');
-    return { zonaNonaktif: baru };
   }],
 
   // ================= Kelola guru (admin) =================

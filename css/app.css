@@ -536,6 +536,52 @@ select.kolom-input {
   .kartu-zona { min-height: 20rem; }
 }
 a.kartu-zona:hover { transform: translateY(-4px); box-shadow: 0 18px 36px -16px rgba(18, 51, 47, 0.45); }
+
+/* ---------- Kartu pilih kelas (#/pilih-kelas) ---------- */
+.kartu-kelas {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  width: 100%;
+  min-height: 6rem;
+  padding: 1rem 1.25rem;
+  border: 3px solid var(--mint);
+  border-radius: var(--sudut-besar);
+  background: #fff;
+  color: var(--tinta);
+  text-align: left;
+  box-shadow: var(--bayangan-kecil);
+  cursor: pointer;
+  transition: transform .15s ease, border-color .15s ease, box-shadow .15s ease;
+}
+.kartu-kelas:hover, .kartu-kelas:focus-visible { transform: translateY(-3px); border-color: var(--teal); box-shadow: var(--bayangan); }
+.kartu-kelas[aria-current="true"] { border-color: var(--teal-tua); background: var(--mint); }
+.kartu-kelas:disabled { cursor: wait; opacity: .7; }
+.kartu-kelas-ikon { width: 3.5rem; height: 3.5rem; object-fit: contain; flex-shrink: 0; }
+@media (prefers-reduced-motion: reduce) { .kartu-kelas { transition: none; } .kartu-kelas:hover { transform: none; } }
+
+/* Kelas aktif di header murid (di bawah nama): menu pindah kelas */
+.tombol-kelas-aktif {
+  display: inline-flex;
+  align-items: center;
+  gap: .3rem;
+  max-width: 100%;
+  margin-top: .1rem;
+  padding: .05rem .6rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+  font-weight: 800;
+  font-size: .8rem;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+button.tombol-kelas-aktif { cursor: pointer; }
+button.tombol-kelas-aktif:hover, button.tombol-kelas-aktif:focus-visible { background: rgba(255, 255, 255, 0.32); }
+.tombol-kelas-aktif span:first-of-type { overflow: hidden; text-overflow: ellipsis; }
+.tombol-kelas-aktif svg { flex-shrink: 0; }
+@media (max-width: 479px) { .tombol-kelas-aktif { padding: .05rem .45rem; } .tombol-kelas-aktif svg { display: none; } }
+@media (min-width: 640px) { .tombol-kelas-aktif { font-size: .9rem; } }
 .kartu-zona-gambar {
   position: absolute;
   inset: 0;

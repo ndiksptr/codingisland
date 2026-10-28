@@ -1,4 +1,5 @@
 // js/guru/siswa-detail.js — #/guru/siswa/:id: profil, progres per zona & level, kode terakhir, catatan guru
+// Kemajuan terpisah per kelas: progres yang tampil milik satu kelas (?kelas=, bawaan kelas pertama yang Anda ampu).
 
 import { esc, bukaModal, toast, jenisGalat } from '../ui.js';
 import { guruDetailSiswa, guruSimpanCatatan } from '../store.js';
@@ -6,11 +7,12 @@ import { pindah, muatUlang } from '../router.js';
 import { LABEL_JENIS } from '../data/levels.js';
 import { deretBintang } from '../game/ikon.js';
 import { IKON, avatarSiswa, bilah, formatTanggal, formatDurasi, waktuRelatif, tombolAksi } from './komponen.js';
-import { aksiEditSiswa, aksiPindahKelas, aksiResetPin, aksiHapusSiswa } from './siswa.js';
+import { aksiEditSiswa, aksiTambahKeKelas, aksiKeluarkanDariKelas, aksiResetPin, aksiHapusSiswa } from './siswa.js';
 
-export async function renderDetailSiswa(wadah, { params, konteks }) {
-  const data = await guruDetailSiswa(params.id);
+export async function renderDetailSiswa(wadah, { params, konteks, query = {} }) {
+  const data = await guruDetailSiswa(params.id, { kelasId: query.kelas || null });
   const s = data.siswa;
+  const namaKelasDipilih = data.kelasBoleh.find((k) => k.id === data.kelasId)?.nama || 'Tanpa kelas';
   const namaZona = Object.fromEntries(data.zona.map((z) => [z.id, z.nama]));
 
   wadah.innerHTML = `
@@ -22,10 +24,18 @@ export async function renderDetailSiswa(wadah, { params, konteks }) {
           ${avatarSiswa(s.avatar, 'w-20 h-20')}
           <div class="min-w-0">
             <h2 class="font-judul text-2xl font-extrabold text-teal-tua leading-tight">${esc(s.namaLengkap)}</h2>
-            <p class="text-sm">Panggilan <strong>${esc(s.namaPanggilan)}</strong> · ${esc(s.kelasNama)}</p>
+            <p class="text-sm">Panggilan <strong>${esc(s.namaPanggilan)}</strong></p>
+            <p class="text-sm">Kelas: ${s.kelas.length ? s.kelas.map((k) => `<span class="dg-chip">${esc(k.nama)}</span>`).join(' ') : '<strong>belum punya kelas</strong>'}</p>
             <p class="text-sm">Username <code class="dg-kode">${esc(s.username)}</code></p>
           </div>
         </div>
+        ${data.kelasBoleh.length > 1 ? `
+          <label class="dg-label-sebaris mt-4">Lihat kemajuan di
+            <select class="dg-input" data-pilih-kelas-detail>
+              ${data.kelasBoleh.map((k) => `<option value="${esc(k.id)}" ${k.id === data.kelasId ? 'selected' : ''}>${esc(k.nama)}</option>`).join('')}
+            </select>
+          </label>` : ''}
+        <p class="mt-3 text-sm text-teal-tua font-bold">Angka di bawah ini untuk kelas ${esc(namaKelasDipilih)} (koin dan berlian untuk semua kelas).</p>
         <dl class="dg-profil-data">
           <div><dt>Koin</dt><dd><img src="image/item/koin.png" alt="" class="w-5 h-5 inline object-contain"> ${s.koin}</dd></div>
           <div><dt>Berlian</dt><dd><img src="image/item/berlian.png" alt="" class="w-5 h-5 inline object-contain"> ${s.berlian}</dd></div>
@@ -37,15 +47,17 @@ export async function renderDetailSiswa(wadah, { params, konteks }) {
         </dl>
         <div class="mt-4 flex flex-wrap gap-2">
           <button type="button" class="tombol tombol-sekunder tombol-kecil" data-aksi="edit">${IKON.edit}<span>Edit</span></button>
-          <button type="button" class="tombol tombol-sekunder tombol-kecil" data-aksi="pindah">${IKON.pindah}<span>Pindah kelas</span></button>
+          <button type="button" class="tombol tombol-sekunder tombol-kecil" data-aksi="tambah-kelas">${IKON.pindah}<span>Tambahkan ke kelas lain</span></button>
+          <button type="button" class="tombol tombol-sekunder tombol-kecil" data-aksi="keluarkan">${IKON.keluar}<span>Keluarkan dari kelas</span></button>
           <button type="button" class="tombol tombol-sekunder tombol-kecil" data-aksi="pin">${IKON.kunci}<span>Ganti PIN</span></button>
-          <button type="button" class="tombol tombol-bahaya tombol-kecil" data-aksi="hapus">${IKON.hapus}<span>Hapus</span></button>
+          <button type="button" class="tombol tombol-bahaya tombol-kecil" data-aksi="hapus">${IKON.hapus}<span>Hapus akun</span></button>
         </div>
       </section>
 
       <div class="flex flex-col gap-5 min-w-0">
         <section class="dg-kartu" aria-labelledby="judul-zona-siswa">
-          <h2 id="judul-zona-siswa" class="dg-subjudul mb-3">Progres per zona</h2>
+          <h2 id="judul-zona-siswa" class="dg-subjudul mb-3">Progres per pulau · ${esc(namaKelasDipilih)}</h2>
+          ${data.zona.length ? '' : '<p class="text-sm">Kelas ini belum memakai pulau apa pun.</p>'}
           <ul class="flex flex-col gap-3">
             ${data.zona.map((z) => `
               <li class="grid grid-cols-[8.5rem_1fr_auto] items-center gap-3">
@@ -68,7 +80,7 @@ export async function renderDetailSiswa(wadah, { params, konteks }) {
     </div>
 
     <section class="dg-kartu mt-5" aria-labelledby="judul-level-siswa">
-      <h2 id="judul-level-siswa" class="dg-subjudul mb-3">Progres per level</h2>
+      <h2 id="judul-level-siswa" class="dg-subjudul mb-3">Progres per level · ${esc(namaKelasDipilih)}</h2>
       <div class="dg-tabel-wadah">
         <table class="dg-tabel">
           <thead><tr>
@@ -92,6 +104,10 @@ export async function renderDetailSiswa(wadah, { params, konteks }) {
         </table>
       </div>
     </section>`;
+
+  wadah.querySelector('[data-pilih-kelas-detail]')?.addEventListener('change', (e) => {
+    pindah(`/guru/siswa/${s.id}?kelas=${encodeURIComponent(e.target.value)}`);
+  });
 
   wadah.addEventListener('click', async (e) => {
     const tombolKode = e.target.closest('[data-kode]');
@@ -120,7 +136,8 @@ export async function renderDetailSiswa(wadah, { params, konteks }) {
     const aksi = e.target.closest('[data-aksi]')?.dataset.aksi;
     if (!aksi) return;
     if (aksi === 'edit' && (await aksiEditSiswa(s, konteks))) muatUlang();
-    if (aksi === 'pindah' && (await aksiPindahKelas(s, konteks))) muatUlang();
+    if (aksi === 'tambah-kelas' && (await aksiTambahKeKelas(s, konteks))) muatUlang();
+    if (aksi === 'keluarkan' && (await aksiKeluarkanDariKelas(s, konteks, data.kelasId))) pindah(`/guru/siswa/${s.id}`);
     if (aksi === 'pin') await aksiResetPin(s);
     if (aksi === 'hapus' && (await aksiHapusSiswa(s))) pindah('/guru/siswa');
   });

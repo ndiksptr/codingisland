@@ -219,7 +219,7 @@ export async function daftarSiswa(data) {
   return hasil;
 }
 
-/** Hasil: { ok: true, siswa } atau { ok: false, pesan, sisa, tahanDetik } */
+/** Hasil: { ok: true, siswa, jumlahKelas } atau { ok: false, pesan, sisa, tahanDetik } */
 export async function masukSiswa(username, pin) {
   const hasil = await api('auth/masuk-siswa', { metode: 'POST', data: { username, pin } });
   if (hasil.ok) beritahu('sesi');
@@ -257,7 +257,7 @@ export async function getSiswa(id) {
   return (await guruDetailSiswa(id)).siswa;
 }
 
-/** Simpan daftar zona yang animasi "pulau baru"-nya sudah pernah dilihat siswa. */
+/** Simpan daftar zona yang animasi "pulau baru"-nya sudah pernah dilihat siswa (di kelas aktifnya). */
 export async function aturZonaTerlihat(_id, zonaIds) {
   const siswa = await api('siswa/saya/zona-terlihat', { metode: 'POST', data: { zonaIds } });
   beritahu('siswa');
@@ -296,9 +296,24 @@ export async function getHargaClue() {
   return bacaTersimpan('level/harga-clue');
 }
 
-/** Id zona yang sedang dinonaktifkan guru (tidak tampil di peta murid). */
-export async function getZonaNonaktif() {
-  return (await bacaTersimpan('auth/pengaturan')).zonaNonaktif || [];
+// =====================================================================
+// Kelas murid (satu murid boleh ikut banyak kelas; satu kelas aktif per sesi)
+// =====================================================================
+/**
+ * Pilih kelas yang dimainkan. Soal, pulau, bintang, dan nilai mengikuti kelas ini;
+ * koin & berlian tetap satu. Hasil: { ok, kelas }
+ */
+export async function pilihKelasAktif(kelasId) {
+  const hasil = await api('auth/kelas-aktif', { metode: 'PUT', data: { kelasId } });
+  beritahu('sesi');
+  return hasil;
+}
+
+/** Ikut kelas lain dengan kode kelas (tanpa koin awal lagi). Hasil: { ok: true, kelas } atau { ok: false, pesan } */
+export async function gabungKelas(kode) {
+  const hasil = await api('siswa/saya/gabung', { metode: 'POST', data: { kode } });
+  if (hasil.ok) beritahu('sesi');
+  return hasil;
 }
 
 // =====================================================================
@@ -434,8 +449,9 @@ export async function guruDaftarSiswa({ kelasId } = {}) {
   return api(`siswa${qs({ kelasId })}`);
 }
 
-export async function guruDetailSiswa(siswaId) {
-  return api(`siswa/${enc(siswaId)}`);
+/** Detail murid di satu kelas (kemajuan terpisah per kelas). Tanpa kelasId: kelas pertama yang Anda ampu. */
+export async function guruDetailSiswa(siswaId, { kelasId } = {}) {
+  return api(`siswa/${enc(siswaId)}${qs({ kelasId })}`);
 }
 
 export async function guruSimpanCatatan(siswaId, teks) {
@@ -451,8 +467,15 @@ export async function guruUbahSiswa(siswaId, perubahan) {
   return api(`siswa/${enc(siswaId)}`, { metode: 'PATCH', data: perubahan });
 }
 
-export async function guruPindahKelas(siswaId, kelasId) {
-  return guruUbahSiswa(siswaId, { kelasId });
+/** Tambahkan murid yang SUDAH punya akun ke kelas (mis. ekskul). Hasil: { siswa, kelas } */
+export async function guruTambahAnggota(username, kelasId) {
+  return api('siswa/anggota', { metode: 'POST', data: { username, kelasId } });
+}
+
+/** Keluarkan murid dari SATU kelas. Akun dan kemajuannya di kelas lain tetap utuh (bukan hapus akun). */
+export async function guruKeluarkanDariKelas(siswaId, kelasId) {
+  await api(`siswa/${enc(siswaId)}/kelas/${enc(kelasId)}`, { metode: 'DELETE' });
+  return true;
 }
 
 /** Tetapkan PIN murid. pin kosong = PIN acak dari server. Hasil: PIN yang berlaku (tampilkan sekali). */
@@ -513,14 +536,10 @@ export async function adminSimpanPengaturan({ hargaClue, koinAwal }) {
   return api('auth/pengaturan', { metode: 'PUT', data: { hargaClue, koinAwal } });
 }
 
-// ---------- Zona aktif/nonaktif (guru & admin) ----------
-/** Tiap zona: { id, nama, konsep, warna, aktif, jumlahLevel, nilaiTurun, totalMurid } (selalu data terbaru). */
-export async function guruDaftarZona() {
-  return api('auth/zona');
-}
-
-export async function guruAturZona(zonaId, aktif) {
-  return api(`auth/zona/${enc(zonaId)}`, { metode: 'PUT', data: { aktif } });
+// ---------- Pulau per kelas (guru & admin) ----------
+/** Simpan pulau yang dipakai kelas beserta urutannya, mis. ['pantai', 'gurun']. Hasil: objek kelas. */
+export async function guruAturZonaKelas(kelasId, zonaIds) {
+  return api(`kelas/${enc(kelasId)}/zona`, { metode: 'PUT', data: { zonaIds } });
 }
 
 export async function adminDaftarGuru() {

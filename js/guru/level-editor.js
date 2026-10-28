@@ -1,6 +1,6 @@
 // js/guru/level-editor.js — #/guru/level/baru dan #/guru/level/:id/edit
-// Kiri: form soal (judul, zona, jenis, tingkat, instruksi + pratinjau, tujuan, perintah, kode awal,
-// solusi, batas baris, clue, kelas tujuan). Kanan: editor dunia di atas panggung yang sama dengan siswa.
+// Kiri: form soal (judul, zona, jenis, kelas yang memakai soal, instruksi + pratinjau, tujuan, perintah,
+// kode awal, solusi, batas baris, clue). Soal tanpa centang kelas tetap tersimpan, tetapi tidak tampil di mana pun. Kanan: editor dunia di atas panggung yang sama dengan siswa.
 // "Terbitkan" hanya aktif jika lolos alasanBelumSiap() — store memeriksanya lagi saat menyimpan.
 
 import { esc, toast, jenisGalat, gambarRobot } from '../ui.js';
@@ -58,17 +58,16 @@ export async function renderEditorLevel(wadah, { params, konteks }) {
     throw new Error('Anda hanya bisa mengedit level buatan Anda sendiri. Gunakan Duplikat untuk membuat salinan yang bisa diedit.');
   }
   const admin = konteks.admin;
-  const tingkatGuru = [...new Set(konteks.kelas.map((k) => k.tingkat))].sort();
 
   // ---------- Keadaan form ----------
   const st = lama ? {
-    judul: lama.judul, zona: lama.zona, jenis: lama.jenis, tingkat: lama.tingkat || [3, 4, 5, 6],
+    judul: lama.judul, zona: lama.zona, jenis: lama.jenis,
     instruksi: lama.instruksi || '', tantanganBonus: lama.tantanganBonus || '',
     tujuanTeks: salin(lama.tujuanTeks || []), perintahTersedia: (lama.perintahTersedia || []).slice(),
     batasBaris: lama.batasBaris || 1, clue: (lama.clue || ['', '', '']).slice(), kelasIds: lama.kelasIds ? lama.kelasIds.slice() : null,
     dunia: salin(lama.dunia), status: lama.status
   } : {
-    judul: '', zona: 'pantai', jenis: 'ketik', tingkat: tingkatGuru.length ? tingkatGuru : [3, 4, 5, 6],
+    judul: '', zona: 'pantai', jenis: 'ketik',
     instruksi: '', tantanganBonus: '', tujuanTeks: [{ teks: 'Sampai di bendera', jenis: 'sampai' }],
     perintahTersedia: PERINTAH_ZONA.pantai.slice(), batasBaris: 1, clue: ['', '', ''],
     kelasIds: admin ? null : konteks.kelas.map((k) => k.id), dunia: duniaBawaan(), status: 'baru'
@@ -81,13 +80,12 @@ export async function renderEditorLevel(wadah, { params, konteks }) {
 
   const opsiKolom = [...new Set([6, 7, 8, 9, 10, st.dunia.kolom])].sort((a, b) => a - b);
   const opsiBaris = [...new Set([4, 5, 6, st.dunia.baris])].sort((a, b) => a - b);
-  const labelStatus = { baru: 'Level baru', draf: 'Draf', terbit: 'Terbit', nonaktif: 'Nonaktif', sebagian: 'Sebagian nonaktif' };
+  const labelStatus = { baru: 'Level baru', draf: 'Draf', terbit: 'Terbit' };
 
   wadah.innerHTML = `
     <div class="flex flex-wrap items-center gap-3 mb-4">
       <a href="#/guru/level" class="dg-tautan-kecil">← Kembali ke daftar level</a>
       <span class="dg-lencana" data-jenis="${st.status === 'terbit' ? 'selesai' : 'clue'}" data-status-level>${esc(labelStatus[st.status] || st.status)}</span>
-      ${lama?.bawaan ? '<span class="dg-chip">Level bawaan (diedit admin)</span>' : ''}
     </div>
 
     <div class="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)] items-start">
@@ -105,17 +103,13 @@ export async function renderEditorLevel(wadah, { params, konteks }) {
             </label>
           </div>
           <fieldset class="mt-3">
-            <legend class="dg-label">Tingkat kelas sasaran</legend>
-            <div class="flex flex-wrap gap-4 mt-1">
-              ${[3, 4, 5, 6].map((t) => `<label class="dg-centang"><input type="checkbox" data-tingkat value="${t}" ${st.tingkat.includes(t) ? 'checked' : ''}> Kelas ${t}</label>`).join('')}
-            </div>
-          </fieldset>
-          <fieldset class="mt-3">
-            <legend class="dg-label">Kelas tujuan <span class="font-normal text-sm">(hanya siswa kelas ini yang melihat level saat terbit)</span></legend>
+            <legend class="dg-label">Kelas <span class="font-normal text-sm">(soal hanya tampil bagi siswa kelas yang dicentang, termasuk kelas ekskul)</span></legend>
             <div class="dg-pilihan-grid">
               ${admin ? `<label class="dg-centang"><input type="checkbox" data-semua-kelas ${st.kelasIds === null ? 'checked' : ''}> Semua kelas</label>` : ''}
               ${konteks.kelas.map((k) => `<label class="dg-centang"><input type="checkbox" data-kelas value="${esc(k.id)}" ${st.kelasIds === null || st.kelasIds.includes(k.id) ? 'checked' : ''} ${st.kelasIds === null ? 'disabled' : ''}> ${esc(k.nama)}</label>`).join('')}
             </div>
+            ${konteks.kelas.length ? '' : '<p class="mt-1 text-sm">Belum ada kelas. Buat kelas dulu di menu Kelas agar soal bisa tampil bagi siswa.</p>'}
+            <p class="mt-1 text-sm text-[#B24E1C] font-bold" data-peringatan-kelas ${st.kelasIds === null || st.kelasIds.length ? 'hidden' : ''}>Belum ada kelas yang dicentang: soal ini tidak akan tampil di kelas mana pun.</p>
           </fieldset>
         </section>
 
@@ -222,7 +216,6 @@ export async function renderEditorLevel(wadah, { params, konteks }) {
       judul: st.judul.trim(),
       zona: st.zona,
       jenis: st.jenis,
-      tingkat: st.tingkat,
       instruksi: st.instruksi,
       tantanganBonus: st.tantanganBonus, // tidak lagi diisi/ditampilkan; nilai lama soal tetap disimpan
       tujuanTeks: st.tujuanTeks,
@@ -480,9 +473,14 @@ export async function renderEditorLevel(wadah, { params, konteks }) {
     tombol.disabled = true;
     try {
       const hasil = await guruSimpanLevel(dataLevel(), { terbit });
-      toast(terbit
-        ? `Level "${hasil.judul}" berhasil diterbitkan. Siswa ${hasil.kelas ? hasil.kelas.join(', ') : 'semua kelas'} sudah bisa memainkannya.`
-        : `Draf "${hasil.judul}" berhasil disimpan.`, 'sukses');
+      if (hasil.kelas && !hasil.kelas.length) {
+        // Tetap tersimpan, tetapi belum tampil di mana pun: beri tahu guru dengan jelas
+        toast(`${terbit ? `Level "${hasil.judul}" berhasil diterbitkan` : `Draf "${hasil.judul}" berhasil disimpan`}, tetapi belum tampil di kelas mana pun karena belum ada kelas yang dicentang. Centang minimal satu kelas agar siswa bisa memainkannya.`, 'peringatan', 7000);
+      } else {
+        toast(terbit
+          ? `Level "${hasil.judul}" berhasil diterbitkan. Siswa ${hasil.kelas ? hasil.kelas.join(', ') : 'semua kelas'} sudah bisa memainkannya.`
+          : `Draf "${hasil.judul}" berhasil disimpan.`, 'sukses');
+      }
       if (!lama) { pindah(`/guru/level/${hasil.id}/edit`); return; }
       st.status = hasil.status;
       const lencana = $('[data-status-level]');
@@ -526,13 +524,13 @@ export async function renderEditorLevel(wadah, { params, konteks }) {
     } else if (t.dataset.isi === 'jenis') {
       st.jenis = t.value;
       gambarPanggung();
-    } else if (t.matches('[data-tingkat]')) {
-      st.tingkat = $$('[data-tingkat]:checked').map((c) => Number(c.value));
     } else if (t.matches('[data-semua-kelas]')) {
       st.kelasIds = t.checked ? null : $$('[data-kelas]:checked').map((c) => c.value);
       $$('[data-kelas]').forEach((c) => { c.disabled = t.checked; if (t.checked) c.checked = true; });
+      $('[data-peringatan-kelas]').hidden = st.kelasIds === null || st.kelasIds.length > 0;
     } else if (t.matches('[data-kelas]')) {
       st.kelasIds = $$('[data-kelas]:checked').map((c) => c.value);
+      $('[data-peringatan-kelas]').hidden = st.kelasIds.length > 0;
     } else if (t.matches('[data-perintah]')) {
       perintahManual = true;
       st.perintahTersedia = $$('[data-perintah]:checked').map((c) => c.value);

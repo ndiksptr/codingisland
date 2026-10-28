@@ -1,75 +1,68 @@
-// server/statistik.js — statistik per siswa untuk dashboard guru
-// Nilai siswa = rata-rata nilai level yang sudah selesai.
-// Level dari zona yang dinonaktifkan guru tidak dihitung (levelBerlaku), sama seperti halaman Nilai.
-// Terakhir aktif = waktu terbaru dari aktivitas, progres, atau tanggal daftar.
+// server/statistik.js — statistik per murid untuk dashboard guru
+// Satu murid boleh anggota banyak kelas, dan kemajuannya terpisah per kelas. Jadi statistik dihitung
+// per KEANGGOTAAN (murid x kelas): soal, pulau, dan progres yang dipakai hanya milik kelas itu,
+// sama seperti halaman Nilai. Koin dan berlian tetap satu dompet per murid.
+// Nilai murid = rata-rata nilai level yang sudah selesai.
+// Terakhir aktif = waktu terbaru dari aktivitas murid, progres di kelas itu, atau tanggal daftar.
 
-import { semua, semuaKelas, semuaLevel, siswaKeObjek, progresKeObjek, levelBerlaku, levelTerlihatUntukKelas, bacaZonaNonaktif } from './data.js';
-import { ZONA } from '../js/data/zona.js';
-
-/**
- * Dampak MENYALAKAN tiap zona, untuk kotak konfirmasi di halaman Level & Soal (semua kelas, karena berlaku untuk semua).
- * Begitu menyala, level zona itu masuk pembagi nilai akhir sebagai 0 sampai diselesaikan.
- * jumlahLevel = level terbit di zona itu
- * nilaiTurun  = murid yang masih punya level zona itu (terlihat di kelasnya) yang belum selesai,
- *               kecuali murid yang nilai akhirnya sudah ditimpa guru (nilai_timpa tetap menang)
- * totalMurid  = semua murid
- */
-export async function dampakZona(db) {
-  const [levels, siswa, selesai, timpa] = await Promise.all([
-    semuaLevel(db),
-    semua(db, 'SELECT id, kelas_id FROM siswa'),
-    semua(db, 'SELECT siswa_id, level_id FROM progres WHERE selesai = 1'),
-    semua(db, 'SELECT siswa_id, kelas_id FROM nilai_timpa')
-  ]);
-  const sudah = new Set(selesai.map((p) => `${p.siswa_id}|${p.level_id}`));
-  const ditimpa = new Set(timpa.map((t) => `${t.siswa_id}|${t.kelas_id}`));
-  return ZONA.map((z) => {
-    const lvZ = levels.filter((l) => l.zona === z.id && l.terbit !== false);
-    const nilaiTurun = siswa.filter((s) => !ditimpa.has(`${s.id}|${s.kelas_id}`) &&
-      lvZ.some((l) => levelTerlihatUntukKelas(l, s.kelas_id) && !sudah.has(`${s.id}|${l.id}`))).length;
-    return { id: z.id, jumlahLevel: lvZ.length, nilaiTurun, totalMurid: siswa.length };
-  });
-}
+import { semua, semuaKelas, semuaLevel, siswaKeObjek, progresKeObjek, levelBerlaku, petaKelasSiswa } from './data.js';
 
 export const rataRata = (angka) => (angka.length ? Math.round(angka.reduce((n, x) => n + x, 0) / angka.length) : 0);
 
-/** Siswa yang boleh dilihat guru (admin juga melihat siswa tanpa kelas). Hasil: baris D1. */
-export async function siswaDalamAkses(db, a, kelasId = null) {
-  const baris = await semua(db, 'SELECT * FROM siswa');
-  return baris.filter((s) => (kelasId ? s.kelas_id === kelasId : (a.admin || a.kelasIds.has(s.kelas_id))));
+/**
+ * Keanggotaan yang boleh dilihat guru. Hasil: [{ baris (baris siswa D1), kelasId }].
+ * kelasId diisi: hanya kelas itu. Tanpa kelasId: semua kelas yang diampu (admin: semua kelas,
+ * ditambah murid yang belum punya kelas dengan kelasId null).
+ */
+export async function keanggotaanDalamAkses(db, a, kelasId = null) {
+  const [baris, anggota] = await Promise.all([semua(db, 'SELECT * FROM siswa'), petaKelasSiswa(db)]);
+  const hasil = [];
+  for (const s of baris) {
+    const kelasIds = anggota.get(s.id) || [];
+    for (const k of kelasIds) {
+      if (kelasId ? k === kelasId : (a.admin || a.kelasIds.has(k))) hasil.push({ baris: s, kelasId: k });
+    }
+    if (!kelasId && a.admin && !kelasIds.length) hasil.push({ baris: s, kelasId: null });
+  }
+  return hasil;
 }
 
 /**
- * Hasil per siswa: { siswa (objek), levels, progres, baris (ringkasan untuk tabel) }
+ * Hasil per keanggotaan: { siswa (objek), kelasId, levels, progres, baris (ringkasan untuk tabel) }
  * Data dimuat sekali lalu diolah di memori (cukup untuk skala satu sekolah).
  */
-export async function hitungStatistik(db, daftarSiswa, cache = {}) {
-  if (!daftarSiswa.length) return [];
-  const [levels, kelas, progresSemua, terakhirAktivitas, zonaNonaktif] = await Promise.all([
+export async function hitungStatistik(db, keanggotaan, cache = {}) {
+  if (!keanggotaan.length) return [];
+  const [levels, kelas, progresSemua, terakhirAktivitas, anggota] = await Promise.all([
     cache.levels || semuaLevel(db),
     cache.kelas || semuaKelas(db),
     semua(db, 'SELECT * FROM progres'),
-    // Ganti PIN, nilai, dan zona dilakukan guru, bukan murid, jadi tidak dihitung sebagai "terakhir aktif"
-    semua(db, "SELECT siswa_id, MAX(waktu) AS waktu FROM aktivitas WHERE jenis NOT IN ('pin', 'nilai', 'zona') GROUP BY siswa_id"),
-    cache.zonaNonaktif || bacaZonaNonaktif(db)
+    // Ganti PIN, nilai, kelas, dan zona dilakukan guru, bukan murid, jadi tidak dihitung sebagai "terakhir aktif"
+    semua(db, "SELECT siswa_id, MAX(waktu) AS waktu FROM aktivitas WHERE jenis NOT IN ('pin', 'nilai', 'zona', 'kelas') GROUP BY siswa_id"),
+    petaKelasSiswa(db)
   ]);
   const terakhir = new Map(terakhirAktivitas.map((r) => [r.siswa_id, r.waktu]));
-  const progresPerSiswa = new Map();
+  const progresPer = new Map(); // "siswaId|kelasId" -> [progres]
   for (const r of progresSemua) {
-    if (!progresPerSiswa.has(r.siswa_id)) progresPerSiswa.set(r.siswa_id, []);
-    progresPerSiswa.get(r.siswa_id).push(progresKeObjek(r));
+    const kunci = `${r.siswa_id}|${r.kelas_id}`;
+    if (!progresPer.has(kunci)) progresPer.set(kunci, []);
+    progresPer.get(kunci).push(progresKeObjek(r));
   }
+  const kelasDari = (id) => kelas.find((k) => k.id === id) || null;
 
-  return daftarSiswa.map((baris) => {
-    const s = siswaKeObjek(baris);
-    // Progres di zona nonaktif tetap tersimpan, hanya tidak ikut dihitung
-    const lv = levels.filter((l) => levelBerlaku(l, s.kelasId, zonaNonaktif));
+  return keanggotaan.map(({ baris: r, kelasId }) => {
+    const s = siswaKeObjek(r);
+    const k = kelasDari(kelasId);
+    // Soal kelas ini, hanya dari pulau yang dipakai kelas ini
+    const lv = k ? levels.filter((l) => levelBerlaku(l, k.id, k.zonaIds)) : [];
     const ids = new Set(lv.map((l) => l.id));
-    const pr = (progresPerSiswa.get(s.id) || []).filter((p) => ids.has(p.levelId));
+    const pr = k ? (progresPer.get(`${s.id}|${k.id}`) || []).filter((p) => ids.has(p.levelId)) : [];
     const selesai = pr.filter((p) => p.selesai);
     const waktu = [terakhir.get(s.id), s.dibuatPada, ...pr.map((p) => p.diperbarui)].filter(Boolean).sort();
+    const kelasMurid = (anggota.get(s.id) || []).map(kelasDari).filter(Boolean).map((x) => ({ id: x.id, nama: x.nama }));
     return {
       siswa: s,
+      kelasId: k?.id || null,
       levels: lv,
       progres: pr,
       baris: {
@@ -78,8 +71,9 @@ export async function hitungStatistik(db, daftarSiswa, cache = {}) {
         namaPanggilan: s.namaPanggilan,
         avatar: s.avatar,
         jenisKelamin: s.jenisKelamin,
-        kelasId: s.kelasId,
-        kelasNama: kelas.find((k) => k.id === s.kelasId)?.nama || 'Tanpa kelas',
+        kelasId: k?.id || null,
+        kelasNama: k?.nama || 'Tanpa kelas',
+        kelas: kelasMurid, // semua kelas yang diikuti murid ini
         username: s.username,
         koin: s.koin || 0,
         berlian: s.berlian || 0,
@@ -92,4 +86,27 @@ export async function hitungStatistik(db, daftarSiswa, cache = {}) {
       }
     };
   });
+}
+
+/**
+ * Satu baris per murid dari statistik per keanggotaan (tabel Siswa tanpa filter kelas, log aktivitas).
+ * Angka dijumlahkan dari semua kelas yang tercakup; nilai = rata-rata nilai semua level selesai di kelas-kelas itu.
+ * Bila hanya satu kelas yang tercakup (filter kelas aktif), angkanya sama persis dengan baris kelas itu.
+ */
+export function gabungPerSiswa(stat) {
+  const peta = new Map();
+  for (const x of stat) {
+    const ada = peta.get(x.siswa.id);
+    if (!ada) {
+      peta.set(x.siswa.id, { ...x.baris, _nilaiSelesai: x.progres.filter((p) => p.selesai).map((p) => p.nilai || 0) });
+      continue;
+    }
+    ada.levelSelesai += x.baris.levelSelesai;
+    ada.totalLevel += x.baris.totalLevel;
+    ada.totalBintang += x.baris.totalBintang;
+    ada._nilaiSelesai.push(...x.progres.filter((p) => p.selesai).map((p) => p.nilai || 0));
+    if (String(x.baris.terakhirAktif || '') > String(ada.terakhirAktif || '')) ada.terakhirAktif = x.baris.terakhirAktif;
+    ada.kelasNama = `${ada.kelasNama}, ${x.baris.kelasNama}`;
+  }
+  return [...peta.values()].map(({ _nilaiSelesai, ...b }) => ({ ...b, nilai: rataRata(_nilaiSelesai) }));
 }

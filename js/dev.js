@@ -5,7 +5,7 @@
 // 2. Console: ciDev.selesaikanLevel('pantai-4', 3) | ciDev.resetProgres() | ciDev.validasiLevel() | ciDev.bantuan()
 //    (Chrome meminta mengetik "allow pasting" dulu jika perintah ditempel, bukan diketik.)
 
-import { sesiAktif, daftarLevel, getLevel, getProgres, simpanProgres, hapusProgres, aturZonaTerlihat } from './store.js';
+import { sesiAktif, daftarLevel, daftarLevelTerbit, getLevel, getProgres, simpanProgres, hapusProgres, aturZonaTerlihat } from './store.js';
 import { muatUlang } from './router.js';
 import { ZONA } from './data/zona.js';
 import { NILAI_BINTANG } from './game/skor.js';
@@ -56,24 +56,24 @@ const perintahDev = {
     });
   },
 
-  /** Tandai semua level di satu pulau selesai (boss ikut selesai, pulau berikutnya terbuka). */
+  /** Tandai semua level satu pulau di kelas aktif selesai (boss ikut selesai, pulau berikutnya terbuka). */
   tuntaskanPulau(zona, bintang = 3) {
     return jalankan(async () => {
       const siswa = await siswaAktif();
-      const levels = await daftarLevel({ zona });
+      const levels = await daftarLevelTerbit({ zona });
       if (!levels.length) throw new Error(`Pulau "${zona}" tidak ada.`);
       for (const l of levels) await tandaiSelesai(siswa.id, l.id, bintang);
       return `Semua ${levels.length} level di ${zona} selesai.`;
     });
   },
 
-  /** Hapus semua progres siswa yang sedang masuk (koin tidak berubah). */
+  /** Hapus semua progres siswa yang sedang masuk DI KELAS AKTIF (koin tidak berubah). */
   resetProgres() {
     return jalankan(async () => {
       const siswa = await siswaAktif();
       await hapusProgres(siswa.id);
       await aturZonaTerlihat(siswa.id, [ZONA[0].id]);
-      return 'Progres dihapus. Semua pulau kecuali Pantai terkunci lagi.';
+      return 'Progres di kelas ini dihapus. Hanya pulau pertama yang terbuka lagi.';
     });
   },
 

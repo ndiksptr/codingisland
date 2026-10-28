@@ -19,7 +19,7 @@ Fitur utama:
 
 ## 1. Pemasangan pertama
 
-Coding Island tidak punya akun bawaan. Saat database masih kosong, yang dibuat otomatis hanya struktur tabel, pengaturan bawaan (harga clue 5/10/20, koin awal 20), dan 13 level bawaan. Akun admin pertama dibuat sekali lewat halaman **`#/pasang`**.
+Coding Island tidak punya akun bawaan. Saat database masih kosong, yang dibuat otomatis hanya struktur tabel, pengaturan bawaan (harga clue 5/10/20, koin awal 20), Tidak ada soal bawaan: semua soal dibuat guru. Akun admin pertama dibuat sekali lewat halaman **`#/pasang`**.
 
 1. **Atur kode pemasangan** (sekali, dari folder proyek). Kode ini rahasia, jangan ditulis di kode atau `wrangler.toml`:
    ```bash
@@ -43,8 +43,10 @@ Masuk sebagai admin di `#/guru/masuk`, lalu:
 1. **Buat kelas:** menu **Kelas** → **Tambah kelas**. Isi nama (misalnya `Kelas 3A`) dan tingkat. Kode kelas 6 huruf/angka bisa diketik sendiri atau dibuat dengan tombol **Acak** (harus berbeda dari kelas lain), dan admin bisa memilih guru pengampunya di sini.
 2. **Buat akun guru:** menu **Guru** → **Tambah guru**. Isi nama, username, password awal, peran (`guru` atau `admin`), dan kelas yang diampu. Berikan username dan password awal kepada guru, lalu minta guru menggantinya di **Pengaturan** → **Ganti password**.
 3. **Bagikan kode kelas ke siswa:** menu **Kelas** menampilkan kode setiap kelas. Siswa membuka situs → **Daftar**, memilih kelasnya, lalu mengetik kode kelas tersebut. Guru juga bisa menambahkan siswa satu per satu atau lewat **Impor CSV** di menu **Siswa** (PIN acak tampil sekali untuk dicatat).
-4. Jika kode kelas tersebar ke luar kelas, klik **Buat kode baru** di menu **Kelas**. Siswa yang sudah terdaftar tidak terpengaruh.
-5. **Tahun ajaran berikutnya:** pindahkan siswa ke kelas baru lewat **Siswa** → detail siswa → **Pindah kelas**, atau buat kelas baru lalu hapus kelas lama setelah kosong.
+4. **Satu siswa, banyak kelas** (mis. kelas reguler + ekskul): siswa yang sudah punya akun mengetik kode kelas lain di **Profil** → **Ikut kelas lain**, atau guru memakai **Siswa** → **Tambah Siswa yang Sudah Ada** (lewat username). Bergabung ke kelas lain tidak memberi koin awal lagi. Siswa dengan lebih dari satu kelas memilih "mau main sebagai apa" saat masuk, dan bisa berpindah lewat nama kelas di bagian atas halaman. Soal, pulau, bintang, dan nilai terpisah per kelas; koin dan berlian satu untuk semua kelas.
+5. **Buat soal & atur pulau:** menu **Level & Soal**. Setiap soal dicentang untuk kelas yang memakainya (soal tanpa centang tersimpan tetapi tidak tampil di mana pun). Kartu **Pulau untuk kelas** mengatur pulau mana yang dipakai sebuah kelas beserta urutannya; pulau tanpa soal disembunyikan otomatis dari siswa.
+6. Jika kode kelas tersebar ke luar kelas, klik **Buat kode baru** di menu **Kelas**. Siswa yang sudah terdaftar tidak terpengaruh.
+7. **Tahun ajaran berikutnya:** tambahkan siswa ke kelas baru (**Tambahkan ke kelas lain**), lalu **Keluarkan dari kelas** lama. Mengeluarkan dari kelas tidak menghapus akun maupun kemajuan di kelas lain; **Hapus akun** menghapus semuanya.
 
 ---
 
@@ -75,7 +77,7 @@ Butuh **Node.js 20 atau lebih baru**. Dari folder proyek:
 4. Buka **`http://localhost:8787`**, lalu pasang admin lokal di `http://localhost:8787/#/pasang` dengan kode dari `.dev.vars`.
 
 Catatan:
-- Untuk mengulang dari database kosong, hentikan server, hapus folder `.wrangler`, lalu ulangi langkah 2. Jika langkah 2 terlewat, worker tetap mengisi struktur, pengaturan, dan level bawaan secara otomatis.
+- Untuk mengulang dari database kosong, hentikan server, hapus folder `.wrangler`, lalu ulangi langkah 2. Jika langkah 2 terlewat, worker tetap mengisi struktur dan pengaturan bawaan secara otomatis (tanpa soal).
 - `.dev.vars` berisi `MODE_DEV = "1"`, jadi alat pengembang aktif saat uji lokal (bagian 6).
 - Buka lewat `localhost` atau `127.0.0.1`, **bukan** alamat jaringan seperti `http://192.168.x.x`. Cookie sesi bertanda `Secure`, dan browser hanya menerimanya di `https` atau `localhost`.
 - Tidak perlu internet untuk tampilan: Tailwind, CodeMirror, confetti, dan font semuanya berkas lokal (bagian 5).
@@ -112,6 +114,12 @@ Struktur database dikelola dengan **migrasi bernomor** di folder `migrations/`. 
 | `0001_struktur_awal.sql` | Patokan struktur yang sudah ada + pengaturan & 13 level bawaan. Aman untuk database berisi data (`IF NOT EXISTS`, `INSERT OR IGNORE`). |
 | `0002_hapus_data_demo.sql` | Menghapus data contoh dari masa demo. Hanya bekerja bila jejak data contoh masih ada; database baru tidak tersentuh. |
 | `0003_indeks.sql` | Indeks untuk pembersihan sesi/batas login, filter aktivitas, dan nilai per kelas. Tidak mengubah data. |
+| `0004_sesi_penyamaran.sql` | Kolom `sesi.admin_asli_id` (admin masuk sebagai guru). |
+| `0005_siswa_bahasa.sql`, `0006_bahasa_bawaan_inggris.sql` | Bahasa nama perintah koding per murid. |
+| `0007_keanggotaan_kelas.sql` | Tabel `siswa_kelas` (satu murid banyak kelas, diisi dari `siswa.kelas_id` yang kini tidak dipakai) + `sesi.kelas_aktif_id`. |
+| `0008_soal_milik_guru.sql` | Menghapus 13 soal bawaan (progresnya ikut terhapus) dan kolom `level.kelas_nonaktif`. |
+| `0009_pulau_per_kelas.sql` | Kolom `kelas.zona_ids` (pulau & urutannya per kelas), mengikuti sakelar pulau lama, lalu menghapus `pengaturan.zona_nonaktif`. |
+| `0010_progres_per_kelas.sql` | Membuat ulang tabel `progres` dengan kunci `(siswa_id, kelas_id, level_id)`; `zona_terlihat` pindah ke `siswa_kelas`. |
 
 Perintah untuk database online, dijalankan **sebelum** atau **tepat setelah** push yang membawa migrasi baru:
 
@@ -126,7 +134,7 @@ npx wrangler d1 migrations list coding-island-db --remote
 npx wrangler d1 migrations apply coding-island-db --remote
 ```
 
-Aturan menambah migrasi: buat berkas bernomor berikutnya (`0004_...sql`), jangan pernah mengubah migrasi yang sudah dijalankan, dan jangan menghapus tabel yang berisi data sungguhan. Setelah menambah migrasi, jalankan `node scripts/buat-schema.mjs` agar `server/skema.js` ikut diperbarui.
+Aturan menambah migrasi: buat berkas bernomor berikutnya (`0011_...sql`), jangan pernah mengubah migrasi yang sudah dijalankan, dan jangan menghapus tabel yang berisi data sungguhan. Setelah menambah migrasi, jalankan `node scripts/buat-schema.mjs` agar `server/skema.js` ikut diperbarui.
 
 ### 4c. Variabel dan rahasia
 
@@ -141,7 +149,7 @@ Rahasia tidak pernah ditulis di kode, `wrangler.toml`, atau git.
 ### 4d. Data
 
 - **Cadangan berkala:** `npx wrangler d1 export coding-island-db --remote --output=cadangan-YYYY-MM-DD.sql` (berkas `cadangan*.sql` diabaikan git).
-- **Data bawaan diubah** (misalnya level di `js/data/levels.js`): perubahan untuk database yang sudah ada ditulis sebagai migrasi baru. `node scripts/buat-schema.mjs --tulis-ulang` hanya untuk proyek yang belum pernah dijalankan di server.
+- **Data bawaan diubah** (mis. pengaturan): perubahan untuk database yang sudah ada ditulis sebagai migrasi baru, lalu jalankan `node scripts/buat-schema.mjs`. Soal tidak lagi disemai: semuanya dibuat guru lewat dashboard.
 
 ### 4e. Keamanan yang dikerjakan server
 
@@ -232,9 +240,9 @@ coding_island/
 ├── package.json        Alat build (devDependencies) & skrip build:css, build:vendor
 ├── tailwind.config.cjs Warna & font Tailwind; src/ berisi masukan build (tidak diunggah)
 ├── .dev.vars.example   Contoh variabel uji lokal; salin menjadi .dev.vars (tidak ikut git)
-├── migrations/         Migrasi D1 bernomor: 0001_struktur_awal, 0002_hapus_data_demo, 0003_indeks
+├── migrations/         Migrasi D1 bernomor 0001–0010 (lihat tabel di bagian 4b)
 ├── scripts/
-│   ├── buat-schema.mjs Membuat 0001 (bila belum ada) dan server/skema.js
+│   ├── buat-schema.mjs Membuat server/skema.js dari semua migrasi (tanpa DELETE & tanpa soal bawaan)
 │   └── build-vendor.mjs Bundel CodeMirror & confetti (esbuild) dan salin font
 ├── functions/api/      API, satu file per sumber daya:
 │   ├── auth/           sesi, pemasangan pertama, masuk/keluar, daftar, batas login, akun sendiri,
@@ -261,10 +269,10 @@ coding_island/
     ├── store.js        SATU-SATUNYA pintu data: fetch() ke /api
     ├── dev.js          Panel Dev & ciDev (hanya dimuat bila MODE_DEV=1)
     ├── vendor/         codemirror.js & confetti.js hasil bundel (npm run build:vendor)
-    ├── data/           zona.js (4 pulau), levels.js (13 level bawaan)
+    ├── data/           zona.js (definisi 4 pulau), levels.js (perintah per pulau & label jenis soal)
     ├── game/           interpreter, worker, runner, editor (CodeMirror), panggung, kemajuan,
     │                   jalur peta, skor, validasi level, aturan isian siswa, ikon SVG, efek
-    ├── pages/          Halaman siswa & umum (beranda, daftar, masuk, pasang, peta, level, profil, juara, bantuan)
+    ├── pages/          Halaman siswa & umum (beranda, daftar, masuk, pasang, pilih-kelas, peta, level, profil, juara, bantuan)
     └── guru/           Dashboard guru (ringkasan, kelas, siswa, level & soal, nilai, aktivitas, guru, pengaturan);
                         csv.js = pembuat CSV nilai
 ```
