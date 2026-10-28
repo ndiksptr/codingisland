@@ -1,9 +1,9 @@
 // js/pages/beranda.js — landing page (#/)
 
-import { esc, robot, tombol } from '../ui.js';
-import { ZONA } from '../data/zona.js';
-import { sesiAktif } from '../store.js';
-import { footerSitus } from './footer.js';
+import { esc, robot, tombol } from "../ui.js";
+import { ZONA } from "../data/zona.js";
+import { sesiAktif } from "../store.js";
+import { footerSitus } from "./footer.js";
 
 // Bendera finish (SVG inline) untuk ilustrasi "Jalankan Robot"
 const BENDERA = `
@@ -21,15 +21,24 @@ const PANAH_BAWAH = `
 
 // Tombol hero menyesuaikan siapa yang sedang masuk
 function tombolHero(sesi) {
-  if (sesi?.jenis === 'siswa') {
-    return tombol({ teks: `Lanjut Main, ${sesi.pengguna.namaPanggilan}!`, href: '#/peta', varian: 'utama', ikon: 'image/item/roket.png' });
+  if (sesi?.jenis === "siswa") {
+    return tombol({
+      teks: `Lanjut Main, ${sesi.pengguna.namaPanggilan}!`,
+      href: "#/peta",
+      varian: "utama",
+      ikon: "image/item/roket.png",
+    });
   }
-  if (sesi?.jenis === 'guru') {
-    return tombol({ teks: 'Buka Dashboard Guru', href: '#/guru', varian: 'utama' });
+  if (sesi?.jenis === "guru") {
+    return tombol({
+      teks: "Buka Dashboard Guru",
+      href: "#/guru",
+      varian: "utama",
+    });
   }
   return `
-    ${tombol({ teks: 'Daftar', href: '#/daftar', varian: 'utama', ikon: 'image/item/roket.png', kelas: 'sm:min-w-[11rem]' })}
-    ${tombol({ teks: 'Masuk', href: '#/masuk', varian: 'sekunder', kelas: 'sm:min-w-[11rem]' })}`;
+    ${tombol({ teks: "Daftar", href: "#/daftar", varian: "utama", ikon: "image/item/roket.png", kelas: "sm:min-w-[11rem]" })}
+    ${tombol({ teks: "Masuk", href: "#/masuk", varian: "sekunder", kelas: "sm:min-w-[11rem]" })}`;
 }
 
 function bagianHero(sesi) {
@@ -42,7 +51,7 @@ function bagianHero(sesi) {
         <!-- Teks dan tombol -->
         <div class="order-2 md:order-1 text-center md:text-left text-white hero-panel">
           <p class="muncul inline-block rounded-2xl bg-kuning text-tinta font-bold px-4 py-1 text-base sm:text-lg">
-            Untuk siswa kelas 3 – 6
+            MI. Assyairiyah Attahiriyah
           </p>
           <h1 class="muncul tunda-1 mt-4 font-judul font-extrabold text-5xl sm:text-6xl lg:text-7xl leading-none teks-bayangan">
             Coding Island
@@ -63,7 +72,7 @@ function bagianHero(sesi) {
         <!-- Robot Tutor -->
         <div class="order-1 md:order-2 flex flex-col items-center">
           <div class="gelembung muncul tunda-2 mb-3">Hai! Ayo main bersama!</div>
-          ${robot('hai', { kelas: 'melayang w-40 sm:w-56 lg:w-72 h-auto drop-shadow-2xl', alt: 'Robot Tutor melambaikan tangan' })}
+          ${robot("hai", { kelas: "melayang w-40 sm:w-56 lg:w-72 h-auto drop-shadow-2xl", alt: "Robot Tutor melambaikan tangan" })}
         </div>
       </div>
 
@@ -101,7 +110,7 @@ function bagianZona() {
           <p class="mt-3 text-lg sm:text-xl">Setiap pulau punya jurus coding baru. Selesaikan semua dan jadi juara!</p>
         </div>
         <div class="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-          ${ZONA.map((z, i) => kartuZona(z, i)).join('')}
+          ${ZONA.map((z, i) => kartuZona(z, i)).join("")}
         </div>
       </div>
     </section>`;
@@ -130,7 +139,7 @@ function bagianCaraBermain() {
 
   const ilustrasiJalankan = `
     <div class="flex items-end justify-center gap-2 w-full" aria-hidden="true">
-      ${robot('terbang', { kelas: 'melayang w-20 h-auto', alt: '' })}
+      ${robot("terbang", { kelas: "melayang w-20 h-auto", alt: "" })}
       <svg viewBox="0 0 100 30" class="w-20 sm:w-24 h-8 mb-4">
         <path d="M2 22 Q50 -6 92 18" fill="none" stroke="#55A9A0" stroke-width="4" stroke-dasharray="8 7" stroke-linecap="round"/>
         <path d="M84 12 L94 19 L83 24" fill="none" stroke="#55A9A0" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
@@ -158,12 +167,12 @@ function bagianCaraBermain() {
           <p class="mt-3 text-lg sm:text-xl">Cuma tiga langkah. Gampang, kan?</p>
         </div>
         <ol class="mt-10 grid gap-6 md:grid-cols-3">
-          ${langkah(1, 'Ketik Kode', 'Tulis perintah dalam Bahasa Indonesia, misalnya maju 3.', ilustrasiKetik)}
-          ${langkah(2, 'Jalankan Robot', 'Tekan tombol Jalankan dan lihat robot bergerak ke bendera.', ilustrasiJalankan)}
-          ${langkah(3, 'Kumpulkan Bintang', 'Selesaikan level, dapatkan bintang dan koin!', ilustrasiBintang)}
+          ${langkah(1, "Ketik Kode", "Tulis perintah dalam Bahasa Indonesia, misalnya maju 3.", ilustrasiKetik)}
+          ${langkah(2, "Jalankan Robot", "Tekan tombol Jalankan dan lihat robot bergerak ke bendera.", ilustrasiJalankan)}
+          ${langkah(3, "Kumpulkan Bintang", "Selesaikan level, dapatkan bintang dan koin!", ilustrasiBintang)}
         </ol>
         <div class="mt-10 flex justify-center" data-gulir-muncul>
-          ${tombol({ teks: 'Ayo Mulai!', href: '#/daftar', varian: 'utama', ikon: 'image/item/roket-miring.png' })}
+          ${tombol({ teks: "Ayo Mulai!", href: "#/daftar", varian: "utama", ikon: "image/item/roket-miring.png" })}
         </div>
       </div>
     </section>`;
@@ -175,21 +184,29 @@ function bagianCaraBermain() {
  * Hasil: fungsi pembersih untuk router.
  */
 function pasangAnimasiGulir(akar) {
-  const kurangiGerak = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  if (kurangiGerak || !('IntersectionObserver' in window)) return () => {};
-  const pengamat = new IntersectionObserver((entri) => {
-    for (const e of entri) {
-      if (!e.isIntersecting) continue;
-      const el = e.target;
-      el.classList.add('terlihat');
-      pengamat.unobserve(el); // cukup sekali
-      // Setelah selesai, lepas kelasnya agar efek hover kartu kembali normal (tanpa jeda)
-      const jeda = parseFloat(getComputedStyle(el).transitionDelay) || 0;
-      setTimeout(() => el.classList.remove('gulir-muncul', 'terlihat'), (jeda + 0.8) * 1000);
-    }
-  }, { rootMargin: '0px 0px -10% 0px', threshold: 0.15 });
-  akar.querySelectorAll('[data-gulir-muncul]').forEach((el) => {
-    el.classList.add('gulir-muncul');
+  const kurangiGerak = window.matchMedia(
+    "(prefers-reduced-motion: reduce)",
+  ).matches;
+  if (kurangiGerak || !("IntersectionObserver" in window)) return () => {};
+  const pengamat = new IntersectionObserver(
+    (entri) => {
+      for (const e of entri) {
+        if (!e.isIntersecting) continue;
+        const el = e.target;
+        el.classList.add("terlihat");
+        pengamat.unobserve(el); // cukup sekali
+        // Setelah selesai, lepas kelasnya agar efek hover kartu kembali normal (tanpa jeda)
+        const jeda = parseFloat(getComputedStyle(el).transitionDelay) || 0;
+        setTimeout(
+          () => el.classList.remove("gulir-muncul", "terlihat"),
+          (jeda + 0.8) * 1000,
+        );
+      }
+    },
+    { rootMargin: "0px 0px -10% 0px", threshold: 0.15 },
+  );
+  akar.querySelectorAll("[data-gulir-muncul]").forEach((el) => {
+    el.classList.add("gulir-muncul");
     pengamat.observe(el);
   });
   return () => pengamat.disconnect();
@@ -198,13 +215,19 @@ function pasangAnimasiGulir(akar) {
 /** Render landing page. */
 export async function renderBeranda(halaman) {
   const sesi = await sesiAktif();
-  halaman.innerHTML = bagianHero(sesi) + bagianZona() + bagianCaraBermain() + footerSitus();
+  halaman.innerHTML =
+    bagianHero(sesi) + bagianZona() + bagianCaraBermain() + footerSitus();
 
   // Tombol panah: gulir halus ke bagian pulau
-  halaman.querySelector('[data-gulir]')?.addEventListener('click', (e) => {
+  halaman.querySelector("[data-gulir]")?.addEventListener("click", (e) => {
     const target = document.getElementById(e.currentTarget.dataset.gulir);
-    const kurangiGerak = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    target?.scrollIntoView({ behavior: kurangiGerak ? 'auto' : 'smooth', block: 'start' });
+    const kurangiGerak = window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    ).matches;
+    target?.scrollIntoView({
+      behavior: kurangiGerak ? "auto" : "smooth",
+      block: "start",
+    });
   });
 
   return pasangAnimasiGulir(halaman);
