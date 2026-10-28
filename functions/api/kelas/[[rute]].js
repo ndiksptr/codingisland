@@ -12,14 +12,16 @@
 
 import { buatRouter, bacaJson, GalatApi } from '../../../server/http.js';
 import { ambilSesi, aksesGuru, bolehKelas } from '../../../server/sesi.js';
-import { semua, satu, jalankan, perintah, semuaKelas, zonaKelasDariTeks } from '../../../server/data.js';
+import { semua, satu, jalankan, perintah, semuaKelas, zonaKelasDariTeks, urutKelas } from '../../../server/data.js';
 import { hitungStatistik, keanggotaanDalamAkses, rataRata } from '../../../server/statistik.js';
 import { ZONA } from '../../../js/data/zona.js';
+import { JENIS_KELAS, TINGKAT_KELAS, TINGKAT_PENGISI_EKSKUL } from '../../../js/data/kelas.js';
 import { acakKodeKelas, idBaru } from '../../../server/kripto.js';
 
 function periksaKelas(d) {
   if (!d.nama || d.nama.trim().length < 2) throw new GalatApi(400, 'Nama kelas minimal 2 huruf.');
-  if (![3, 4, 5, 6].includes(Number(d.tingkat))) throw new GalatApi(400, 'Tingkat kelas harus 3 sampai 6.');
+  if (!JENIS_KELAS.includes(d.jenis)) throw new GalatApi(400, 'Pilih Ekskul atau tingkat kelas 3 sampai 6.');
+  if (!TINGKAT_KELAS.includes(Number(d.tingkat))) throw new GalatApi(400, 'Tingkat kelas harus 3 sampai 6.');
   if (!/^[A-Z0-9]{6}$/.test(d.kodeKelas)) throw new GalatApi(400, 'Kode kelas harus 6 huruf atau angka.');
 }
 
@@ -48,7 +50,7 @@ const ambilKelas = async (db, id) => (await semuaKelas(db)).find((k) => k.id ===
 
 export const onRequest = buatRouter([
   ['GET', 'publik', async (ctx) =>
-    (await semua(ctx.env.DB, 'SELECT id, nama, tingkat FROM kelas ORDER BY tingkat, nama'))],
+    (await semua(ctx.env.DB, `SELECT id, nama, jenis, tingkat FROM kelas ORDER BY ${urutKelas()}`))],
 
   ['POST', 'cek-kode', async (ctx) => {
     const { kelasId, kode } = await bacaJson(ctx.request);
@@ -81,15 +83,18 @@ export const onRequest = buatRouter([
     const a = await aksesGuru(ctx);
     const db = ctx.env.DB;
     const data = await bacaJson(ctx.request);
+    const jenis = data.jenis === 'ekskul' ? 'ekskul' : 'reguler';
     const d = {
       nama: String(data.nama || '').trim(),
-      tingkat: Number(data.tingkat),
+      jenis,
+      // Ekskul: tingkat dari form diabaikan; kolomnya (NOT NULL, CHECK 1–6) diisi nilai pengisi yang tidak ditampilkan
+      tingkat: jenis === 'ekskul' ? TINGKAT_PENGISI_EKSKUL : Number(data.tingkat),
       kodeKelas: String(data.kodeKelas || (await kodeUnik(db))).trim().toUpperCase()
     };
     periksaKelas(d);
     await tolakKodeKembar(db, d.kodeKelas);
     const id = idBaru('kelas');
-    await jalankan(db, 'INSERT INTO kelas (id, nama, tingkat, kode_kelas) VALUES (?,?,?,?)', id, d.nama, d.tingkat, d.kodeKelas);
+    await jalankan(db, 'INSERT INTO kelas (id, nama, jenis, tingkat, kode_kelas) VALUES (?,?,?,?,?)', id, d.nama, d.jenis, d.tingkat, d.kodeKelas);
     // Guru biasa otomatis menjadi pengampu kelas yang dibuatnya; admin memilih sendiri
     await aturGuruKelas(db, id, a.admin ? (data.guruIds || []) : [a.guru.id]);
     return ambilKelas(db, id);
@@ -99,10 +104,10 @@ export const onRequest = buatRouter([
     const db = ctx.env.DB;
     const s = await ambilSesi(ctx);
     if (s?.jenis === 'siswa') {
-      const k = await satu(db, `SELECT k.id, k.nama, k.tingkat, k.zona_ids FROM siswa_kelas sk JOIN kelas k ON k.id = sk.kelas_id
+      const k = await satu(db, `SELECT k.id, k.nama, k.jenis, k.tingkat, k.zona_ids FROM siswa_kelas sk JOIN kelas k ON k.id = sk.kelas_id
         WHERE sk.siswa_id = ? AND sk.kelas_id = ?`, s.pengguna_id, id);
       if (!k) throw new GalatApi(403, 'Kamu hanya bisa melihat kelas yang kamu ikuti.');
-      return { id: k.id, nama: k.nama, tingkat: k.tingkat, zonaIds: zonaKelasDariTeks(k.zona_ids) };
+      return { id: k.id, nama: k.nama, jenis: k.jenis, tingkat: k.tingkat, zonaIds: zonaKelasDariTeks(k.zona_ids) };
     }
     const a = await aksesGuru(ctx);
     bolehKelas(a, id);
@@ -115,14 +120,19 @@ export const onRequest = buatRouter([
     const db = ctx.env.DB;
     const lama = await ambilKelas(db, id);
     const data = await bacaJson(ctx.request);
+    const jenis = 'jenis' in data ? (data.jenis === 'ekskul' ? 'ekskul' : 'reguler') : lama.jenis;
     const baru = {
       nama: 'nama' in data ? String(data.nama).trim() : lama.nama,
-      tingkat: 'tingkat' in data ? Number(data.tingkat) : lama.tingkat,
+      jenis,
+      // Ekskul: tingkat dari form diabaikan, nilai lama dibiarkan sebagai pengisi
+      tingkat: jenis === 'ekskul'
+        ? (TINGKAT_KELAS.includes(lama.tingkat) ? lama.tingkat : TINGKAT_PENGISI_EKSKUL)
+        : ('tingkat' in data ? Number(data.tingkat) : lama.tingkat),
       kodeKelas: 'kodeKelas' in data ? String(data.kodeKelas).trim().toUpperCase() : lama.kodeKelas
     };
     periksaKelas(baru);
     await tolakKodeKembar(db, baru.kodeKelas, id);
-    await jalankan(db, 'UPDATE kelas SET nama = ?, tingkat = ?, kode_kelas = ? WHERE id = ?', baru.nama, baru.tingkat, baru.kodeKelas, id);
+    await jalankan(db, 'UPDATE kelas SET nama = ?, jenis = ?, tingkat = ?, kode_kelas = ? WHERE id = ?', baru.nama, baru.jenis, baru.tingkat, baru.kodeKelas, id);
     if (a.admin && Array.isArray(data.guruIds)) await aturGuruKelas(db, id, data.guruIds);
     return ambilKelas(db, id);
   }],

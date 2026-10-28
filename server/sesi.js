@@ -3,7 +3,7 @@
 
 import { GalatApi } from './http.js';
 import { tokenAcak, sha256Hex } from './kripto.js';
-import { satu, jalankan, perintah, guruKeObjek, siswaKeObjek, kelasDariBaris } from './data.js';
+import { satu, jalankan, perintah, guruKeObjek, siswaKeObjek, kelasDariBaris, urutKelas } from './data.js';
 
 const NAMA_COOKIE = 'ci_sesi';
 const MASA_DETIK = 8 * 60 * 60; // 8 jam
@@ -117,7 +117,7 @@ export async function aksesGuru(context) {
     perintah(db, `SELECT g.*, x.kadaluarsa AS sesi_kadaluarsa, x.admin_asli_id, aa.nama AS admin_asli_nama
       FROM sesi x JOIN guru g ON g.id = x.pengguna_id LEFT JOIN guru aa ON aa.id = x.admin_asli_id
       WHERE x.token_hash = ? AND x.jenis = 'guru' AND x.kadaluarsa > ?`, h, Date.now()),
-    perintah(db, 'SELECT * FROM kelas ORDER BY tingkat, nama'),
+    perintah(db, `SELECT * FROM kelas ORDER BY ${urutKelas()}`),
     perintah(db, 'SELECT guru_id, kelas_id FROM guru_kelas')
   ]);
   const guru = rg.results?.[0];
@@ -183,14 +183,14 @@ export async function sesiUntukKlien(context) {
       WHERE x.token_hash = ? AND x.jenis = 'guru' AND x.kadaluarsa > ?`, h, kini),
     perintah(db, `SELECT gk.kelas_id FROM sesi x JOIN guru_kelas gk ON gk.guru_id = x.pengguna_id
       WHERE x.token_hash = ? AND x.jenis = 'guru'`, h),
-    // Semua kelas murid ini (untuk layar pilih kelas dan menu kelas di header)
-    perintah(db, `SELECT k.id, k.nama FROM sesi x JOIN siswa_kelas sk ON sk.siswa_id = x.pengguna_id JOIN kelas k ON k.id = sk.kelas_id
-      WHERE x.token_hash = ? AND x.jenis = 'siswa' ORDER BY sk.bergabung_pada`, h)
+    // Semua kelas murid ini (untuk layar pilih kelas dan menu kelas di header), urutan sama dengan daftar kelas
+    perintah(db, `SELECT k.id, k.nama, k.jenis, k.tingkat FROM sesi x JOIN siswa_kelas sk ON sk.siswa_id = x.pengguna_id JOIN kelas k ON k.id = sk.kelas_id
+      WHERE x.token_hash = ? AND x.jenis = 'siswa' ORDER BY ${urutKelas('k.')}`, h)
   ]);
   const siswa = lengkapiKelasAktif(rs.results?.[0]);
   if (siswa) {
     // pengguna.kelasId = kelas aktif (null = harus memilih kelas / memasukkan kode kelas dulu)
-    const pengguna = { ...siswaKeObjek(siswa), kelas: (rsk.results || []).map((k) => ({ id: k.id, nama: k.nama })) };
+    const pengguna = { ...siswaKeObjek(siswa), kelas: (rsk.results || []).map((k) => ({ id: k.id, nama: k.nama, jenis: k.jenis, tingkat: k.tingkat })) };
     return { jenis: 'siswa', peran: 'siswa', kadaluarsa: siswa.sesi_kadaluarsa, pengguna, menyamar: null };
   }
   const guru = rg.results?.[0];

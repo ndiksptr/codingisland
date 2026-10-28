@@ -7,6 +7,7 @@ import { guruMatriksNilai, guruTimpaNilai, guruHapusTimpaNilai, simpanPreferensi
 import { muatUlang } from '../router.js';
 import { IKON, kosong, avatarSiswa, formatTanggal } from './komponen.js';
 import { csvNilai, labelLevelNilai } from './csv.js';
+import { labelTingkatKelas } from '../data/kelas.js';
 
 
 function selHTML(c, l) {
@@ -50,7 +51,7 @@ export async function renderNilai(wadah, { konteks, kelasId }) {
               ${konteks.kelas.map((k) => `<option value="${esc(k.id)}" ${k.id === idKelas ? 'selected' : ''}>${esc(k.nama)}</option>`).join('')}
             </select>
           </label>
-          <span class="text-sm">${siswa.length} siswa · ${levels.length} level terbit · rata-rata kelas <strong>${rata}</strong></span>
+          <span class="text-sm">${esc(labelTingkatKelas(data.kelas))} · ${siswa.length} siswa · ${levels.length} level terbit · rata-rata kelas <strong>${rata}</strong></span>
         </div>
         <div class="flex flex-wrap gap-2">
           <button type="button" class="tombol tombol-sekunder tombol-kecil" data-ekspor ${siswa.length ? '' : 'disabled'}>${IKON.unduh}<span>Ekspor CSV</span></button>
@@ -59,7 +60,7 @@ export async function renderNilai(wadah, { konteks, kelasId }) {
       </div>
 
       <div class="hanya-cetak mb-3">
-        <p class="font-judul text-2xl font-extrabold">Rekap Nilai Coding Island — ${esc(data.kelas.nama)}</p>
+        <p class="font-judul text-2xl font-extrabold">Rekap Nilai Coding Island — ${esc(data.kelas.nama)} (${esc(labelTingkatKelas(data.kelas))})</p>
         <p class="text-sm">Dicetak ${esc(formatTanggal(new Date().toISOString(), { jam: true }))} oleh ${esc(konteks.guru.nama)} · rata-rata kelas ${rata}</p>
       </div>
 

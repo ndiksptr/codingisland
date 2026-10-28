@@ -7,6 +7,7 @@
 import { esc, robot, toast, jenisGalat, aturPesan } from '../ui.js';
 import { sesiAktif, pilihKelasAktif, gabungKelas } from '../store.js';
 import { pindah } from '../router.js';
+import { labelTingkatKelas } from '../data/kelas.js';
 
 // Hanya halaman murid yang boleh menjadi tujuan setelah memilih kelas
 function tujuanAman(ke) {
@@ -80,7 +81,7 @@ function kartuKelasHTML(k, aktif) {
         <img src="image/item/roket.png" alt="" class="kartu-kelas-ikon">
         <span class="flex-1 min-w-0">
           <span class="block font-judul text-2xl sm:text-3xl font-extrabold leading-tight truncate">${esc(k.nama)}</span>
-          <span class="block font-bold">${aktif ? 'Sedang dimainkan' : 'Main sebagai anggota kelas ini'}</span>
+          <span class="block font-bold">${esc(labelTingkatKelas(k))} · ${aktif ? 'Sedang dimainkan' : 'Main sebagai anggota kelas ini'}</span>
         </span>
       </button>
     </li>`;

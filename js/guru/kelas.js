@@ -3,6 +3,7 @@
 import { esc, bukaModal, bukaFormModal, toast, jenisGalat } from '../ui.js';
 import { guruDaftarKelas, guruSimpanKelas, guruHapusKelas, guruKodeKelasBaru, guruKodeKelasAcak, adminDaftarGuru } from '../store.js';
 import { IKON, kosong, tombolAksi } from './komponen.js';
+import { TINGKAT_KELAS, labelTingkatKelas } from '../data/kelas.js';
 import { muatUlang } from '../router.js';
 
 async function salinTeks(teks) {
@@ -29,7 +30,8 @@ function formKelasHTML(kelas, daftarGuru, idSaya, kodeAwal) {
       </label>
       <label class="dg-label">Tingkat
         <select name="tingkat" class="dg-input">
-          ${[3, 4, 5, 6].map((t) => `<option value="${t}" ${kelas?.tingkat === t ? 'selected' : ''}>Kelas ${t}</option>`).join('')}
+          <option value="ekskul" ${!kelas || kelas.jenis === 'ekskul' ? 'selected' : ''}>Ekskul</option>
+          ${TINGKAT_KELAS.map((t) => `<option value="${t}" ${kelas?.jenis !== 'ekskul' && kelas?.tingkat === t ? 'selected' : ''}>Kelas ${t}</option>`).join('')}
         </select>
       </label>
       <div class="sm:col-span-2">
@@ -79,7 +81,7 @@ export async function renderKelas(wadah, { konteks, kelasId }) {
                 ${daftar.map((k) => `
                   <tr>
                     <td class="font-bold">${esc(k.nama)}</td>
-                    <td>${k.tingkat}</td>
+                    <td>${esc(labelTingkatKelas(k))}</td>
                     <td>
                       <span class="inline-flex items-center gap-1">
                         <code class="dg-kode">${esc(k.kodeKelas)}</code>
@@ -137,10 +139,13 @@ export async function renderKelas(wadah, { konteks, kelasId }) {
         const kodeKelas = String(fd.get('kodeKelas') || '').trim().toUpperCase();
         if (nama.length < 2) return { galat: 'Nama kelas minimal 2 huruf.' };
         if (!/^[A-Z0-9]{6}$/.test(kodeKelas)) return { galat: 'Kode kelas harus 6 huruf atau angka. Ketik kode lain atau tekan Acak.' };
+        // Pilihan Ekskul: jenis ekskul, tingkat diabaikan (server mengisi nilai pengisi)
+        const tingkat = String(fd.get('tingkat'));
         return guruSimpanKelas({
           id: kelas?.id,
           nama,
-          tingkat: Number(fd.get('tingkat')),
+          jenis: tingkat === 'ekskul' ? 'ekskul' : 'reguler',
+          ...(tingkat === 'ekskul' ? {} : { tingkat: Number(tingkat) }),
           kodeKelas,
           ...(admin ? { guruIds: fd.getAll('guruIds') } : {})
         });

@@ -86,15 +86,23 @@ export function zonaKelasDariTeks(teks) {
   return [...new Set(daftar)].filter((id) => ZONA.some((z) => z.id === id));
 }
 
-/** Baris tabel kelas + guru_kelas -> objek kelas dengan guruIds dan zonaIds. */
+/**
+ * Urutan daftar kelas di mana pun: ekskul paling atas (urut nama), lalu kelas reguler menurut tingkat dan nama.
+ * awalan: alias tabel kelas bila dipakai dalam JOIN, mis. 'k.'
+ */
+export const urutKelas = (awalan = '') =>
+  `CASE WHEN ${awalan}jenis = 'ekskul' THEN 0 ELSE 1 END, CASE WHEN ${awalan}jenis = 'ekskul' THEN 0 ELSE ${awalan}tingkat END, ${awalan}nama`;
+
+/** Baris tabel kelas + guru_kelas -> objek kelas dengan guruIds dan zonaIds. jenis: 'reguler' | 'ekskul' (migrasi 0011). */
 export const kelasDariBaris = (kelas, relasi) => kelas.map((k) => ({
-  id: k.id, nama: k.nama, tingkat: k.tingkat, kodeKelas: k.kode_kelas, zonaIds: zonaKelasDariTeks(k.zona_ids),
+  id: k.id, nama: k.nama, jenis: k.jenis === 'ekskul' ? 'ekskul' : 'reguler', tingkat: k.tingkat, kodeKelas: k.kode_kelas,
+  zonaIds: zonaKelasDariTeks(k.zona_ids),
   guruIds: relasi.filter((x) => x.kelas_id === k.id).map((x) => x.guru_id)
 }));
 
 export async function semuaKelas(db) {
   const [rk, rr] = await db.batch([
-    perintah(db, 'SELECT * FROM kelas ORDER BY tingkat, nama'),
+    perintah(db, `SELECT * FROM kelas ORDER BY ${urutKelas()}`),
     perintah(db, 'SELECT guru_id, kelas_id FROM guru_kelas')
   ]);
   return kelasDariBaris(rk.results || [], rr.results || []);

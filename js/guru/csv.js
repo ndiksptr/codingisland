@@ -1,5 +1,7 @@
 // js/guru/csv.js — pembuat CSV dashboard guru (fungsi murni, tanpa DOM, bisa diuji di Node)
 
+import { labelTingkatKelas } from '../data/kelas.js';
+
 /** Ubah daftar objek menjadi teks CSV. kolom: urutan kunci; nilai berisi koma/kutip/baris baru diberi kutip. */
 export function buatCSV(kolom, data) {
   const sel = (v) => {
@@ -22,15 +24,16 @@ export function labelLevelNilai(levels) {
 
 /**
  * Tabel CSV nilai satu kelas dari hasil API GET /api/nilai/:kelasId.
- * Kolom: Nama lengkap, Kelas, satu kolom per level ("P1 Judul"), Nilai akhir, Ditimpa, Alasan.
+ * Kolom: Nama lengkap, Kelas, Tingkat ("Ekskul" atau "Kelas 4"), satu kolom per level ("P1 Judul"), Nilai akhir, Ditimpa, Alasan.
  */
 export function csvNilai(data) {
   const labelLevel = labelLevelNilai(data.levels);
   const kolomLevel = data.levels.map((l, i) => `${labelLevel[i]} ${l.judul}`);
-  const kolom = ['Nama lengkap', 'Kelas', ...kolomLevel, 'Nilai akhir', 'Ditimpa', 'Alasan'];
+  const kolom = ['Nama lengkap', 'Kelas', 'Tingkat', ...kolomLevel, 'Nilai akhir', 'Ditimpa', 'Alasan'];
   const baris = data.siswa.map((s) => ({
     'Nama lengkap': s.namaLengkap,
     Kelas: data.kelas.nama,
+    Tingkat: labelTingkatKelas(data.kelas),
     ...Object.fromEntries(data.levels.map((l, i) => [kolomLevel[i], s.sel[l.id].nilai])),
     'Nilai akhir': s.nilaiAkhir,
     Ditimpa: s.timpa ? 'Ya' : 'Tidak',

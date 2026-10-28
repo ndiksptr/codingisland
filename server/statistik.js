@@ -59,7 +59,9 @@ export async function hitungStatistik(db, keanggotaan, cache = {}) {
     const pr = k ? (progresPer.get(`${s.id}|${k.id}`) || []).filter((p) => ids.has(p.levelId)) : [];
     const selesai = pr.filter((p) => p.selesai);
     const waktu = [terakhir.get(s.id), s.dibuatPada, ...pr.map((p) => p.diperbarui)].filter(Boolean).sort();
-    const kelasMurid = (anggota.get(s.id) || []).map(kelasDari).filter(Boolean).map((x) => ({ id: x.id, nama: x.nama }));
+    // Urutan sama dengan daftar kelas (ekskul di atas, lalu reguler menurut tingkat)
+    const idAnggota = anggota.get(s.id) || [];
+    const kelasMurid = kelas.filter((x) => idAnggota.includes(x.id)).map((x) => ({ id: x.id, nama: x.nama, jenis: x.jenis, tingkat: x.tingkat }));
     return {
       siswa: s,
       kelasId: k?.id || null,
