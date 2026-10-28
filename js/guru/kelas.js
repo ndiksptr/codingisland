@@ -66,7 +66,7 @@ export async function renderKelas(wadah, { konteks, kelasId }) {
         <div class="dg-kartu-kepala">
           <div>
             <h2 class="dg-subjudul">Daftar kelas</h2>
-            <p class="text-sm">Bagikan <strong>kode kelas</strong> kepada siswa agar mereka bisa mendaftar sendiri.</p>
+            <p class="text-sm">Bagikan <strong>kode kelas</strong> kepada siswa agar mereka bisa mendaftar sendiri.${admin ? ' Sebagai admin, Anda melihat semua kelas; kelas yang tidak Anda ampu diberi tanda.' : ''}</p>
           </div>
           <button type="button" class="tombol tombol-utama tombol-kecil" data-tambah-kelas>${IKON.tambah}<span>Tambah Kelas</span></button>
         </div>
@@ -80,7 +80,10 @@ export async function renderKelas(wadah, { konteks, kelasId }) {
               <tbody>
                 ${daftar.map((k) => `
                   <tr>
-                    <td class="font-bold">${esc(k.nama)}</td>
+                    <td class="font-bold">
+                      ${esc(k.nama)}
+                      ${admin && !k.guruIds.includes(konteks.guru.id) ? '<span class="dg-chip font-normal">Tidak Anda ampu</span>' : ''}
+                    </td>
                     <td>${esc(labelTingkatKelas(k))}</td>
                     <td>
                       <span class="inline-flex items-center gap-1">
