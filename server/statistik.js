@@ -6,8 +6,31 @@
 // Terakhir aktif = waktu terbaru dari aktivitas murid, progres di kelas itu, atau tanggal daftar.
 
 import { semua, semuaKelas, semuaLevel, siswaKeObjek, progresKeObjek, levelBerlaku, petaKelasSiswa } from './data.js';
+import { zonaDimainkan, zonaTerakhir } from '../js/game/kemajuan.js';
 
 export const rataRata = (angka) => (angka.length ? Math.round(angka.reduce((n, x) => n + x, 0) / angka.length) : 0);
+
+/**
+ * Data sertifikat Juara satu murid di satu kelas, atau null bila belum juara.
+ * Juara = boss pulau terakhir (urutan pulau kelas itu) sudah selesai. Dipakai halaman juara murid
+ * dan halaman Sertifikat guru, supaya keduanya memakai aturan yang sama.
+ * kelas: objek kelas (kelasDariBaris), levels: level yang berlaku di kelas itu, progres: progres murid DI KELAS ITU.
+ */
+export function sertifikatJuara(kelas, levels, progres, namaLengkap) {
+  const zonaAkhir = zonaTerakhir(kelas.zonaIds, levels)?.id;
+  const bossAkhir = progres.find((p) => p.selesai && levels.some((l) => l.id === p.levelId && l.zona === zonaAkhir && l.jenis === 'boss'));
+  if (!bossAkhir) return null;
+  const ids = new Set(levels.map((l) => l.id));
+  return {
+    namaLengkap,
+    kelas: kelas.nama,
+    totalBintang: progres.filter((p) => p.selesai && ids.has(p.levelId)).reduce((n, p) => n + (p.bintang || 0), 0),
+    maksBintang: levels.length * 3,
+    pulau: zonaDimainkan(kelas.zonaIds, levels).map((z) => z.nama), // pulau yang ditaklukkan, urutan kelas
+    tanggal: bossAkhir.selesaiPada || bossAkhir.diperbarui,
+    pengaturan: kelas.sertifikat // isi sertifikat yang diatur guru kelas ini
+  };
+}
 
 /**
  * Semua kelas yang diikuti satu murid, KHUSUS UNTUK TAMPILAN: tanpa saringan hak akses dan tanpa filter

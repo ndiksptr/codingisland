@@ -2,6 +2,8 @@
 // Tampil setelah boss pulau terakhir di daftar kelas aktif selesai (urutan pulau milik kelas itu).
 // Bintang & daftar pulau hanya dari soal kelas itu (dihitung server).
 // Tombol cetak memakai window.print() dengan gaya cetak khusus (@media print di css/app.css).
+// sertifikatHTML() juga dipakai halaman Sertifikat guru (js/guru/sertifikat.js), jadi tampilannya sama.
+// Isi yang diatur guru per kelas (data.pengaturan): nama sekolah dan penanda tangan; kosong = Robot Tutor.
 
 import { esc, robot, tombol } from '../ui.js';
 import { sesiAktif, getRingkasanJuara } from '../store.js';
@@ -21,6 +23,61 @@ const formatTanggal = (iso) => {
     ? '-'
     : d.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
 };
+
+/** Penanda tangan: guru yang diatur di kelas itu, atau Robot Tutor bila belum diatur. */
+function tandaTanganHTML(p = {}) {
+  if (p.ttdNama) {
+    return `
+      <div class="sertifikat-ttd sertifikat-ttd-guru">
+        <p class="sertifikat-ttd-garis">${esc(p.ttdNama)}</p>
+        ${p.ttdJabatan ? `<p class="text-sm">${esc(p.ttdJabatan)}</p>` : ''}
+      </div>`;
+  }
+  return `
+    <div class="sertifikat-ttd">
+      ${robot('gembira', { kelas: 'w-16 h-auto', alt: '' })}
+      <div>
+        <p class="sertifikat-ttd-garis">Robot Tutor</p>
+        <p class="text-sm">Pemandu Coding Island</p>
+      </div>
+    </div>`;
+}
+
+/**
+ * HTML sertifikat Juara (tanpa tombol). data: hasil GET /api/progres/juara atau salah satu
+ * baris GET /api/kelas/:id/sertifikat: { namaLengkap, kelas, totalBintang, maksBintang, pulau, tanggal, pengaturan }
+ */
+export function sertifikatHTML(data) {
+  const p = data.pengaturan || {};
+  return `
+    <article class="sertifikat" aria-label="Sertifikat Juara Coding Island untuk ${esc(data.namaLengkap)}">
+      <div class="sertifikat-dalam">
+        ${p.sekolah ? `<p class="sertifikat-sekolah">${esc(p.sekolah)}</p>` : ''}
+        <img src="image/item/piala.png" alt="" class="sertifikat-piala">
+        <p class="sertifikat-label">Sertifikat</p>
+        <h1 class="sertifikat-judul">Juara Coding Island</h1>
+        <p class="sertifikat-teks">Diberikan dengan bangga kepada</p>
+        <p class="sertifikat-nama">${esc(data.namaLengkap)}</p>
+        <p class="sertifikat-teks">
+          siswa <strong>${esc(data.kelas)}</strong> yang telah menaklukkan ${teksPulau(data.pulau || [])}
+          bersama Robot Tutor.
+        </p>
+
+        <div class="sertifikat-info">
+          <div>
+            <span>Total bintang</span>
+            <strong><img src="image/item/bintang.png" alt="" class="w-7 h-7 object-contain">${data.totalBintang} / ${data.maksBintang}</strong>
+          </div>
+          <div>
+            <span>Tanggal</span>
+            <strong>${esc(formatTanggal(data.tanggal))}</strong>
+          </div>
+        </div>
+
+        ${tandaTanganHTML(p)}
+      </div>
+    </article>`;
+}
 
 export async function renderJuara(halaman) {
   const sesi = await sesiAktif();
@@ -49,38 +106,7 @@ export async function renderJuara(halaman) {
         ${tombol({ teks: 'Kembali ke Peta', href: '#/peta', varian: 'sekunder' })}
       </div>
 
-      <article class="sertifikat" aria-label="Sertifikat Juara Coding Island">
-        <div class="sertifikat-dalam">
-          <img src="image/item/piala.png" alt="" class="sertifikat-piala">
-          <p class="sertifikat-label">Sertifikat</p>
-          <h1 class="sertifikat-judul">Juara Coding Island</h1>
-          <p class="sertifikat-teks">Diberikan dengan bangga kepada</p>
-          <p class="sertifikat-nama">${esc(data.namaLengkap)}</p>
-          <p class="sertifikat-teks">
-            siswa <strong>${esc(data.kelas)}</strong> yang telah menaklukkan ${teksPulau(data.pulau || [])}
-            bersama Robot Tutor.
-          </p>
-
-          <div class="sertifikat-info">
-            <div>
-              <span>Total bintang</span>
-              <strong><img src="image/item/bintang.png" alt="" class="w-7 h-7 object-contain">${data.totalBintang} / ${data.maksBintang}</strong>
-            </div>
-            <div>
-              <span>Tanggal</span>
-              <strong>${esc(formatTanggal(data.tanggal))}</strong>
-            </div>
-          </div>
-
-          <div class="sertifikat-ttd">
-            ${robot('gembira', { kelas: 'w-16 h-auto', alt: '' })}
-            <div>
-              <p class="sertifikat-ttd-garis">Robot Tutor</p>
-              <p class="text-sm">Pemandu Coding Island</p>
-            </div>
-          </div>
-        </div>
-      </article>
+      ${sertifikatHTML(data)}
     </section>`;
 
   halaman.querySelector('[data-cetak]').addEventListener('click', () => window.print());

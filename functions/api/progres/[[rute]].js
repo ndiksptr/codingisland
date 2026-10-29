@@ -16,11 +16,12 @@ import { buatRouter, bacaJson, GalatApi } from '../../../server/http.js';
 import { wajibSiswaDiKelas } from '../../../server/sesi.js';
 import {
   semua, satu, jalankan, perintah, sekarang, siswaKeObjek, progresKeObjek, levelKeObjek, semuaLevel,
-  bacaPengaturan, bacaZonaKelas, zonaKelasDariTeks, perintahAktivitas, levelBerlaku
+  bacaPengaturan, bacaZonaKelas, zonaKelasDariTeks, perintahAktivitas, levelBerlaku, kelasDariBaris
 } from '../../../server/data.js';
 import { jalankanKode } from '../../../js/game/interpreter.js';
 import { hitungBintang, hitungKoin, NILAI_BINTANG, BERLIAN_BOSS, CLUE, KOIN_SELESAI_PERTAMA, KOIN_PER_BINTANG_BARU } from '../../../js/game/skor.js';
-import { hitungPeta, zonaDimainkan, zonaTerakhir } from '../../../js/game/kemajuan.js';
+import { hitungPeta, zonaTerakhir } from '../../../js/game/kemajuan.js';
+import { sertifikatJuara } from '../../../server/statistik.js';
 
 const MAKS_KODE = 5000;
 const MAKS_DETIK = 600;
@@ -76,29 +77,19 @@ export const onRequest = buatRouter([
   }],
 
   // Juara = boss pulau terakhir di daftar kelas aktif selesai. Bintang dihitung dari soal kelas itu saja.
+  // Aturannya di sertifikatJuara (server/statistik.js), sama dengan halaman Sertifikat guru.
   ['GET', 'juara', async (ctx) => {
     const s = await wajibSiswaDiKelas(ctx);
     const db = ctx.env.DB;
-    const [kelas, semuaL, progresBaris] = await Promise.all([
-      satu(db, 'SELECT nama, zona_ids FROM kelas WHERE id = ?', s.kelas_aktif),
+    const [barisKelas, semuaL, progresBaris] = await Promise.all([
+      satu(db, 'SELECT * FROM kelas WHERE id = ?', s.kelas_aktif),
       semuaLevel(db),
       semua(db, 'SELECT * FROM progres WHERE siswa_id = ? AND kelas_id = ?', s.id, s.kelas_aktif)
     ]);
-    const zonaIds = zonaKelasDariTeks(kelas?.zona_ids);
-    const levels = semuaL.filter((l) => levelBerlaku(l, s.kelas_aktif, zonaIds));
-    const zonaAkhir = zonaTerakhir(zonaIds, levels)?.id;
-    const progres = progresBaris.map(progresKeObjek);
-    const bossAkhir = progres.find((p) => p.selesai && levels.some((l) => l.id === p.levelId && l.zona === zonaAkhir && l.jenis === 'boss'));
-    if (!bossAkhir) return null;
-    const ids = new Set(levels.map((l) => l.id));
-    return {
-      namaLengkap: s.nama_lengkap,
-      kelas: kelas?.nama || '-',
-      totalBintang: progres.filter((p) => p.selesai && ids.has(p.levelId)).reduce((n, p) => n + (p.bintang || 0), 0),
-      maksBintang: levels.length * 3,
-      pulau: zonaDimainkan(zonaIds, levels).map((z) => z.nama), // pulau yang ditaklukkan, urutan kelas
-      tanggal: bossAkhir.selesaiPada || bossAkhir.diperbarui
-    };
+    if (!barisKelas) return null;
+    const kelas = kelasDariBaris([barisKelas], [])[0];
+    const levels = semuaL.filter((l) => levelBerlaku(l, kelas.id, kelas.zonaIds));
+    return sertifikatJuara(kelas, levels, progresBaris.map(progresKeObjek), s.nama_lengkap);
   }],
 
   ['DELETE', '', async (ctx) => {

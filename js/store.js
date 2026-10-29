@@ -614,6 +614,17 @@ export async function guruAturAktifLevel(id, aktif) {
   return api(`level/guru/${enc(id)}/aktif`, { metode: 'POST', data: { aktif } });
 }
 
+// ---------- Sertifikat (guru per kelas; admin semua kelas) ----------
+/** Hasil: { kelas, pengaturan: { sekolah, ttdNama, ttdJabatan }, pulauTerakhir, siswa: [{ ..., juara, sertifikat }] } */
+export async function guruSertifikatKelas(kelasId) {
+  return api(`kelas/${enc(kelasId)}/sertifikat`);
+}
+
+/** Simpan isi sertifikat kelas: { sekolah, ttdNama, ttdJabatan } (kosong = bawaan, Robot Tutor). */
+export async function guruSimpanSertifikatKelas(kelasId, isi) {
+  return api(`kelas/${enc(kelasId)}/sertifikat`, { metode: 'PUT', data: isi });
+}
+
 // ---------- Nilai ----------
 export async function guruMatriksNilai(kelasId) {
   return api(`nilai/${enc(kelasId)}`);

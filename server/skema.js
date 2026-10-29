@@ -1,7 +1,7 @@
 // server/skema.js — DIBUAT OTOMATIS oleh scripts/buat-schema.mjs. Jangan diedit manual.
 // Perintah SQL gabungan migrations/*.sql (tanpa pembersihan data dan tanpa soal bawaan), dipakai
 // worker.js untuk mengisi database yang masih kosong: struktur tabel dan pengaturan bawaan.
-// Migrasi: 0001_struktur_awal.sql, 0002_hapus_data_demo.sql, 0003_indeks.sql, 0004_sesi_penyamaran.sql, 0005_siswa_bahasa.sql, 0006_bahasa_bawaan_inggris.sql, 0007_keanggotaan_kelas.sql, 0008_soal_milik_guru.sql, 0009_pulau_per_kelas.sql, 0010_progres_per_kelas.sql, 0011_jenis_kelas.sql
+// Migrasi: 0001_struktur_awal.sql, 0002_hapus_data_demo.sql, 0003_indeks.sql, 0004_sesi_penyamaran.sql, 0005_siswa_bahasa.sql, 0006_bahasa_bawaan_inggris.sql, 0007_keanggotaan_kelas.sql, 0008_soal_milik_guru.sql, 0009_pulau_per_kelas.sql, 0010_progres_per_kelas.sql, 0011_jenis_kelas.sql, 0012_sertifikat_kelas.sql
 
 export const SKEMA_BUAT = [
   "CREATE TABLE IF NOT EXISTS guru (\n  id            TEXT PRIMARY KEY,\n  nama          TEXT NOT NULL,\n  username      TEXT NOT NULL UNIQUE,\n  password_hash TEXT NOT NULL,\n  peran         TEXT NOT NULL DEFAULT 'guru' CHECK (peran IN ('guru', 'admin')),\n  dibuat_pada   TEXT NOT NULL\n)",
@@ -50,5 +50,6 @@ export const SKEMA_BUAT = [
   "CREATE INDEX IF NOT EXISTS idx_progres_level ON progres(level_id)",
   "CREATE INDEX IF NOT EXISTS idx_progres_kelas ON progres(kelas_id, level_id)",
   "ALTER TABLE kelas ADD COLUMN jenis TEXT NOT NULL DEFAULT 'reguler' CHECK (jenis IN ('reguler', 'ekskul'))",
-  "UPDATE kelas SET jenis = 'ekskul' WHERE nama LIKE '%ekskul%' OR nama LIKE '%ekstrakurikuler%'"
+  "UPDATE kelas SET jenis = 'ekskul' WHERE nama LIKE '%ekskul%' OR nama LIKE '%ekstrakurikuler%'",
+  "ALTER TABLE kelas ADD COLUMN sertifikat TEXT"
 ];

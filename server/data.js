@@ -93,10 +93,18 @@ export function zonaKelasDariTeks(teks) {
 export const urutKelas = (awalan = '') =>
   `CASE WHEN ${awalan}jenis = 'ekskul' THEN 0 ELSE 1 END, CASE WHEN ${awalan}jenis = 'ekskul' THEN 0 ELSE ${awalan}tingkat END, ${awalan}nama`;
 
+/** Isi sertifikat kelas (kolom kelas.sertifikat, migrasi 0012). Kosong = bawaan (ditandatangani Robot Tutor). */
+export const BATAS_TEKS_SERTIFIKAT = 60;
+export function sertifikatDariTeks(teks) {
+  const d = jsonAman(teks, null) || {};
+  const bersih = (v) => String(v ?? '').trim().replace(/\s+/g, ' ').slice(0, BATAS_TEKS_SERTIFIKAT);
+  return { sekolah: bersih(d.sekolah), ttdNama: bersih(d.ttdNama), ttdJabatan: bersih(d.ttdJabatan) };
+}
+
 /** Baris tabel kelas + guru_kelas -> objek kelas dengan guruIds dan zonaIds. jenis: 'reguler' | 'ekskul' (migrasi 0011). */
 export const kelasDariBaris = (kelas, relasi) => kelas.map((k) => ({
   id: k.id, nama: k.nama, jenis: k.jenis === 'ekskul' ? 'ekskul' : 'reguler', tingkat: k.tingkat, kodeKelas: k.kode_kelas,
-  zonaIds: zonaKelasDariTeks(k.zona_ids),
+  zonaIds: zonaKelasDariTeks(k.zona_ids), sertifikat: sertifikatDariTeks(k.sertifikat),
   guruIds: relasi.filter((x) => x.kelas_id === k.id).map((x) => x.guru_id)
 }));
 

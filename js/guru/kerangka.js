@@ -17,6 +17,7 @@ const MENU = [
   { id: 'siswa', teks: 'Siswa', href: '#/guru/siswa' },
   { id: 'level', teks: 'Level & Soal', href: '#/guru/level' },
   { id: 'nilai', teks: 'Nilai', href: '#/guru/nilai' },
+  { id: 'sertifikat', teks: 'Sertifikat', href: '#/guru/sertifikat' },
   { id: 'aktivitas', teks: 'Aktivitas', href: '#/guru/aktivitas' },
   { id: 'guru', teks: 'Guru', href: '#/guru/guru', admin: true },
   { id: 'pengaturan', teks: 'Pengaturan', href: '#/guru/pengaturan' }

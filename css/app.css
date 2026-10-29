@@ -1227,6 +1227,13 @@ a.kartu-zona:hover .kartu-zona-gambar { transform: scale(1.05); }
 .sertifikat-info strong { display: inline-flex; align-items: center; gap: .3rem; font-family: var(--font-judul); font-size: 1.5rem; }
 .sertifikat-ttd { display: flex; align-items: center; gap: .75rem; margin-top: 1rem; text-align: left; }
 .sertifikat-ttd-garis { margin: 0; padding-bottom: .1rem; border-bottom: 2px solid var(--tinta); font-family: var(--font-judul); font-size: 1.25rem; font-weight: 800; }
+/* Isi yang diatur guru per kelas: nama sekolah & penanda tangan */
+.sertifikat-sekolah { margin: 0; font-family: var(--font-judul); font-size: clamp(1rem, 2.4vw, 1.35rem); font-weight: 800; color: var(--teal-tua); }
+.sertifikat-ttd-guru { flex-direction: column; align-items: center; gap: .15rem; margin-top: 1.75rem; text-align: center; }
+.sertifikat-ttd-guru .sertifikat-ttd-garis { min-width: 12rem; padding: 0 1rem .1rem; }
+
+/* Cetak sertifikat dari dashboard guru: hanya isi .wadah-cetak-sertifikat yang dicetak */
+.wadah-cetak-sertifikat { display: none; }
 
 /* ---------- Animasi ---------- */
 @keyframes melayang {
@@ -1361,6 +1368,8 @@ a.kartu-zona:hover .kartu-zona-gambar { transform: scale(1.05); }
   .sertifikat { box-shadow: none; break-inside: avoid; }
   .sertifikat-dalam { min-height: 170mm; justify-content: center; }
   .melayang, .muncul, .halaman-masuk { animation: none !important; }
+  body.mencetak-sertifikat > *:not(.wadah-cetak-sertifikat) { display: none !important; }
+  body.mencetak-sertifikat .wadah-cetak-sertifikat { display: block; }
 }
 
 /* =====================================================================

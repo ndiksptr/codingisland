@@ -7,13 +7,16 @@
 //   GET    /api/kelas/:id               satu kelas (siswa: hanya kelas yang diikutinya)
 //   PUT    /api/kelas/:id               ubah kelas (guruIds hanya untuk admin)
 //   PUT    /api/kelas/:id/zona          { zonaIds } pulau yang dipakai kelas ini beserta urutannya
+//   GET    /api/kelas/:id/sertifikat    daftar penerima sertifikat Juara di kelas ini (+ isi sertifikat kelas)
+//   PUT    /api/kelas/:id/sertifikat    { sekolah, ttdNama, ttdJabatan } isi sertifikat kelas ini
 //   POST   /api/kelas/:id/kode-baru     buat kode kelas baru
 //   DELETE /api/kelas/:id               hapus kelas kosong (tanpa anggota)
 
 import { buatRouter, bacaJson, GalatApi } from '../../../server/http.js';
 import { ambilSesi, aksesGuru, bolehKelas } from '../../../server/sesi.js';
-import { semua, satu, jalankan, perintah, semuaKelas, zonaKelasDariTeks, urutKelas } from '../../../server/data.js';
-import { hitungStatistik, keanggotaanDalamAkses, rataRata } from '../../../server/statistik.js';
+import { semua, satu, jalankan, perintah, semuaKelas, semuaLevel, zonaKelasDariTeks, urutKelas, sertifikatDariTeks, levelBerlaku } from '../../../server/data.js';
+import { hitungStatistik, keanggotaanDalamAkses, rataRata, sertifikatJuara } from '../../../server/statistik.js';
+import { zonaTerakhir } from '../../../js/game/kemajuan.js';
 import { ZONA } from '../../../js/data/zona.js';
 import { JENIS_KELAS, TINGKAT_KELAS, TINGKAT_PENGISI_EKSKUL } from '../../../js/data/kelas.js';
 import { acakKodeKelas, idBaru } from '../../../server/kripto.js';
@@ -147,6 +150,42 @@ export const onRequest = buatRouter([
     const bersih = [...new Set(zonaIds)].filter((z) => ZONA.some((x) => x.id === z));
     await jalankan(ctx.env.DB, 'UPDATE kelas SET zona_ids = ? WHERE id = ?', JSON.stringify(bersih), id);
     return ambilKelas(ctx.env.DB, id);
+  }],
+
+  // Daftar penerima sertifikat: semua anggota kelas, juara atau belum, dengan aturan juara yang sama
+  // dengan halaman juara murid (sertifikatJuara). Guru hanya untuk kelas yang diampu; admin semua.
+  ['GET', ':id/sertifikat', async (ctx, { id }) => {
+    const a = await aksesGuru(ctx);
+    bolehKelas(a, id);
+    const db = ctx.env.DB;
+    const kelas = await ambilKelas(db, id);
+    const levelsSemua = await semuaLevel(db);
+    const stat = await hitungStatistik(db, await keanggotaanDalamAkses(db, a, id), { levels: levelsSemua });
+    const levels = levelsSemua.filter((l) => levelBerlaku(l, id, kelas.zonaIds));
+    const siswa = stat.map((x) => {
+      const data = sertifikatJuara(kelas, x.levels, x.progres, x.siswa.namaLengkap);
+      return {
+        id: x.siswa.id, namaLengkap: x.siswa.namaLengkap, namaPanggilan: x.siswa.namaPanggilan, avatar: x.siswa.avatar,
+        levelSelesai: x.baris.levelSelesai, totalLevel: x.baris.totalLevel, totalBintang: x.baris.totalBintang,
+        juara: !!data, sertifikat: data
+      };
+    }).sort((p, q) => Number(q.juara) - Number(p.juara) || p.namaLengkap.localeCompare(q.namaLengkap));
+    return {
+      kelas: { id: kelas.id, nama: kelas.nama, jenis: kelas.jenis, tingkat: kelas.tingkat },
+      pengaturan: kelas.sertifikat,
+      // Pulau yang boss-nya membuka sertifikat (null = kelas belum punya pulau berisi soal)
+      pulauTerakhir: zonaTerakhir(kelas.zonaIds, levels)?.nama || null,
+      siswa
+    };
+  }],
+
+  ['PUT', ':id/sertifikat', async (ctx, { id }) => {
+    const a = await aksesGuru(ctx);
+    bolehKelas(a, id);
+    const isi = sertifikatDariTeks(JSON.stringify(await bacaJson(ctx.request)));
+    if (isi.ttdJabatan && !isi.ttdNama) throw new GalatApi(400, 'Isi nama penanda tangan dulu, baru jabatannya.');
+    await jalankan(ctx.env.DB, 'UPDATE kelas SET sertifikat = ? WHERE id = ?', JSON.stringify(isi), id);
+    return isi;
   }],
 
   ['POST', ':id/kode-baru', async (ctx, { id }) => {
