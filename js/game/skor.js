@@ -14,14 +14,17 @@ export const CLUE = [
 ];
 
 /**
- * Bintang:
+ * Bintang mode TEKS (aturan lama, tidak berubah):
  *  - 1 bintang dasar karena selesai
  *  - +1 jika clue yang dibeli paling tinggi Clue 1
  *  - +1 jika jumlahBaris tidak melebihi batasBaris
  *  - jika Clue 3 dibeli, bintang maksimal 1
+ * Mode BLOK (modeBlok = true): bintang hanya dari selesai atau tidaknya soal — selesai = 3 bintang,
+ * berapa pun jumlah blok (dan clue) yang dipakai.
  */
-export function hitungBintang({ berhasil, clueDibeli = 0, jumlahBaris = 0, batasBaris = null }) {
+export function hitungBintang({ berhasil, clueDibeli = 0, jumlahBaris = 0, batasBaris = null, modeBlok = false }) {
   if (!berhasil) return 0;
+  if (modeBlok) return 3;
   if (clueDibeli >= 3) return 1;
   let bintang = 1;
   if (clueDibeli <= 1) bintang += 1;
@@ -29,8 +32,9 @@ export function hitungBintang({ berhasil, clueDibeli = 0, jumlahBaris = 0, batas
   return bintang;
 }
 
-/** Bintang paling banyak yang masih bisa diraih setelah membeli clue. */
-export function bintangMaksimal(clueDibeli = 0) {
+/** Bintang paling banyak yang masih bisa diraih setelah membeli clue (mode blok: selalu 3). */
+export function bintangMaksimal(clueDibeli = 0, modeBlok = false) {
+  if (modeBlok) return 3;
   if (clueDibeli >= 3) return 1;
   return clueDibeli <= 1 ? 3 : 2;
 }

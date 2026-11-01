@@ -1,6 +1,9 @@
 // js/pages/level.js — halaman bermain (#/level/:id)
 // Kiri (±40%): kartu soal, chip perintah, editor, tombol. Kanan (±60%): panggung 16:9.
 // Di HP panggung tampil di atas, editor di bawah.
+// Mode pengerjaan soal (level.mode): 'teks' = editor kode seperti biasa; 'blok' = editor blok;
+// 'keduanya' = murid memilih lewat tab. Editor blok menerjemahkan susunan blok menjadi kode teks
+// (js/game/blok.js), jadi Jalankan, interpreter, bintang, dan koin memakai jalur yang sama persis.
 
 import { esc, robot, tombol, bukaModal, toast, jenisGalat, gambarRobot, goyangkan } from '../ui.js';
 import {
@@ -11,6 +14,8 @@ import { pindah } from '../router.js';
 import { LABEL_JENIS } from '../data/levels.js';
 import { ikonGembok, ikonBug, ikonPanah } from '../game/ikon.js';
 import { buatEditor } from '../game/editor.js';
+import { buatEditorBlok } from '../game/editor-blok.js';
+import { teksKeBlok } from '../game/blok.js';
 import { buatPanggung } from '../game/panggung.js';
 import { jalankanKodeSiswa } from '../game/runner.js';
 import { SEMUA_PERINTAH } from '../game/interpreter.js';
@@ -133,6 +138,11 @@ export async function renderLevel(halaman, { params }) {
   // Kode terakhir murid tetap tersimpan di server (progres.kodeTerakhir) untuk dilihat guru,
   // tetapi tidak dimuat lagi ke editor. Bintang, nilai, dan koin tersimpan terpisah dari kode.
   const kodeMula = terjemahkanKode(level.kodeAwal || '', bahasaKode);
+  // Mode blok: titik mulai = kode awal versi blok dari guru; soal tanpa versi blok diterjemahkan dari kode awal teks
+  const modeSoal = level.mode === 'blok' || level.mode === 'keduanya' ? level.mode : 'teks';
+  const blokMula = level.kodeAwalBlok || teksKeBlok(level.kodeAwal || '').blok || [];
+  let modeKode = modeSoal === 'blok' || (modeSoal === 'keduanya' && pref.modeKode === 'blok') ? 'blok' : 'teks';
+  const tabMode = (m, teks) => `<button type="button" role="tab" class="tab-mode-kode" data-mode-kode="${m}" aria-selected="${modeKode === m}">${teks}</button>`;
 
   const lencana = level.jenis === 'debug'
     ? `${ikonBug(16)} ${LABEL_JENIS.debug}`
@@ -168,7 +178,8 @@ export async function renderLevel(halaman, { params }) {
               </ul>` : ''}
           </div>
 
-          <div class="kartu py-4">
+          ${modeSoal === 'blok' ? '' : `
+          <div class="kartu py-4" data-kartu-chip ${modeKode === 'blok' ? 'hidden' : ''}>
             <div class="flex flex-wrap items-center justify-between gap-2">
               <h2 class="font-judul text-xl font-extrabold">Perintah</h2>
               <span class="text-sm font-bold text-teal-tua">Klik perintah untuk menambahkannya</span>
@@ -176,11 +187,15 @@ export async function renderLevel(halaman, { params }) {
             <div class="mt-2 flex flex-wrap gap-2" data-chips>
               ${perintah.map((p) => `<button type="button" class="chip-perintah" data-chip="${esc(p)}">${esc(labelChip(p, bahasaKode))}</button>`).join('')}
             </div>
-          </div>
+          </div>`}
 
           <div>
+            ${modeSoal === 'keduanya' ? `
+              <div class="tab-mode" role="tablist" aria-label="Cara mengerjakan">
+                ${tabMode('teks', 'Ketik kode')}${tabMode('blok', 'Susun blok')}
+              </div>` : ''}
             <div class="flex items-center justify-between mb-1">
-              <span class="label-kolom mb-0">Kode</span>
+              <span class="label-kolom mb-0" data-label-kode>${modeKode === 'blok' ? 'Susun blok' : 'Kode'}</span>
               <span class="text-sm font-bold text-teal-tua" data-info-baris></span>
             </div>
             ${level.jenis === 'debug' ? `
@@ -189,7 +204,8 @@ export async function renderLevel(halaman, { params }) {
                 <p class="flex-1 font-bold">Ada bug di kode ini! Temukan dan perbaiki</p>
                 <button type="button" class="tombol tombol-sekunder tombol-kecil" data-kode-awal>Kembalikan kode awal</button>
               </div>` : ''}
-            <div class="editor-kode" data-editor><p class="p-4 font-bold text-teal-tua">Menyiapkan editor...</p></div>
+            ${modeSoal === 'blok' ? '' : `<div class="editor-kode" data-editor ${modeKode === 'blok' ? 'hidden' : ''}><p class="p-4 font-bold text-teal-tua">Menyiapkan editor...</p></div>`}
+            ${modeSoal === 'teks' ? '' : `<div data-editor-blok ${modeKode === 'blok' ? '' : 'hidden'}></div>`}
           </div>
 
           <div class="flex flex-wrap items-center gap-3">
@@ -233,33 +249,87 @@ export async function renderLevel(halaman, { params }) {
   panggung.bicara(progres?.selesai ? 'Mau coba dapat bintang lebih banyak?' : 'Hai! Tulis kodenya, lalu tekan Jalankan.');
 
   // ---------- Editor ----------
+  // Mode blok: bintang hanya dari selesai/tidaknya soal, jadi tidak ada target jumlah baris
+  const modeBlokAktif = () => modeKode === 'blok';
   const perbaruiInfoBaris = (kode) => {
     const n = String(kode).split('\n').filter((b) => { const t = b.replace(/\/\/.*$/, '').trim(); return t && !/^[}\s]+$/.test(t); }).length;
+    if (modeBlokAktif()) {
+      infoBaris.textContent = `${n} blok · sampai tujuan = ⭐3`;
+      infoBaris.classList.remove('text-oranye');
+      return;
+    }
     infoBaris.textContent = level.batasBaris ? `${n} baris · target ⭐3: ≤ ${level.batasBaris}` : `${n} baris`;
     infoBaris.classList.toggle('text-oranye', !!level.batasBaris && n > level.batasBaris);
   };
-  const editor = await buatEditor($('[data-editor]'), {
+  const editorTeks = modeSoal === 'blok' ? null : await buatEditor($('[data-editor]'), {
     nilai: kodeMula,
     saranKata: perintah,
     bahasa: bahasaKode,
     label: `Editor kode level ${level.judul}`,
-    saatUbah: (kode) => perbaruiInfoBaris(kode)
+    saatUbah: (kode) => { if (modeKode === 'teks') perbaruiInfoBaris(kode); }
   });
-  perbaruiInfoBaris(kodeMula);
+  const editorBlok = modeSoal === 'teks' ? null : buatEditorBlok($('[data-editor-blok]'), {
+    blok: blokMula,
+    perintah,
+    bahasa: bahasaKode,
+    label: `Editor blok level ${level.judul}`,
+    saatUbah: (kode) => { if (modeKode === 'blok') perbaruiInfoBaris(kode); }
+  });
+  // Editor yang sedang dipakai; keduanya punya API yang sama (getNilai selalu kode teks)
+  let editor = modeKode === 'blok' ? editorBlok : editorTeks;
+  // Di mode blok tidak ada nomor baris yang terlihat: "Baris 3: ..." cukup ditandai pada bloknya
+  const pesanRobot = (pesan) => (editor === editorBlok ? String(pesan ?? '').replace(/^Baris \d+: /, '') : pesan);
+  perbaruiInfoBaris(editor.getNilai());
 
   // Kembalikan editor ke kerangka awal level (dipakai tombol Main lagi & Kembalikan kode awal)
   const isiKerangkaAwal = () => {
-    editor.setNilai(kodeMula);
-    perbaruiInfoBaris(kodeMula);
+    if (editor === editorBlok) editorBlok.setBlok(blokMula);
+    else editorTeks.setNilai(kodeMula);
+    perbaruiInfoBaris(editor.getNilai());
     editor.bersihkanSorotan();
   };
 
-  // ---------- Chip perintah: selalu aktif untuk semua murid ----------
+  // ---------- Mode keduanya: pindah antara ketik kode dan susun blok ----------
+  // Pindah mode = jawaban yang sedang dikerjakan direset: kedua editor kembali ke kode awal masing-masing,
+  // dan siswa mulai dari kode awal mode yang baru dipilih. Selalu ditanyakan dulu supaya tidak hilang tanpa sengaja.
+  // Bintang, nilai, dan koin yang sudah didapat tetap tersimpan di server.
+  halaman.querySelectorAll('[data-mode-kode]').forEach((tab) => tab.addEventListener('click', async () => {
+    const m = tab.dataset.modeKode;
+    if (m === modeKode || sedangJalan || catatBerjalan) return;
+    const ya = await bukaModal({
+      judul: m === 'blok' ? 'Pindah ke Susun blok?' : 'Pindah ke Ketik kode?',
+      isi: `<p>Jawaban yang sedang kamu kerjakan akan dihapus, lalu kamu mulai lagi dari kode awal ${m === 'blok' ? 'versi blok' : 'versi ketik'}.</p>
+        <p class="mt-2">Bintang dan koin yang sudah kamu dapat tetap aman.</p>`,
+      pose: 'berpikir',
+      tombol: [
+        { teks: 'Batal', nilai: false, varian: 'sekunder' },
+        { teks: 'Ya, pindah', nilai: true }
+      ]
+    });
+    if (!ya || sedangJalan || catatBerjalan) return;
+    editor.bersihkanSorotan();
+    editorTeks.setNilai(kodeMula);
+    editorBlok.setBlok(blokMula);
+    modeKode = m;
+    editor = m === 'blok' ? editorBlok : editorTeks;
+    halaman.querySelectorAll('[data-mode-kode]').forEach((t) => t.setAttribute('aria-selected', String(t.dataset.modeKode === m)));
+    $('[data-editor]').hidden = m === 'blok';
+    $('[data-editor-blok]').hidden = m !== 'blok';
+    $('[data-kartu-chip]').hidden = m === 'blok';
+    $('[data-label-kode]').textContent = m === 'blok' ? 'Susun blok' : 'Kode';
+    perbaruiInfoBaris(editor.getNilai());
+    panggung.reset();
+    resetTujuan();
+    simpanPreferensi({ modeKode: m });
+    toast(m === 'blok' ? 'Sekarang kamu menyusun blok. Mulai dari kode awal ya!' : 'Sekarang kamu mengetik kode. Mulai dari kode awal ya!', 'info');
+  }));
+
+  // ---------- Chip perintah: selalu aktif untuk semua murid (mode teks) ----------
   halaman.querySelectorAll('[data-chip]').forEach((c) => { c.title = `Tambahkan ${labelChip(c.dataset.chip, bahasaKode)}`; });
-  $('[data-chips]').addEventListener('click', (e) => {
+  $('[data-chips]')?.addEventListener('click', (e) => {
     const chip = e.target.closest('[data-chip]');
-    if (!chip) return;
-    editor.sisipkan(templatChip(chip.dataset.chip, bahasaKode));
+    if (!chip || !editorTeks) return;
+    editorTeks.sisipkan(templatChip(chip.dataset.chip, bahasaKode));
   });
   $('[data-sakelar-petak]').addEventListener('change', (e) => {
     panggung.tampilPetak(e.target.checked);
@@ -291,7 +361,8 @@ export async function renderLevel(halaman, { params }) {
   // ---------- Toko clue ----------
   const lencanaClue = $('[data-jumlah-clue]');
   const clueKini = () => progres?.clueDibeli || 0;
-  const catatanClue = { 1: 'Bintang tetap bisa 3.', 2: 'Bintang paling banyak jadi 2.', 3: 'Bintang paling banyak jadi 1.' };
+  const catatanClueTeks = { 1: 'Bintang tetap bisa 3.', 2: 'Bintang paling banyak jadi 2.', 3: 'Bintang paling banyak jadi 1.' };
+  const catatanClue = (nomor) => (modeBlokAktif() ? 'Di mode Susun blok, bintangmu tetap bisa 3.' : catatanClueTeks[nomor]);
 
   function daftarClueHTML() {
     return CLUE.map((c) => {
@@ -309,7 +380,7 @@ export async function renderLevel(halaman, { params }) {
           ${dibeli
             ? `<pre class="isi-clue">${esc(terjemahkanTeks(level.clue?.[c.nomor - 1], bahasaKode) || 'Clue belum tersedia.')}</pre>`
             : bisaBeli
-              ? `<p class="text-sm mt-1">${catatanClue[c.nomor]}</p>
+              ? `<p class="text-sm mt-1">${catatanClue(c.nomor)}</p>
                  <button type="button" class="tombol tombol-utama tombol-kecil mt-2" data-beli-clue="${c.nomor}">Beli Clue ${c.nomor} (${hargaClue[c.nomor - 1]} koin)</button>`
               : `<p class="mt-1 flex items-center gap-2 text-sm font-bold">${ikonGembok(16)} Beli Clue ${c.nomor - 1} dulu</p>`}
         </div>`;
@@ -318,6 +389,14 @@ export async function renderLevel(halaman, { params }) {
 
   function aturanBintangHTML() {
     const b = (n) => '<img src="image/item/bintang.png" alt="" class="inline w-5 h-5 object-contain align-text-bottom">'.repeat(n);
+    if (modeBlokAktif()) {
+      return `
+        <div class="aturan-bintang">
+          <p class="font-judul text-lg font-extrabold">Cara dapat bintang</p>
+          <ul><li>${b(3)} Di mode Susun blok, robot sampai di tujuan = langsung 3 bintang, berapa pun jumlah bloknya.</li></ul>
+          <p class="mt-2 font-bold" data-maks-bintang>Sekarang kamu masih bisa dapat 3 bintang.</p>
+        </div>`;
+    }
     return `
       <div class="aturan-bintang">
         <p class="font-judul text-lg font-extrabold">Cara dapat bintang</p>
@@ -389,7 +468,7 @@ export async function renderLevel(halaman, { params }) {
           pesan.hidden = false;
           kotak.querySelector('[data-koin-clue]').textContent = hasil.siswa?.koin ?? '';
           kotak.querySelector('[data-daftar-clue]').innerHTML = daftarClueHTML();
-          kotak.querySelector('[data-maks-bintang]').textContent = `Sekarang kamu masih bisa dapat ${bintangMaksimal(hasil.clueDibeli)} bintang.`;
+          kotak.querySelector('[data-maks-bintang]').textContent = `Sekarang kamu masih bisa dapat ${bintangMaksimal(hasil.clueDibeli, modeBlokAktif())} bintang.`;
           kotak.querySelector(`[data-kartu-clue="${nomor}"] .isi-clue`)?.scrollIntoView({ block: 'nearest' });
         });
       }
@@ -464,10 +543,12 @@ export async function renderLevel(halaman, { params }) {
   }
 
   // ---------- Modal hasil ----------
-  async function tampilkanHasil({ bintang, nilai, koinDidapat, berlianDidapat = 0, juara = false, jumlahBaris, clueDibeli }) {
-    // Saran untuk bintang berikutnya, sesuai aturan bintang
+  async function tampilkanHasil({ bintang, nilai, koinDidapat, berlianDidapat = 0, juara = false, jumlahBaris, clueDibeli, modeBlok = false }) {
+    // Saran untuk bintang berikutnya, sesuai aturan bintang (mode blok: selesai = 3 bintang, tanpa saran)
     const saranDaftar = [];
-    if (clueDibeli >= 3) {
+    if (modeBlok) {
+      // tidak ada saran: bintang mode blok hanya dari selesai/tidaknya soal
+    } else if (clueDibeli >= 3) {
       saranDaftar.push('Kamu memakai Clue 3, jadi level ini paling banyak 1 bintang. Di level lain, coba sampai Clue 1 saja ya!');
     } else {
       if (clueDibeli >= 2) saranDaftar.push('Kamu memakai Clue 2, jadi bintang paling banyak 2.');
@@ -565,18 +646,20 @@ export async function renderLevel(halaman, { params }) {
       if (token.batal) return;
 
       const clueDibeli = progres?.clueDibeli || 0;
-      const bintang = hitungBintang({ berhasil: hasil.berhasil, clueDibeli, jumlahBaris: hasil.jumlahBaris, batasBaris: level.batasBaris });
-      const nilai = NILAI_BINTANG[bintang];
+      // Perkiraan di browser; bintang yang tersimpan tetap dihitung ulang server (dipakai di kotak hasil)
+      const modeBlok = editor === editorBlok;
+      let bintang = hitungBintang({ berhasil: hasil.berhasil, clueDibeli, jumlahBaris: hasil.jumlahBaris, batasBaris: level.batasBaris, modeBlok });
+      let nilai = NILAI_BINTANG[bintang];
       const detik = ambilDetik();
       catatTertunda = () => catatPercobaan(siswa.id, level.id, {
-        berhasil: hasil.berhasil, bintang, nilai, kode, detik, judul: level.judul
+        berhasil: hasil.berhasil, bintang, nilai, kode, detik, judul: level.judul, mode: modeBlok ? 'blok' : 'teks'
       });
 
       const jenisGalat = hasil.galat?.jenis;
       if (jenisGalat === 'sintaks') {
         await jalankanCatat();
         panggung.aturPose('salah');
-        panggung.bicara(hasil.alasan);
+        panggung.bicara(pesanRobot(hasil.alasan));
         editor.tandaiGalat(hasil.galat.baris);
         return;
       }
@@ -604,7 +687,9 @@ export async function renderLevel(halaman, { params }) {
         await new Promise((r) => setTimeout(r, kurangiGerak() ? 0 : 800));
         if (token.batal) return;
         if (level.jenis === 'boss' && tercatat?.berlianDidapat) await animasiPiala(tercatat.berlianDidapat);
+        if (Number.isInteger(tercatat?.bintang)) { bintang = tercatat.bintang; nilai = tercatat.nilai; }
         await tampilkanHasil({
+          modeBlok: tercatat ? !!tercatat.modeBlok : modeBlok,
           bintang,
           nilai,
           koinDidapat: tercatat?.koinDidapat || 0,
@@ -625,7 +710,7 @@ export async function renderLevel(halaman, { params }) {
         panggung.aturPose('sedih');
       }
       if (hasil.galat?.baris) editor.tandaiGalat(hasil.galat.baris);
-      panggung.bicara(hasil.alasan);
+      panggung.bicara(pesanRobot(hasil.alasan));
     } finally {
       if (tokenJalan === token) aturTombolJalan(false);
     }
@@ -658,6 +743,7 @@ export async function renderLevel(halaman, { params }) {
     jalankanCatat().catch(() => {}); // halaman sudah ditinggal: cukup dicoba kirim
     tambahLamaBermain(siswa.id, level.id, ambilDetik()).catch(() => {});
     panggung.hancurkan();
-    editor.hancurkan();
+    editorTeks?.hancurkan();
+    editorBlok?.hancurkan();
   };
 }

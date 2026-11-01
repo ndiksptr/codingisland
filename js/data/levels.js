@@ -22,6 +22,17 @@ const PERINTAH_SALJU = [...PERINTAH_GURUN, 'selama', 'sampai_tujuan', 'buat'];
 /** Perintah bawaan tiap zona (dipakai sebagai isian awal di editor level guru). */
 export const PERINTAH_ZONA = { pantai: PERINTAH_PANTAI, laut: PERINTAH_LAUT, gurun: PERINTAH_GURUN, salju: PERINTAH_SALJU };
 
+/**
+ * Mode pengerjaan soal (kolom level.mode, migrasi 0013). Bawaan 'teks' = seperti sebelumnya (mengetik kode).
+ * Tahap 1 baru menyimpan pilihannya; layar siswa belum berubah sampai mode blok selesai dibuat.
+ */
+export const MODE_SOAL = {
+  teks: 'Teks (ketik kode)',
+  blok: 'Blok (susun balok)',
+  keduanya: 'Teks dan blok'
+};
+export const MODE_SOAL_BAWAAN = 'teks';
+
 /** Label jenis level untuk ditampilkan ke siswa. */
 export const LABEL_JENIS = {
   ketik: 'Ketik Kode',

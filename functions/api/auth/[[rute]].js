@@ -13,6 +13,7 @@
 //   GET  /api/auth/konteks              konteks dashboard guru
 //   PATCH /api/auth/nama, POST /api/auth/password            akun guru sendiri
 //   GET/PUT /api/auth/pengaturan        pengaturan permainan (PUT: admin)
+//   PUT /api/auth/pengaturan/mode-blok  { aktif } sakelar darurat mode blok (admin, bukan saat menyamar)
 //   (pulau per kelas diatur lewat PUT /api/kelas/:id/zona)
 //   GET/POST /api/auth/guru, PATCH/DELETE /api/auth/guru/:id (admin)
 //   POST /api/auth/guru/:id/reset-password { password }  admin menetapkan password akun berperan guru
@@ -300,6 +301,18 @@ export const onRequest = buatRouter([
     const db = ctx.env.DB;
     const simpan = (k, v) => perintah(db, 'INSERT INTO pengaturan (kunci, nilai) VALUES (?,?) ON CONFLICT(kunci) DO UPDATE SET nilai = excluded.nilai', k, JSON.stringify(v));
     await db.batch([simpan('harga_clue', harga), simpan('koin_awal', koin)]);
+    return bacaPengaturan(db);
+  }],
+
+  // Sakelar darurat: false = semua soal tampil & dinilai sebagai mode teks untuk semua siswa.
+  // Disimpan di tabel pengaturan (kunci mode_blok), jadi tidak perlu migrasi. Data soal tidak diubah,
+  // jadi menyalakannya lagi langsung mengembalikan mode masing-masing soal.
+  ['PUT', 'pengaturan/mode-blok', async (ctx) => {
+    wajibAdminAsli(await aksesGuru(ctx));
+    const { aktif } = await bacaJson(ctx.request);
+    if (typeof aktif !== 'boolean') throw new GalatApi(400, 'Pilih nyalakan atau matikan mode blok.');
+    const db = ctx.env.DB;
+    await jalankan(db, "INSERT INTO pengaturan (kunci, nilai) VALUES ('mode_blok', ?) ON CONFLICT(kunci) DO UPDATE SET nilai = excluded.nilai", JSON.stringify(aktif));
     return bacaPengaturan(db);
   }],
 

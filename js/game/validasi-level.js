@@ -3,6 +3,7 @@
 // dan ciDev.validasiLevel(). Fungsi murni (tanpa DOM), bisa dijalankan di Node.
 
 import { jalankanKode, hitungJumlahBaris } from './interpreter.js';
+import { blokKeTeks } from './blok.js';
 
 /**
  * Daftar alasan sebuah level belum boleh diterbitkan (kosong = siap).
@@ -38,6 +39,20 @@ export function alasanBelumSiap(l) {
     }
   } else if (adaKodeAwal && jalankanKode(l.kodeAwal, l.dunia, opsi).berhasil) {
     alasan.push('Kode awal sudah langsung berhasil. Kosongkan atau ubah kode awalnya.');
+  }
+
+  // Mode blok / keduanya: kode awal versi blok diperiksa dengan aturan yang sama (lewat terjemahan ke teks)
+  if (l.mode === 'blok' || l.mode === 'keduanya') {
+    if (!Array.isArray(l.kodeAwalBlok)) {
+      alasan.push('Kode awal versi blok belum ada. Perbaiki salah tulis di kode awal teks, atau susun versi bloknya.');
+    } else {
+      const kodeBlok = blokKeTeks(l.kodeAwalBlok).kode;
+      const adaBlok = hitungJumlahBaris(kodeBlok) > 0;
+      if (l.jenis === 'debug' && !adaBlok) alasan.push('Level debug wajib punya kode awal versi blok yang sengaja salah.');
+      else if (adaBlok && jalankanKode(kodeBlok, l.dunia, opsi).berhasil) {
+        alasan.push('Kode awal versi blok sudah langsung berhasil. Samakan dengan kode awal teks atau ubah susunannya.');
+      }
+    }
   }
 
   const wajib = (l.dunia.item || []).filter((it) => it.wajib !== false).length;

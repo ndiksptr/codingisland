@@ -1,9 +1,9 @@
 // js/guru/pengaturan.js — #/guru/pengaturan: nama & password sendiri;
-// khusus admin: harga clue dan koin awal siswa baru.
+// khusus admin: harga clue, koin awal siswa baru, dan sakelar darurat mode blok.
 // (Sakelar zona aktif/nonaktif ada di halaman Level & Soal, js/guru/level.js.)
 
-import { esc, toast } from '../ui.js';
-import { guruUbahNama, guruUbahPassword, adminSimpanPengaturan } from '../store.js';
+import { esc, toast, jenisGalat, bukaModal } from '../ui.js';
+import { guruUbahNama, guruUbahPassword, adminSimpanPengaturan, adminAturModeBlok } from '../store.js';
 import { muatUlang } from '../router.js';
 import { CLUE } from '../game/skor.js';
 
@@ -46,7 +46,18 @@ export async function renderPengaturan(wadah, { konteks }) {
           </div>
           <p class="pesan-kolom pesan-galat" data-galat></p>
           <button type="submit" class="tombol tombol-utama tombol-kecil">Simpan pengaturan</button>
-        </form>` : ''}
+        </form>
+
+        <section class="dg-kartu" aria-labelledby="judul-mode-blok">
+          <h2 id="judul-mode-blok" class="dg-subjudul">Mode blok <span class="dg-chip">Admin</span></h2>
+          <p class="text-sm mb-3">Sakelar darurat. Bila dimatikan, <strong>semua soal</strong> tampil dan dinilai sebagai mode teks untuk semua siswa.
+            Pilihan mode di tiap soal tidak diubah, jadi menyalakannya lagi langsung mengembalikan semuanya.</p>
+          <label class="sakelar">
+            <input type="checkbox" role="switch" data-mode-blok ${pengaturan.modeBlokAktif ? 'checked' : ''}>
+            <span class="sakelar-jalur" aria-hidden="true"></span>
+            <span>${pengaturan.modeBlokAktif ? 'Mode blok menyala' : 'Mode blok dimatikan: semua soal tampil sebagai teks'}</span>
+          </label>
+        </section>` : ''}
     </div>`;
 
   // Kirim form, tampilkan pesan galat di dalam form itu
@@ -80,6 +91,30 @@ export async function renderPengaturan(wadah, { konteks }) {
     await guruUbahPassword(String(fd.get('lama') || ''), String(fd.get('baru') || ''));
     form.reset();
     toast('Password berhasil diganti.', 'sukses');
+  });
+
+  // Sakelar darurat mode blok: tampilan baru berubah setelah tersimpan
+  wadah.querySelector('[data-mode-blok]')?.addEventListener('change', async (e) => {
+    const sakelar = e.target;
+    const aktif = sakelar.checked;
+    sakelar.checked = !aktif;
+    const ya = await bukaModal({
+      judul: aktif ? 'Nyalakan mode blok?' : 'Matikan mode blok untuk semua siswa?',
+      isi: aktif
+        ? '<p>Soal yang diatur ke mode Blok atau Teks dan blok kembali tampil sesuai pengaturannya.</p>'
+        : '<p>Semua soal akan tampil dan dinilai sebagai mode teks untuk semua siswa, sampai sakelar ini dinyalakan lagi. Progres dan bintang siswa tidak berubah.</p>',
+      tombol: [{ teks: 'Batal', nilai: false, varian: 'sekunder' }, { teks: aktif ? 'Nyalakan' : 'Matikan', nilai: true, varian: aktif ? 'utama' : 'bahaya' }]
+    });
+    if (!ya) return;
+    sakelar.disabled = true;
+    try {
+      await adminAturModeBlok(aktif);
+      toast(aktif ? 'Mode blok berhasil dinyalakan.' : 'Mode blok berhasil dimatikan. Semua soal tampil sebagai teks.', 'sukses');
+      muatUlang();
+    } catch (err) {
+      toast(err.message, jenisGalat(err));
+      sakelar.disabled = false;
+    }
   });
 
   pasangForm('[data-form-permainan]', async (fd) => {

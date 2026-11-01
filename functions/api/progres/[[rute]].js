@@ -16,8 +16,10 @@ import { buatRouter, bacaJson, GalatApi } from '../../../server/http.js';
 import { wajibSiswaDiKelas } from '../../../server/sesi.js';
 import {
   semua, satu, jalankan, perintah, sekarang, siswaKeObjek, progresKeObjek, levelKeObjek, semuaLevel,
-  bacaPengaturan, bacaZonaKelas, zonaKelasDariTeks, perintahAktivitas, levelBerlaku, kelasDariBaris
+  bacaPengaturan, bacaZonaKelas, zonaKelasDariTeks, perintahAktivitas, levelBerlaku, kelasDariBaris,
+  modeBlokAktifDariBaris, modeBerlaku
 } from '../../../server/data.js';
+import { kodeBentukBlok } from '../../../js/game/blok.js';
 import { jalankanKode } from '../../../js/game/interpreter.js';
 import { hitungBintang, hitungKoin, NILAI_BINTANG, BERLIAN_BOSS, CLUE, KOIN_SELESAI_PERTAMA, KOIN_PER_BINTANG_BARU } from '../../../js/game/skor.js';
 import { hitungPeta, zonaTerakhir } from '../../../js/game/kemajuan.js';
@@ -45,10 +47,11 @@ async function levelUntukSiswa(db, siswa, levelId) {
  * TERBUKA dengan aturan yang sama dengan peta (js/game/kemajuan.js): level/pulau terkunci ditolak 403.
  */
 async function levelDanProgres(db, siswa, levelId) {
-  const [rl, rp, rk] = await db.batch([
+  const [rl, rp, rk, rm] = await db.batch([
     perintah(db, 'SELECT * FROM level'),
     perintah(db, 'SELECT * FROM progres WHERE siswa_id = ? AND kelas_id = ?', siswa.id, siswa.kelas_aktif),
-    perintah(db, 'SELECT zona_ids FROM kelas WHERE id = ?', siswa.kelas_aktif)
+    perintah(db, 'SELECT zona_ids FROM kelas WHERE id = ?', siswa.kelas_aktif),
+    perintah(db, "SELECT nilai FROM pengaturan WHERE kunci = 'mode_blok'")
   ]);
   const zonaIds = rk.results?.[0] ? zonaKelasDariTeks(rk.results[0].zona_ids) : [];
   const berlaku = (rl.results || []).map(levelKeObjek).filter((x) => levelBerlaku(x, siswa.kelas_aktif, zonaIds));
@@ -59,7 +62,10 @@ async function levelDanProgres(db, siswa, levelId) {
   const status = sz?.levels.find((x) => x.id === levelId)?.status;
   if (!sz?.terbuka) throw new GalatApi(403, `Pulau ini masih terkunci. ${sz?.syarat || 'Selesaikan pulau sebelumnya dulu'} ya.`);
   if (status === 'terkunci') throw new GalatApi(403, 'Level ini masih terkunci. Selesaikan level sebelumnya dulu ya.');
-  return { level: l, levels: berlaku, zonaIds, progres: semuaProgres.find((p) => p.levelId === levelId) || null };
+  return {
+    level: l, levels: berlaku, zonaIds, progres: semuaProgres.find((p) => p.levelId === levelId) || null,
+    modeBlokAktif: modeBlokAktifDariBaris(rm.results?.[0])
+  };
 }
 
 const pastikanBarisProgres = (db, siswaId, kelasId, levelId) =>
@@ -129,7 +135,7 @@ export const onRequest = buatRouter([
   ['POST', ':levelId/percobaan', async (ctx, { levelId }) => {
     const siswa = await wajibSiswaDiKelas(ctx);
     const db = ctx.env.DB;
-    const { level, levels, zonaIds, progres: awal } = await levelDanProgres(db, siswa, levelId);
+    const { level, levels, zonaIds, progres: awal, modeBlokAktif } = await levelDanProgres(db, siswa, levelId);
     const body = await bacaJson(ctx.request);
     const kode = String(body.kode ?? '').slice(0, MAKS_KODE);
     const detik = Math.min(MAKS_DETIK, Math.max(0, Math.round(Number(body.detik) || 0)));
@@ -138,7 +144,11 @@ export const onRequest = buatRouter([
     // Interpreter yang sama dengan browser: perintah bahasa Indonesia, Inggris, atau campuran sama-sama
     // diterima, jadi bintang & nilainya sama persis. Kode disimpan apa adanya (tidak diterjemahkan).
     const hasil = jalankanKode(kode, level.dunia, { perintahTersedia: level.perintahTersedia, bahasa: siswa.bahasa });
-    const bintang = hitungBintang({ berhasil: hasil.berhasil, clueDibeli: awal?.clueDibeli || 0, jumlahBaris: hasil.jumlahBaris, batasBaris: level.batasBaris });
+    // Penilaian mode blok (selesai = 3 bintang) hanya bila: siswa mengerjakan di editor blok, soal mengizinkan
+    // blok, sakelar darurat tidak dimatikan, dan kodenya memang berbentuk hasil terjemahan blok. Selain itu
+    // dinilai dengan aturan mode teks yang lama (termasuk bintang efisiensi baris).
+    const modeBlok = body.mode === 'blok' && ['blok', 'keduanya'].includes(modeBerlaku(level, modeBlokAktif)) && kodeBentukBlok(kode);
+    const bintang = hitungBintang({ berhasil: hasil.berhasil, clueDibeli: awal?.clueDibeli || 0, jumlahBaris: hasil.jumlahBaris, batasBaris: level.batasBaris, modeBlok });
     const nilai = NILAI_BINTANG[bintang];
     const ok = hasil.berhasil ? 1 : 0;
     const boss = level.jenis === 'boss' ? 1 : 0;
@@ -194,6 +204,7 @@ export const onRequest = buatRouter([
       berhasil: hasil.berhasil,
       bintang,
       nilai,
+      modeBlok,
       progres: progresKeObjek(hasilBatch[7].results[0]),
       koinDidapat,
       berlianDidapat,

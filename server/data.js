@@ -4,6 +4,8 @@
 import { ZONA } from '../js/data/zona.js';
 import { CLUE } from '../js/game/skor.js';
 import { BAHASA_BAWAAN_SISWA } from '../js/game/kamus-perintah.js';
+import { MODE_SOAL, MODE_SOAL_BAWAAN } from '../js/data/levels.js';
+import { normalkanBlok } from '../js/game/blok.js';
 
 export const KOIN_AWAL = 20;
 export const sekarang = () => new Date().toISOString();
@@ -53,6 +55,9 @@ export function levelKeObjek(r) {
     terbit: !!r.terbit,
     pembuat: r.pembuat_id ? { id: r.pembuat_id, nama: r.pembuat_nama } : (r.pembuat_nama ? { id: null, nama: r.pembuat_nama } : null),
     kelasIds: jsonAman(r.kelas_ids, null),
+    // Mode pengerjaan & kode awal versi blok (migrasi 0013): susunan blok JSON, null = belum ada
+    mode: MODE_SOAL[r.mode] ? r.mode : MODE_SOAL_BAWAAN,
+    kodeAwalBlok: normalkanBlok(jsonAman(r.kode_awal_blok, null)),
     dibuatPada: r.dibuat_pada,
     diperbarui: r.diperbarui
   };
@@ -122,17 +127,18 @@ export async function semuaLevel(db) {
 
 /** Simpan objek level (insert atau update) — kolom penting terpisah, sisanya di kolom JSON data. */
 export function perintahSimpanLevel(db, l) {
-  const { id, zona, urutan, jenis, judul, bawaan, terbit, pembuat, kelasIds, dibuatPada, diperbarui, ...isi } = l;
+  const { id, zona, urutan, jenis, judul, bawaan, terbit, pembuat, kelasIds, mode, kodeAwalBlok, dibuatPada, diperbarui, ...isi } = l;
   delete isi.nomor; delete isi.status; delete isi.bintang; delete isi.nilai; // jaga-jaga field tampilan
   delete isi.kelasNonaktif; // fitur lama (kolom kelas_nonaktif dihapus di migrasi 0008)
   return perintah(db, `
-    INSERT INTO level (id, zona, urutan, jenis, judul, bawaan, terbit, pembuat_id, pembuat_nama, kelas_ids, data, dibuat_pada, diperbarui)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+    INSERT INTO level (id, zona, urutan, jenis, judul, bawaan, terbit, pembuat_id, pembuat_nama, kelas_ids, mode, kode_awal_blok, data, dibuat_pada, diperbarui)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     ON CONFLICT(id) DO UPDATE SET zona=excluded.zona, urutan=excluded.urutan, jenis=excluded.jenis, judul=excluded.judul,
       bawaan=excluded.bawaan, terbit=excluded.terbit, pembuat_id=excluded.pembuat_id, pembuat_nama=excluded.pembuat_nama,
-      kelas_ids=excluded.kelas_ids, data=excluded.data, diperbarui=excluded.diperbarui`,
+      kelas_ids=excluded.kelas_ids, mode=excluded.mode, kode_awal_blok=excluded.kode_awal_blok, data=excluded.data, diperbarui=excluded.diperbarui`,
   id, zona, urutan ?? 0, jenis, judul, bawaan ? 1 : 0, terbit ? 1 : 0, pembuat?.id || null, pembuat?.nama || null,
-  kelasIds ? JSON.stringify(kelasIds) : null, JSON.stringify(isi),
+  kelasIds ? JSON.stringify(kelasIds) : null, MODE_SOAL[mode] ? mode : MODE_SOAL_BAWAAN,
+  Array.isArray(kodeAwalBlok) ? JSON.stringify(normalkanBlok(kodeAwalBlok)) : null, JSON.stringify(isi),
   dibuatPada || sekarang(), diperbarui || sekarang());
 }
 
@@ -142,9 +148,19 @@ export async function bacaPengaturan(db) {
   const harga = Array.isArray(peta.harga_clue) && peta.harga_clue.length === 3 ? peta.harga_clue : CLUE.map((c) => c.harga);
   return {
     hargaClue: harga,
-    koinAwal: Number.isInteger(peta.koin_awal) ? peta.koin_awal : KOIN_AWAL
+    koinAwal: Number.isInteger(peta.koin_awal) ? peta.koin_awal : KOIN_AWAL,
+    modeBlokAktif: peta.mode_blok !== false // sakelar darurat (admin); baris belum ada = aktif
   };
 }
+
+/**
+ * Sakelar darurat mode blok (pengaturan.mode_blok, tanpa migrasi). false = semua soal tampil & dinilai
+ * sebagai mode teks untuk semua siswa. baris: hasil SELECT nilai ... (boleh null bila belum pernah diatur).
+ */
+export const modeBlokAktifDariBaris = (baris) => jsonAman(baris?.nilai, true) !== false;
+
+/** Mode soal yang berlaku bagi siswa: sakelar darurat mati = selalu 'teks'. */
+export const modeBerlaku = (level, modeBlokAktif) => (modeBlokAktif ? level.mode : 'teks');
 
 /** Pulau (urutan main) kelas ini; kelas tidak ada = daftar kosong. */
 export async function bacaZonaKelas(db, kelasId) {

@@ -44,7 +44,7 @@ Masuk sebagai admin di `#/guru/masuk`, lalu:
 2. **Buat akun guru:** menu **Guru** → **Tambah guru**. Isi nama, username, password awal, peran (`guru` atau `admin`), dan kelas yang diampu. Berikan username dan password awal kepada guru, lalu minta guru menggantinya di **Pengaturan** → **Ganti password**. Jika guru lupa password, admin menetapkan password baru lewat ikon kunci di tabel **Guru** (diketik sendiri atau isi dari tombol **Sarankan**, minimal 8 karakter); password tampil sekali dan semua sesi guru itu berakhir.
 3. **Bagikan kode kelas ke siswa:** menu **Kelas** menampilkan kode setiap kelas. Siswa membuka situs → **Daftar**, memilih kelasnya, lalu mengetik kode kelas tersebut. Guru juga bisa menambahkan siswa satu per satu atau lewat **Impor CSV** di menu **Siswa** (PIN acak tampil sekali untuk dicatat).
 4. **Satu siswa, banyak kelas** (mis. kelas reguler + ekskul): siswa yang sudah punya akun mengetik kode kelas lain di **Profil** → **Ikut kelas lain**, atau guru memakai **Siswa** → **Tambah Siswa yang Sudah Ada** (lewat username). Bergabung ke kelas lain tidak memberi koin awal lagi. Siswa dengan lebih dari satu kelas memilih "mau main sebagai apa" saat masuk, dan bisa berpindah lewat nama kelas di bagian atas halaman. Soal, pulau, bintang, dan nilai terpisah per kelas; koin dan berlian satu untuk semua kelas.
-5. **Buat soal & atur pulau:** menu **Level & Soal**. Setiap soal dicentang untuk kelas yang memakainya (soal tanpa centang tersimpan tetapi tidak tampil di mana pun). Kartu **Pulau untuk kelas** mengatur pulau mana yang dipakai sebuah kelas beserta urutannya; pulau tanpa soal disembunyikan otomatis dari siswa.
+5. **Buat soal & atur pulau:** menu **Level & Soal**. Setiap soal dicentang untuk kelas yang memakainya (soal tanpa centang tersimpan tetapi tidak tampil di mana pun). Kartu **Pulau untuk kelas** mengatur pulau mana yang dipakai sebuah kelas beserta urutannya; pulau tanpa soal disembunyikan otomatis dari siswa. **Mode pengerjaan** tiap soal: *Teks* (mengetik kode), *Blok* (menyusun balok perintah seret-lepas), atau *Teks dan blok* (siswa memilih). Susunan blok diterjemahkan menjadi kode teks yang sama dan dijalankan interpreter yang sama, jadi bintang dan nilainya identik. Kode awal versi blok diterjemahkan otomatis dari kode awal teks dan bisa dikoreksi guru di bagian Kode. **Bintang:** mode teks memakai aturan lama (termasuk bintang efisiensi baris); mode blok = robot sampai tujuan langsung 3 bintang, berapa pun jumlah blok dan clue. Siswa yang berpindah antara ketik kode dan susun blok ditanya dulu, lalu jawabannya direset ke kode awal mode yang dipilih. **Sakelar darurat:** di **Pengaturan** (admin), *Mode blok* bisa dimatikan sehingga semua soal tampil dan dinilai sebagai mode teks untuk semua siswa; menyalakannya lagi mengembalikan mode tiap soal.
 6. **Sertifikat Juara:** menu **Sertifikat** menampilkan, per kelas, siswa yang sudah menjadi juara (mengalahkan boss pulau terakhir kelas itu) beserta tombol **Lihat & cetak**. Di bawahnya guru mengisi nama sekolah dan penanda tangan sertifikat kelas itu; kosong = ditandatangani Robot Tutor.
 7. Jika kode kelas tersebar ke luar kelas, klik **Buat kode baru** di menu **Kelas**. Siswa yang sudah terdaftar tidak terpengaruh.
 8. **Tahun ajaran berikutnya:** tambahkan siswa ke kelas baru (**Tambahkan ke kelas lain**), lalu **Keluarkan dari kelas** lama. Mengeluarkan dari kelas tidak menghapus akun maupun kemajuan di kelas lain; **Hapus akun** menghapus semuanya.
@@ -123,6 +123,7 @@ Struktur database dikelola dengan **migrasi bernomor** di folder `migrations/`. 
 | `0010_progres_per_kelas.sql` | Membuat ulang tabel `progres` dengan kunci `(siswa_id, kelas_id, level_id)`; `zona_terlihat` pindah ke `siswa_kelas`. |
 | `0011_jenis_kelas.sql` | Kolom `kelas.jenis` (`reguler`/`ekskul`). Kelas bernama "Ekskul…"/"Ekstrakurikuler…" otomatis menjadi ekskul. |
 | `0012_sertifikat_kelas.sql` | Kolom `kelas.sertifikat` (nama sekolah & penanda tangan sertifikat Juara per kelas). |
+| `0013_mode_soal.sql` | Kolom `level.mode` (`teks` bawaan / `blok` / `keduanya`) dan `level.kode_awal_blok` (masih kosong). Fondasi mode blok; belum mengubah layar siswa. |
 
 Perintah untuk database online, dijalankan **sebelum** atau **tepat setelah** push yang membawa migrasi baru:
 
@@ -137,7 +138,7 @@ npx wrangler d1 migrations list coding-island-db --remote
 npx wrangler d1 migrations apply coding-island-db --remote
 ```
 
-Aturan menambah migrasi: buat berkas bernomor berikutnya (`0013_...sql`), jangan pernah mengubah migrasi yang sudah dijalankan, dan jangan menghapus tabel yang berisi data sungguhan. Setelah menambah migrasi, jalankan `node scripts/buat-schema.mjs` agar `server/skema.js` ikut diperbarui.
+Aturan menambah migrasi: buat berkas bernomor berikutnya (`0014_...sql`), jangan pernah mengubah migrasi yang sudah dijalankan, dan jangan menghapus tabel yang berisi data sungguhan. Setelah menambah migrasi, jalankan `node scripts/buat-schema.mjs` agar `server/skema.js` ikut diperbarui.
 
 ### 4c. Variabel dan rahasia
 
@@ -243,7 +244,7 @@ coding_island/
 ├── package.json        Alat build (devDependencies) & skrip build:css, build:vendor
 ├── tailwind.config.cjs Warna & font Tailwind; src/ berisi masukan build (tidak diunggah)
 ├── .dev.vars.example   Contoh variabel uji lokal; salin menjadi .dev.vars (tidak ikut git)
-├── migrations/         Migrasi D1 bernomor 0001–0012 (lihat tabel di bagian 4b)
+├── migrations/         Migrasi D1 bernomor 0001–0013 (lihat tabel di bagian 4b)
 ├── scripts/
 │   ├── buat-schema.mjs Membuat server/skema.js dari semua migrasi (tanpa DELETE & tanpa soal bawaan)
 │   └── build-vendor.mjs Bundel CodeMirror & confetti (esbuild) dan salin font

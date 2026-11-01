@@ -350,7 +350,8 @@ export async function hapusProgres(_siswaId, levelId = null) {
  * Hasil: { progres, koinDidapat, berlianDidapat, pertamaKali, bintangLama, juara, siswa }
  */
 export async function catatPercobaan(_siswaId, levelId, hasil) {
-  const r = await api(`progres/${enc(levelId)}/percobaan`, { metode: 'POST', data: { kode: String(hasil.kode ?? ''), detik: hasil.detik || 0 } });
+  const data = { kode: String(hasil.kode ?? ''), detik: hasil.detik || 0, ...(hasil.mode === 'blok' ? { mode: 'blok' } : {}) };
+  const r = await api(`progres/${enc(levelId)}/percobaan`, { metode: 'POST', data });
   beritahu('progres');
   if (r.siswa) beritahu('siswa');
   return r;
@@ -534,6 +535,11 @@ export async function guruUbahPassword(passwordLama, passwordBaru) {
 // ---------- Khusus admin ----------
 export async function adminSimpanPengaturan({ hargaClue, koinAwal }) {
   return api('auth/pengaturan', { metode: 'PUT', data: { hargaClue, koinAwal } });
+}
+
+/** Sakelar darurat mode blok (admin). false = semua soal tampil sebagai mode teks untuk semua siswa. */
+export async function adminAturModeBlok(aktif) {
+  return api('auth/pengaturan/mode-blok', { metode: 'PUT', data: { aktif } });
 }
 
 // ---------- Pulau per kelas (guru & admin) ----------

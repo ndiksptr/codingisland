@@ -20,12 +20,14 @@ import { buatRouter, bacaJson, kueri, GalatApi } from '../../../server/http.js';
 import { ambilSesi, wajibSiswaDiKelas, aksesGuru } from '../../../server/sesi.js';
 import {
   semua, satu, perintah, sekarang, semuaKelas, semuaLevel, bacaPengaturan, bacaZonaKelas, perintahSimpanLevel,
-  levelBerlaku, rapikanUrutan, levelKeObjek
+  levelBerlaku, rapikanUrutan, levelKeObjek, modeBerlaku
 } from '../../../server/data.js';
 import { tokenAcak } from '../../../server/kripto.js';
 import { alasanBelumSiap } from '../../../js/game/validasi-level.js';
 import { SEMUA_PERINTAH } from '../../../js/game/interpreter.js';
 import { ZONA } from '../../../js/data/zona.js';
+import { MODE_SOAL } from '../../../js/data/levels.js';
+import { normalkanBlok, teksKeBlok } from '../../../js/game/blok.js';
 
 const BATAS_TEKS = 5000;
 const urutZona = (l) => ZONA.findIndex((z) => z.id === l.zona);
@@ -40,6 +42,7 @@ function ringkasLevel(a, l, kelas) {
   return {
     id: l.id, zona: l.zona, urutan: l.urutan, judul: l.judul, jenis: l.jenis,
     bawaan: !!l.bawaan,
+    mode: l.mode,
     status: l.terbit ? 'terbit' : 'draf',
     kelasIds: l.kelasIds ? l.kelasIds.slice() : null,
     kelas: l.kelasIds ? l.kelasIds.map((id) => kelas.find((k) => k.id === id)?.nama).filter(Boolean) : null,
@@ -113,6 +116,7 @@ async function simpanLevelGuru(ctx, idLama, data, terbit) {
 
   if (!ZONA.some((z) => z.id === data.zona)) throw new GalatApi(400, 'Pilih pulau untuk level ini.');
   if (!['ketik', 'debug', 'boss'].includes(data.jenis)) throw new GalatApi(400, 'Pilih jenis level.');
+  if (data.mode !== undefined && !MODE_SOAL[data.mode]) throw new GalatApi(400, 'Pilih mode pengerjaan: teks, blok, atau keduanya.');
   const judul = String(data.judul || '').trim().replace(/\s+/g, ' ');
   if (judul.length < 3 || judul.length > 60) throw new GalatApi(400, 'Judul level harus 3–60 huruf.');
 
@@ -135,6 +139,8 @@ async function simpanLevelGuru(ctx, idLama, data, terbit) {
     ringkasan: String(data.instruksi || '').trim().slice(0, 120) || judul,
     tantanganBonus: String(data.tantanganBonus || '').trim().slice(0, 200), // tidak ditampilkan lagi; isi lama dibiarkan
     kelasIds,
+    // Mode pengerjaan. Tidak dikirim = mode lama soal itu / bawaan 'teks'.
+    mode: data.mode ?? lama?.mode ?? 'teks',
     dunia: periksaDunia(data.dunia),
     perintahTersedia: (data.perintahTersedia || []).filter((x) => SEMUA_PERINTAH.includes(x)),
     kodeAwal: String(data.kodeAwal || '').slice(0, BATAS_TEKS),
@@ -148,6 +154,12 @@ async function simpanLevelGuru(ctx, idLama, data, terbit) {
     dibuatPada: lama?.dibuatPada || sekarang(),
     diperbarui: sekarang()
   };
+
+  // Kode awal versi blok: koreksi guru dari editor (dirapikan normalkanBlok). Tidak dikirim = versi lama.
+  // Bila belum ada, diisi otomatis dari terjemahan kode awal teks (null bila kode teks salah tulis).
+  // Kode awal versi TEKS tidak pernah diubah dari sini.
+  level.kodeAwalBlok = data.kodeAwalBlok !== undefined ? normalkanBlok(data.kodeAwalBlok) : (lama?.kodeAwalBlok ?? null);
+  if (!level.kodeAwalBlok) level.kodeAwalBlok = teksKeBlok(level.kodeAwal).blok;
 
   if (terbit) {
     const alasan = alasanBelumSiap(level);
@@ -176,14 +188,16 @@ export const onRequest = buatRouter([
     const siswa = await wajibSiswaDiKelas(ctx);
     const db = ctx.env.DB;
     const { zona } = kueri(ctx.request);
-    const [progres, levels, zonaIds] = await Promise.all([
+    const [progres, levels, zonaIds, { modeBlokAktif }] = await Promise.all([
       semua(db, 'SELECT level_id, clue_dibeli FROM progres WHERE siswa_id = ? AND kelas_id = ?', siswa.id, siswa.kelas_aktif),
-      semuaLevel(db), bacaZonaKelas(db, siswa.kelas_aktif)
+      semuaLevel(db), bacaZonaKelas(db, siswa.kelas_aktif), bacaPengaturan(db)
     ]);
     const clueDibeli = new Map(progres.map((p) => [p.level_id, p.clue_dibeli || 0]));
     return urutkan(levels.filter((l) => levelBerlaku(l, siswa.kelas_aktif, zonaIds) && (!zona || l.zona === zona)))
       .map(({ solusi, clue, pembuat, ...l }) => ({
         ...l,
+        // Sakelar darurat mode blok dimatikan admin: semua soal tampil sebagai mode teks
+        mode: modeBerlaku(l, modeBlokAktif),
         // Clue yang belum dibeli dikosongkan; teksnya dikirim saat dibeli
         clue: [0, 1, 2].map((i) => (i < (clueDibeli.get(l.id) || 0) ? (clue?.[i] || '') : ''))
       }));

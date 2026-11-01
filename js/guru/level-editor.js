@@ -7,9 +7,11 @@ import { esc, toast, jenisGalat, gambarRobot } from '../ui.js';
 import { guruGetLevel, guruSimpanLevel } from '../store.js';
 import { pindah } from '../router.js';
 import { ZONA, cariZona } from '../data/zona.js';
-import { LABEL_JENIS, PERINTAH_ZONA } from '../data/levels.js';
+import { LABEL_JENIS, PERINTAH_ZONA, MODE_SOAL, MODE_SOAL_BAWAAN } from '../data/levels.js';
 import { SEMUA_PERINTAH, hitungJumlahBaris, jalankanKode } from '../game/interpreter.js';
 import { alasanBelumSiap } from '../game/validasi-level.js';
+import { buatEditorBlok } from '../game/editor-blok.js';
+import { teksKeBlok, blokSama } from '../game/blok.js';
 import { buatEditor } from '../game/editor.js';
 import { buatPanggung } from '../game/panggung.js';
 import { jalankanKodeSiswa } from '../game/runner.js';
@@ -61,13 +63,13 @@ export async function renderEditorLevel(wadah, { params, konteks }) {
 
   // ---------- Keadaan form ----------
   const st = lama ? {
-    judul: lama.judul, zona: lama.zona, jenis: lama.jenis,
+    judul: lama.judul, zona: lama.zona, jenis: lama.jenis, mode: lama.mode || MODE_SOAL_BAWAAN, kodeAwalBlok: lama.kodeAwalBlok || null,
     instruksi: lama.instruksi || '', tantanganBonus: lama.tantanganBonus || '',
     tujuanTeks: salin(lama.tujuanTeks || []), perintahTersedia: (lama.perintahTersedia || []).slice(),
     batasBaris: lama.batasBaris || 1, clue: (lama.clue || ['', '', '']).slice(), kelasIds: lama.kelasIds ? lama.kelasIds.slice() : null,
     dunia: salin(lama.dunia), status: lama.status
   } : {
-    judul: '', zona: 'pantai', jenis: 'ketik',
+    judul: '', zona: 'pantai', jenis: 'ketik', mode: MODE_SOAL_BAWAAN, kodeAwalBlok: null,
     instruksi: '', tantanganBonus: '', tujuanTeks: [{ teks: 'Sampai di bendera', jenis: 'sampai' }],
     perintahTersedia: PERINTAH_ZONA.pantai.slice(), batasBaris: 1, clue: ['', '', ''],
     kelasIds: admin ? null : konteks.kelas.map((k) => k.id), dunia: duniaBawaan(), status: 'baru'
@@ -101,6 +103,12 @@ export async function renderEditorLevel(wadah, { params, konteks }) {
             <label class="dg-label">Jenis
               <select class="dg-input" data-isi="jenis">${Object.entries(LABEL_JENIS).map(([k, v]) => `<option value="${k}" ${k === st.jenis ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select>
             </label>
+            <label class="dg-label">Mode pengerjaan
+              <select class="dg-input" data-isi="mode">${Object.entries(MODE_SOAL).map(([k, v]) => `<option value="${k}" ${k === st.mode ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select>
+            </label>
+            <p class="text-sm sm:col-span-2">Teks: siswa mengetik kode. Blok: siswa menyusun balok perintah. Keduanya: siswa boleh memilih.
+              Kode awal versi blok diterjemahkan otomatis dari kode awal teks dan bisa Anda koreksi di bagian Kode.</p>
+            ${konteks.pengaturan?.modeBlokAktif === false ? '<p class="text-sm sm:col-span-2 text-[#B24E1C] font-bold">Mode blok sedang dimatikan admin (sakelar darurat): semua soal tampil sebagai teks bagi siswa.</p>' : ''}
           </div>
           <fieldset class="mt-3">
             <legend class="dg-label">Kelas <span class="font-normal text-sm">(soal hanya tampil bagi siswa kelas yang dicentang, termasuk kelas ekskul)</span></legend>
@@ -145,6 +153,14 @@ export async function renderEditorLevel(wadah, { params, konteks }) {
           <h2 class="dg-subjudul mb-3">Kode</h2>
           <p class="dg-label">Kode awal <span class="font-normal text-sm" data-catatan-kode-awal></span></p>
           <div class="editor-kode mt-1" data-editor-awal><p class="p-3 text-sm">Menyiapkan editor...</p></div>
+          <div class="mt-4" data-bagian-blok ${st.mode === 'teks' ? 'hidden' : ''}>
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <p class="dg-label">Kode awal versi blok <span class="font-normal text-sm">(titik mulai siswa di mode blok)</span></p>
+              <button type="button" class="tombol tombol-sekunder tombol-kecil" data-terjemah-ulang>Terjemahkan ulang dari kode awal teks</button>
+            </div>
+            <p class="text-sm mt-1 mb-2" data-status-blok></p>
+            <div data-editor-blok-awal></div>
+          </div>
           <p class="dg-label mt-4">Solusi <span class="font-normal text-sm">(wajib; dipakai untuk menguji level)</span></p>
           <div class="editor-kode mt-1" data-editor-solusi><p class="p-3 text-sm">Menyiapkan editor...</p></div>
           <div class="mt-3 flex flex-wrap items-end gap-3">
@@ -203,9 +219,64 @@ export async function renderEditorLevel(wadah, { params, konteks }) {
   let jadwal = null;
   const jadwalkan = () => { clearTimeout(jadwal); jadwal = setTimeout(perbaruiStatus, 300); };
   const [editorAwal, editorSolusi] = await Promise.all([
-    buatEditor($('[data-editor-awal]'), { nilai: lama?.kodeAwal || '', saranKata: SEMUA_PERINTAH, label: 'Kode awal', saatUbah: jadwalkan }),
+    buatEditor($('[data-editor-awal]'), { nilai: lama?.kodeAwal || '', saranKata: SEMUA_PERINTAH, label: 'Kode awal', saatUbah: () => { jadwalkan(); jadwalSinkronBlok(); } }),
     buatEditor($('[data-editor-solusi]'), { nilai: lama?.solusi || '', saranKata: SEMUA_PERINTAH, label: 'Solusi', saatUbah: () => { sarankanBatas(); jadwalkan(); } })
   ]);
+
+  // =====================================================================
+  // Kode awal versi blok (mode blok / keduanya)
+  // =====================================================================
+  // Selama guru belum mengoreksi, versi blok selalu = terjemahan otomatis kode awal teks (ikut berubah).
+  // Begitu guru mengubah bloknya, versi blok berdiri sendiri. Koreksi ini hanya mengubah kodeAwalBlok;
+  // kode awal versi TEKS tidak pernah disentuh dari sini.
+  let blokManual = !!(lama?.kodeAwalBlok && !blokSama(lama.kodeAwalBlok, teksKeBlok(lama.kodeAwal || '').blok || []));
+  let sedangSinkron = false;
+  let jadwalBlok = null;
+  let perintahBlok = st.perintahTersedia.join(',');
+  if (!blokManual) st.kodeAwalBlok = teksKeBlok(editorAwal.getNilai()).blok;
+  const editorBlokAwal = buatEditorBlok($('[data-editor-blok-awal]'), {
+    blok: st.kodeAwalBlok || [],
+    perintah: st.perintahTersedia,
+    label: 'Kode awal versi blok',
+    saatUbah: (_, blok) => {
+      st.kodeAwalBlok = blok;
+      if (!sedangSinkron) blokManual = true;
+      tulisStatusBlok();
+      jadwalkan();
+    }
+  });
+
+  function tulisStatusBlok() {
+    const t = teksKeBlok(editorAwal.getNilai());
+    $('[data-status-blok]').textContent = blokManual
+      ? 'Sudah Anda koreksi. Koreksi ini hanya mengubah versi blok; kode awal teks tetap seperti yang Anda tulis.'
+      : t.galat
+        ? `Kode awal teks belum bisa diterjemahkan otomatis (${t.galat}). Perbaiki kode awal teks, atau susun versi bloknya langsung di sini.`
+        : 'Terjemahan otomatis dari kode awal teks. Anda bisa mengoreksinya langsung di sini.';
+  }
+
+  /** Terjemahkan ulang kode awal teks ke blok (hanya bila guru belum mengoreksi versi blok). */
+  function sinkronBlok() {
+    if (blokManual) return;
+    const t = teksKeBlok(editorAwal.getNilai());
+    st.kodeAwalBlok = t.blok;
+    if (t.blok) {
+      sedangSinkron = true;
+      editorBlokAwal.setBlok(t.blok);
+      sedangSinkron = false;
+    }
+    tulisStatusBlok();
+  }
+  function jadwalSinkronBlok() { clearTimeout(jadwalBlok); jadwalBlok = setTimeout(sinkronBlok, 400); }
+
+  /** Palet blok mengikuti perintah yang dicentang (digambar ulang hanya bila daftarnya berubah). */
+  function perbaruiPerintahBlok() {
+    const kini = st.perintahTersedia.join(',');
+    if (kini === perintahBlok) return;
+    perintahBlok = kini;
+    editorBlokAwal.aturPerintah(st.perintahTersedia);
+  }
+  tulisStatusBlok();
 
   // =====================================================================
   // Data level dari form
@@ -216,11 +287,13 @@ export async function renderEditorLevel(wadah, { params, konteks }) {
       judul: st.judul.trim(),
       zona: st.zona,
       jenis: st.jenis,
+      mode: st.mode,
       instruksi: st.instruksi,
       tantanganBonus: st.tantanganBonus, // tidak lagi diisi/ditampilkan; nilai lama soal tetap disimpan
       tujuanTeks: st.tujuanTeks,
       perintahTersedia: st.perintahTersedia,
       kodeAwal: editorAwal.getNilai(),
+      kodeAwalBlok: st.kodeAwalBlok, // null = server menerjemahkan otomatis dari kode awal teks
       solusi: editorSolusi.getNilai(),
       batasBaris: st.batasBaris,
       clue: st.clue,
@@ -276,6 +349,7 @@ export async function renderEditorLevel(wadah, { params, konteks }) {
 
   // ---------- Status siap terbit ----------
   function perbaruiStatus() {
+    perbaruiPerintahBlok();
     const data = dataLevel();
     const alasan = alasanBelumSiap(data);
     const tombol = $('[data-terbitkan]');
@@ -521,6 +595,9 @@ export async function renderEditorLevel(wadah, { params, konteks }) {
       if (!perintahManual) { st.perintahTersedia = PERINTAH_ZONA[st.zona].slice(); gambarPerintah(); }
       gambarPalet();
       gambarPanggung();
+    } else if (t.dataset.isi === 'mode') {
+      st.mode = t.value;
+      $('[data-bagian-blok]').hidden = st.mode === 'teks';
     } else if (t.dataset.isi === 'jenis') {
       st.jenis = t.value;
       gambarPanggung();
@@ -574,6 +651,12 @@ export async function renderEditorLevel(wadah, { params, konteks }) {
       jadwalkan();
       return undefined;
     }
+    if (t.closest('[data-terjemah-ulang]')) {
+      blokManual = false;
+      sinkronBlok();
+      jadwalkan();
+      return undefined;
+    }
     if (t.closest('[data-perintah-zona]')) {
       perintahManual = false;
       st.perintahTersedia = PERINTAH_ZONA[st.zona].slice();
@@ -602,7 +685,9 @@ export async function renderEditorLevel(wadah, { params, konteks }) {
 
   return () => {
     clearTimeout(jadwal);
+    clearTimeout(jadwalBlok);
     document.removeEventListener('keydown', pintasan);
+    editorBlokAwal.hancurkan();
     panggung?.hancurkan();
     editorAwal.hancurkan();
     editorSolusi.hancurkan();
